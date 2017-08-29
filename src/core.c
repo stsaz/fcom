@@ -1,0 +1,589 @@
+/** fcom core.
+Copyright (c) 2017 Simon Zolin */
+
+#include <fcom.h>
+
+#include <FF/data/conf.h>
+#include <FF/path.h>
+#include <FFOS/dir.h>
+#include <FFOS/queue.h>
+#include <FFOS/process.h>
+
+
+#define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, "core", fmt, __VA_ARGS__)
+#define errlog(fmt, ...)  fcom_errlog("core", fmt, __VA_ARGS__)
+#define syserrlog(fmt, ...)  fcom_syserrlog("core", fmt, __VA_ARGS__)
+
+enum {
+	KQ_EVS = 8,
+	CONF_MBUF = 4096,
+};
+
+struct fcom {
+	struct fcom_conf conf;
+	fcom_log log;
+
+	ffarr mods; //struct mod[]
+	ffarr ifaces; //struct iface[]
+	ffenv env;
+	ffstr rootdir;
+
+	fffd kq;
+	ffkqu_time kqtime;
+	ffkevpost kqpost;
+	fftaskmgr tskmgr;
+	ffkevent evposted;
+	uint stopped;
+
+	fftimer_queue tmrq;
+	uint64 period;
+};
+
+struct mod {
+	ffdl dl;
+	const fcom_mod *mod;
+	char *name;
+};
+
+struct iface {
+	struct mod *m;
+	const void *iface;
+	char *name;
+};
+
+static struct fcom *g;
+
+// CORE
+static int core_cmd(uint cmd, ...);
+static void core_log(uint flags, const char *fmt, ...);
+static char* core_getpath(const char *name, size_t len);
+static char* core_env_expand(char *dst, size_t cap, const char *src);
+static const void* core_iface(const char *name);
+static void core_task(uint cmd, fftask *tsk);
+static int core_timer(fftmrq_entry *tmr, int interval, uint flags);
+static fcom_core _core = {
+	.cmd = &core_cmd, .log = &core_log, .getpath = &core_getpath, .env_expand = &core_env_expand,
+	.iface = &core_iface, .task = &core_task, .timer = &core_timer,
+};
+fcom_core *core = &_core;
+
+// FCOM MODULE
+static const fcom_mod* coremod_getmod(const fcom_core *_core);
+static int coremod_sig(uint signo);
+static const void* coremod_iface(const char *name);
+static int coremod_conf(const char *name, ffpars_ctx *ctx);
+static const fcom_mod core_mod = {
+	.sig = &coremod_sig, .iface = &coremod_iface, .conf = &coremod_conf,
+};
+
+static void core_work(void);
+static int mods_sig(uint sig);
+static int mod_add(const ffstr *name, ffpars_ctx *ctx);
+static struct mod* mod_find(const ffstr *soname);
+static struct mod* mod_load(const ffstr *soname);
+static void mods_destroy(void);
+static void on_posted(void *);
+
+static int conf_modconf(ffparser_schem *p, void *obj, ffpars_ctx *ctx);
+static int conf_mod(ffparser_schem *p, void *obj, const ffstr *val);
+
+static const ffpars_arg conf_args[] = {
+	{ "mod_conf",	FFPARS_TOBJ | FFPARS_FOBJ1 | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&conf_modconf) },
+	{ "mod",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&conf_mod) },
+};
+
+static int conf_modconf(ffparser_schem *p, void *obj, ffpars_ctx *ctx)
+{
+	const ffstr *name = &p->vals[0];
+	if (0 != mod_add(name, ctx))
+		return FFPARS_ESYS;
+	return 0;
+}
+
+static int conf_mod(ffparser_schem *p, void *obj, const ffstr *val)
+{
+	if (0 != mod_add(val, NULL))
+		return FFPARS_ESYS;
+	return 0;
+}
+
+
+static int set_rootdir(char **argv)
+{
+	char fn[FF_MAXPATH];
+	ffstr path;
+	const char *p;
+	if (NULL == (p = ffps_filename(fn, sizeof(fn), argv[0])))
+		return -1;
+	if (NULL == ffpath_split2(p, ffsz_len(p), &path, NULL))
+		return -1;
+	if (NULL == ffstr_copy(&g->rootdir, path.ptr, path.len + FFSLEN("/")))
+		return -1;
+	return 0;
+}
+
+const fcom_core* core_create(fcom_log log, char **argv, char **env)
+{
+	if (NULL == (g = ffmem_new(struct fcom)))
+		return NULL;
+	g->kq = FF_BADFD;
+	g->log = log;
+
+	if (0 != ffenv_init(&g->env, env)) {
+		syserrlog("%s", "ffenv_init");
+		goto err;
+	}
+
+	if (0 != set_rootdir(argv))
+		goto err;
+
+	g->conf.loglev = FCOM_LOGINFO;
+	_core.conf = &g->conf;
+
+#if defined FF_WIN && FF_WIN < 0x0600
+	ffkqu_init();
+#endif
+	if (FF_BADFD == (g->kq = ffkqu_create())) {
+		syserrlog("%s", ffkqu_create_S);
+		goto err;
+	}
+	core->kq = g->kq;
+	ffkqu_post_attach(&g->kqpost, g->kq);
+
+	ffkqu_settm(&g->kqtime, (uint)-1);
+	ffkev_init(&g->evposted);
+	g->evposted.oneshot = 0;
+	g->evposted.handler = &on_posted;
+	fftask_init(&g->tskmgr);
+
+	fftmrq_init(&g->tmrq);
+
+	return &_core;
+
+err:
+	core_free();
+	return NULL;
+}
+
+static void on_posted(void *param)
+{}
+
+static void conf_destroy(struct fcom_conf *c)
+{
+}
+
+void core_free(void)
+{
+	ffkqu_post_detach(&g->kqpost, g->kq);
+	fftmrq_destroy(&g->tmrq, g->kq);
+	FF_SAFECLOSE(g->kq, FF_BADFD, ffkqu_close);
+	mods_destroy();
+	ffenv_destroy(&g->env);
+	conf_destroy(&g->conf);
+	ffstr_free(&g->rootdir);
+	ffmem_free0(g);
+}
+
+static void core_log(uint flags, const char *fmt, ...)
+{
+	if (!fcom_logchk(g->conf.loglev, flags))
+		return;
+
+	va_list va;
+	va_start(va, fmt);
+	g->log(flags, fmt, va);
+	va_end(va);
+}
+
+static int readconf(const char *fn)
+{
+	ffparser pconf;
+	ffparser_schem ps;
+	ffpars_ctx ctx = {0};
+	int r = FFPARS_ESYS;
+	ffstr s;
+	char *buf = NULL, *fullfn = NULL;
+	size_t n;
+	fffd f = FF_BADFD;
+
+	if (NULL == (fullfn = core_getpath(fn, ffsz_len(fn))))
+		goto fail;
+	fn = fullfn;
+
+	ffpars_setargs(&ctx, &g->conf, conf_args, FFCNT(conf_args));
+
+	ffconf_scheminit(&ps, &pconf, &ctx);
+	if (FF_BADFD == (f = fffile_open(fn, O_RDONLY))) {
+		syserrlog("%s: %s", fffile_open_S, fn);
+		goto fail;
+	}
+
+	dbglog(0, "reading config file %s", fn);
+
+	if (NULL == (buf = ffmem_alloc(CONF_MBUF))) {
+		goto err;
+	}
+
+	for (;;) {
+		n = fffile_read(f, buf, CONF_MBUF);
+		if (n == (size_t)-1) {
+			goto err;
+		} else if (n == 0)
+			break;
+		ffstr_set(&s, buf, n);
+
+		while (s.len != 0) {
+			r = ffconf_parsestr(&pconf, &s);
+			r = ffconf_schemrun(&ps);
+
+			if (ffpars_iserr(r))
+				goto err;
+		}
+	}
+
+	r = ffconf_schemfin(&ps);
+
+err:
+	if (ffpars_iserr(r)) {
+		const char *ser = ffpars_schemerrstr(&ps, r, NULL, 0);
+		errlog("parse config: %s: %u:%u: near \"%S\": \"%s\": %s"
+			, fn
+			, ps.p->line, ps.p->ch
+			, &ps.p->val, (ps.curarg != NULL) ? ps.curarg->name : ""
+			, (r == FFPARS_ESYS) ? fferr_strp(fferr_last()) : ser);
+		goto fail;
+	}
+
+	r = 0;
+
+fail:
+	ffpars_free(&pconf);
+	ffpars_schemfree(&ps);
+	ffmem_safefree(buf);
+	if (f != FF_BADFD)
+		fffile_close(f);
+	ffmem_safefree(fullfn);
+	return r;
+}
+
+static int setconf(fcom_conf *conf)
+{
+	ffmem_copyT(&g->conf, conf, fcom_conf);
+	return 0;
+}
+
+static char* core_getpath(const char *name, size_t len)
+{
+	ffarr s = {0};
+
+	if (ffpath_abs(name, len)) {
+		if (0 == ffstr_catfmt(&s, "%*s%Z", len, name))
+			goto err;
+
+	} else {
+
+		if (0 == ffstr_catfmt(&s, "%S%*s%Z", &g->rootdir, len, name))
+			goto err;
+	}
+
+	return s.ptr;
+
+err:
+	ffarr_free(&s);
+	return NULL;
+}
+
+static char* core_env_expand(char *dst, size_t cap, const char *src)
+{
+	return ffenv_expand(&g->env, dst, cap, src);
+}
+
+static const void* core_iface(const char *nm)
+{
+	struct iface *pif;
+	FFARR_WALKT(&g->ifaces, pif, struct iface) {
+		if (ffsz_eq(pif->name, nm))
+			return pif->iface;
+	}
+	return NULL;
+}
+
+static void mod_destroy(struct mod *m)
+{
+	FF_SAFECLOSE(m->dl, NULL, ffdl_close);
+	ffmem_safefree(m->name);
+}
+
+static void mods_destroy(void)
+{
+	struct mod *m;
+	FFARR_WALKT(&g->mods, m, struct mod) {
+		mod_destroy(m);
+	}
+	ffarr_free(&g->mods);
+}
+
+static int mods_sig(uint sig)
+{
+	int r = 0;
+	struct mod *m;
+	FFARR_WALKT(&g->mods, m, struct mod) {
+		if (0 != m->mod->sig(sig))
+			r = 1;
+	}
+	return r;
+}
+
+static struct mod* mod_find(const ffstr *soname)
+{
+	struct mod *m;
+	FFARR_WALKT(&g->mods, m, struct mod) {
+		if (ffstr_eqz(soname, m->name))
+			return m;
+	}
+	return NULL;
+}
+
+static struct mod* mod_load(const ffstr *soname)
+{
+	ffdl dl = NULL;
+	char fn[FF_MAXFN];
+	fcom_getmod_t getmod;
+	struct mod *m;
+
+	if (NULL == (m = ffarr_pushgrowT(&g->mods, 16, struct mod)))
+		goto fail;
+	ffmem_tzero(m);
+	if (NULL == (m->name = ffsz_alcopy(soname->ptr, soname->len)))
+		goto fail;
+
+	if (ffstr_eqcz(soname, "core")) {
+		getmod = &coremod_getmod;
+
+	} else {
+		if (0 == ffs_fmt(fn, fn + sizeof(fn), "%S.%s%Z", soname, FFDL_EXT))
+			goto fail;
+		dbglog(0, "loading module %s", fn);
+		if (NULL == (dl = ffdl_open(fn, 0))) {
+			errlog("loading %s: %s", fn, ffdl_errstr());
+			goto fail;
+		}
+		if (NULL == (getmod = (void*)ffdl_addr(dl, "fcom_getmod"))) {
+			errlog("resolving 'fcom_getmod' from %s: %s", fn, ffdl_errstr());
+			goto fail;
+		}
+	}
+
+	if (NULL == (m->mod = getmod(core)))
+		goto fail;
+
+	if (0 != m->mod->sig(FCOM_SIGINIT))
+		goto fail;
+	m->dl = dl;
+	return m;
+
+fail:
+	FF_SAFECLOSE(dl, NULL, ffdl_close);
+	return NULL;
+}
+
+static int mod_add(const ffstr *name, ffpars_ctx *ctx)
+{
+	ffstr soname, iface;
+	char fn[FF_MAXFN];
+	struct mod *m;
+	struct iface *pif = NULL;
+
+	ffs_split2by(name->ptr, name->len, '.', &soname, &iface);
+	if (soname.len == 0 || iface.len == 0) {
+		fferr_set(EINVAL);
+		goto fail;
+	}
+
+	if (NULL == (m = mod_find(&soname))) {
+		if (NULL == (m = mod_load(&soname)))
+			goto fail;
+	}
+
+	if (0 == ffs_fmt(fn, fn + sizeof(fn), "%S%Z", &iface, FFDL_EXT))
+		goto fail;
+
+	if (ctx != NULL) {
+		if (m->mod->conf == NULL)
+			goto fail;
+		if (0 != m->mod->conf(fn, ctx))
+			goto fail;
+	}
+
+	if (NULL == (pif = ffarr_pushgrowT(&g->ifaces, 16, struct iface)))
+		goto fail;
+	ffmem_tzero(pif);
+
+	if (NULL == (pif->iface = m->mod->iface(fn)))
+		goto fail;
+
+	if (NULL == (pif->name = ffsz_alcopy(name->ptr, name->len)))
+		goto fail;
+	pif->m = m;
+	return 0;
+
+fail:
+	return -1;
+}
+
+static int core_cmd(uint cmd, ...)
+{
+	dbglog(0, "received command %u", cmd);
+
+	int r = 0;
+	va_list va;
+	va_start(va, cmd);
+
+	switch (cmd) {
+	case FCOM_READCONF:
+		r = readconf(va_arg(va, char*));
+		break;
+	case FCOM_SETCONF:
+		r = setconf(va_arg(va, fcom_conf*));
+		break;
+	case FCOM_MODADD: {
+		ffstr *name = va_arg(va, ffstr*);
+		ffpars_ctx *ctx = va_arg(va, ffpars_ctx*);
+		r = mod_add(name, ctx);
+		break;
+	}
+	case FCOM_RUN:
+		if (0 != mods_sig(FCOM_SIGSTART)) {
+			r = 1;
+			break;
+		}
+		core_work();
+		break;
+	case FCOM_STOP:
+		mods_sig(FCOM_SIGFREE);
+		g->stopped = 1;
+		ffkqu_post(&g->kqpost, &g->evposted);
+		break;
+	default:
+		FF_ASSERT(0);
+	}
+
+	va_end(va);
+	return r;
+}
+
+static void core_task(uint cmd, fftask *tsk)
+{
+	dbglog(0, "task:%p, cmd:%u, active:%u, handler:%p, param:%p"
+		, tsk, cmd, fftask_active(&g->tskmgr, tsk), tsk->handler, tsk->param);
+
+	switch (cmd) {
+	case FCOM_TASK_ADD:
+		if (fftask_active(&g->tskmgr, tsk))
+			fftask_del(&g->tskmgr, tsk);
+		fftask_post(&g->tskmgr, tsk);
+		ffkqu_post(&g->kqpost, &g->evposted);
+		break;
+
+	case FCOM_TASK_DEL:
+		if (fftask_active(&g->tskmgr, tsk))
+			fftask_del(&g->tskmgr, tsk);
+		break;
+
+	default:
+		FF_ASSERT(0);
+	}
+}
+
+static int core_timer(fftmrq_entry *tmr, int interval, uint flags)
+{
+	dbglog(0, "timer:%p  interval:%u  handler:%p  param:%p"
+		, tmr, interval, tmr->handler, tmr->param);
+
+	if (fftmrq_active(&g->tmrq, tmr))
+		fftmrq_rm(&g->tmrq, tmr);
+
+	if (interval == 0) {
+		if (fftmrq_empty(&g->tmrq)) {
+			fftmrq_destroy(&g->tmrq, g->kq);
+			dbglog(0, "stopped kernel timer", 0);
+		}
+		return 0;
+	}
+
+	if (fftmrq_started(&g->tmrq) && (uint64)ffabs(interval) < g->period) {
+		fftmrq_destroy(&g->tmrq, g->kq);
+		dbglog(0, "stopped kernel timer", 0);
+	}
+
+	if (!fftmrq_started(&g->tmrq)) {
+		fftmrq_init(&g->tmrq);
+		if (0 != fftmrq_start(&g->tmrq, g->kq, ffabs(interval))) {
+			syserrlog("fftmrq_start()", 0);
+			return -1;
+		}
+		g->period = ffabs(interval);
+		dbglog(0, "started kernel timer  interval:%u", ffabs(interval));
+	}
+
+	fftmrq_add(&g->tmrq, tmr, interval);
+	return 0;
+}
+
+static void core_work(void)
+{
+	ffkqu_entry *ents;
+	if (NULL == (ents = ffmem_callocT(KQ_EVS, ffkqu_entry)))
+		return;
+
+	dbglog(0, "entering kqueue loop", 0);
+
+	while (!g->stopped) {
+
+		uint nevents = ffkqu_wait(g->kq, ents, KQ_EVS, &g->kqtime);
+
+		if ((int)nevents < 0) {
+			if (fferr_last() != EINTR) {
+				syserrlog("%s", ffkqu_wait_S);
+				break;
+			}
+			continue;
+		}
+
+		for (uint i = 0;  i != nevents;  i++) {
+			ffkqu_entry *ev = &ents[i];
+			ffkev_call(ev);
+
+			fftask_run(&g->tskmgr);
+		}
+	}
+
+	dbglog(0, "left kqueue loop", 0);
+	ffmem_free(ents);
+}
+
+
+static const fcom_mod* coremod_getmod(const fcom_core *_core)
+{
+	return &core_mod;
+}
+
+static const void* coremod_iface(const char *name)
+{
+	return NULL;
+}
+
+static int coremod_conf(const char *name, ffpars_ctx *ctx)
+{
+	return 0;
+}
+
+static int coremod_sig(uint signo)
+{
+	switch (signo) {
+	case FCOM_SIGINIT:
+	case FCOM_SIGFREE:
+		break;
+	}
+	return 0;
+}

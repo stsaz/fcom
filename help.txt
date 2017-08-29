@@ -1,0 +1,10 @@
+fcom OPERATION [OPTIONS] ...
+
+OPERATION
+
+OPTIONS
+
+--verbose, -v      Print more information to stdout
+--debug, -D        Print debug log messages to stdout
+--benchmark        Show the time spent for command execution
+--help             Show help

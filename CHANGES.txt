@@ -1,0 +1,8 @@
+-----------------
+HISTORY OF FCOM
+-----------------
+
+ "+" - new feature
+ "*" - change, update or a small improvement
+ "-" - bugfix
+ "!" - broken compatibility

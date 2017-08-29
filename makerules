@@ -1,0 +1,57 @@
+
+OBJ_DIR := .
+BINS := $(BIN)
+
+all: ff $(BINS)
+
+include $(FF)/makerules
+include $(FF3PT)/makerules
+FF_O := $(FFOS_OBJ) $(FF_OBJ) $(FF_OBJ_DIR)/ffutf8.o $(FF_OBJ_DIR)/ffdbg.o
+
+$(OBJ_DIR)/%.o: $(SRCDIR)/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
+
+
+BIN_O := $(OBJ_DIR)/main.o \
+	$(OBJ_DIR)/core.o \
+	$(FF_O) \
+	$(FF_OBJ_DIR)/fftmr.o \
+	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffpsarg.o $(FF_OBJ_DIR)/ffconf.o
+
+$(BIN): $(BIN_O)
+	$(LD)  $(BIN_O) $(LDFLAGS) $(LD_LWS2_32) $(LD_LDL) -o$@
+
+
+clean:
+	rm -vf $(BINS) *.debug *.o $(RES)
+
+distclean: clean ffclean
+	rm -vfr $(INSTDIR) ./$(PROJ)-*.zip ./$(PROJ)-*.tar.xz
+
+
+strip: $(BINS:.$(SO)=.$(SO).debug) $(BIN).debug $(BINS:.exe=.exe.debug)
+
+
+installd: all
+
+	mkdir -vp $(INSTDIR)
+	$(CP) $(BINS) \
+		$(PROJDIR)/fcom.conf \
+		$(PROJDIR)/help.txt $(PROJDIR)/README.txt $(PROJDIR)/CHANGES.txt \
+		$(INSTDIR)/
+
+ifneq ($(OS),win)
+	$(CP) $(PROJDIR)/fcom-exec $(INSTDIR)/fcom
+	chmod 644 $(INSTDIR)/*
+	chmod 755 $(INSTDIR)/fcom
+
+else
+
+	unix2dos $(INSTDIR)/*.txt $(INSTDIR)/*.conf
+	chmod 644 $(INSTDIR)/*
+endif
+
+	chmod 755 $(INSTDIR)/$(BIN) $(INSTDIR)/*.$(SO)
+
+
+install: all strip installd
