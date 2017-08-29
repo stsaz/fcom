@@ -162,12 +162,15 @@ typedef struct fcom_cmd {
 		const char *fn;
 		fftime mtime;
 		uint64 size;
+		uint64 offset;
+		uint attr;
 	} input, output;
 
 	const char *date_as_fn;
 	fftime mtime;
 	uint err :1
 		, skip_err :1
+		, in_seek :1
 		, out_overwrite :1
 		, out_notrunc :1
 		, read_only :1

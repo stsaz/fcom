@@ -6,15 +6,18 @@ Copyright (c) 2017 Simon Zolin
 
 #include <FF/number.h>
 #include <FF/path.h>
+#include <FFOS/asyncio.h>
 #include <FFOS/error.h>
 #include <FFOS/file.h>
 #include <FFOS/dir.h>
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, __VA_ARGS__)
+#define errlog(fmt, ...)  fcom_errlog(FILT_NAME, fmt, __VA_ARGS__)
 #define syserrlog(fmt, ...)  fcom_syserrlog(FILT_NAME, fmt, __VA_ARGS__)
 
 extern const fcom_core *core;
+static const fcom_command *com;
 
 // MODULE
 static int file_sig(uint signo);
@@ -23,6 +26,19 @@ static int file_conf(const char *name, ffpars_ctx *ctx);
 const fcom_mod file_mod = {
 	.sig = &file_sig, .iface = &file_iface, .conf = &file_conf,
 };
+
+// INPUT
+static int fi_conf(ffpars_ctx *ctx);
+static void* fi_open(fcom_cmd *cmd);
+static void fi_close(void *p, fcom_cmd *cmd);
+static int fi_process(void *p, fcom_cmd *cmd);
+static const fcom_filter fi_filt = {
+	&fi_open, &fi_close, &fi_process,
+};
+typedef struct file file;
+typedef struct buf buf;
+static int fi_getdata(file *f, buf **pb, uint64 off);
+static void fi_read(void *param);
 
 // OUTPUT
 static int fo_conf(ffpars_ctx *ctx);
@@ -36,14 +52,18 @@ static const fcom_filter fo_filt = {
 
 static const void* file_iface(const char *name)
 {
-	if (ffsz_eq(name, "file-out"))
+	if (ffsz_eq(name, "file-in"))
+		return &fi_filt;
+	else if (ffsz_eq(name, "file-out"))
 		return &fo_filt;
 	return NULL;
 }
 
 static int file_conf(const char *name, ffpars_ctx *ctx)
 {
-	if (ffsz_eq(name, "file-out"))
+	if (ffsz_eq(name, "file-in"))
+		return fi_conf(ctx);
+	else if (ffsz_eq(name, "file-out"))
 		return fo_conf(ctx);
 	return 1;
 }
@@ -52,12 +72,363 @@ static int file_sig(uint signo)
 {
 	switch (signo) {
 	case FCOM_SIGINIT:
+		com = core->iface("core.com");
+		break;
 	case FCOM_SIGSTART:
 	case FCOM_SIGFREE:
 		break;
 	}
 	return 0;
 }
+
+
+#define FILT_NAME  "file-in"
+
+struct inconf {
+	uint bufsize;
+	uint nbufs;
+	uint align;
+	byte directio;
+	byte readahead;
+};
+static struct inconf *inconf;
+
+#define OFF(member)  FFPARS_DSTOFF(struct inconf, member)
+static const ffpars_arg fi_conf_args[] = {
+	{ "bufsize",	FFPARS_TSIZE | FFPARS_FNOTZERO,  OFF(bufsize) },
+	{ "nbufs",	FFPARS_TINT8 | FFPARS_FNOTZERO,  OFF(nbufs) },
+	{ "direct_io",	FFPARS_TBOOL8,  OFF(directio) },
+};
+#undef OFF
+
+struct buf {
+	size_t len;
+	char *ptr;
+	uint64 offset;
+};
+
+struct file {
+	const char *fn;
+	fffd fd;
+	uint64 roff; //aligned offset for the next read operation
+	uint64 size;
+	ffaio_filetask aio;
+	uint state; //enum FI_ST
+
+	ffarr2 bufs; //buf[]
+	uint wbuf;
+	uint last;
+	uint locked;
+
+	fcom_cmd *uctx;
+	uint64 next_off;
+
+	struct {
+		uint nread;
+		uint nasync;
+		uint nseek;
+		uint ncached;
+	} stat;
+};
+
+enum FI_ST {
+	FI_IOK,
+	FI_IERR,
+	FI_IASYNC,
+	FI_IEOF,
+};
+
+enum FI_R {
+	FI_RERR = FI_IERR,
+	FI_RASYNC = FI_IASYNC,
+	FI_REOF = FI_IEOF,
+	FI_RCACHE,
+	FI_RREAD,
+};
+
+static int fi_conf(ffpars_ctx *ctx)
+{
+	if (NULL == (inconf = ffmem_new(struct inconf)))
+		return -1;
+	inconf->bufsize = 64 * 1024;
+	inconf->nbufs = 3;
+	inconf->align = 4096;
+	inconf->directio = 1;
+	ffpars_setargs(ctx, inconf, fi_conf_args, FFCNT(fi_conf_args));
+	return 0;
+}
+
+/** Create buffers aligned to system pagesize. */
+static int bufs_create(file *f)
+{
+	if (NULL == ffarr2_callocT(&f->bufs, inconf->nbufs, buf))
+		goto err;
+	f->bufs.len = inconf->nbufs;
+	buf *b;
+	FFARR_WALKT(&f->bufs, b, buf) {
+		if (NULL == (b->ptr = ffmem_align(inconf->bufsize, inconf->align)))
+			goto err;
+		b->offset = (uint64)-1;
+	}
+	return 0;
+
+err:
+	syserrlog("%s", ffmem_alloc_S);
+	return -1;
+}
+
+static void bufs_free(ffarr2 *bufs)
+{
+	buf *b;
+	FFARR_WALKT(bufs, b, buf) {
+		ffmem_alignfree(b->ptr);
+	}
+	ffarr2_free(bufs);
+}
+
+/** Find buffer containing file offset. */
+static buf* bufs_find(file *f, uint64 offset)
+{
+	buf *b;
+	FFARR_WALKT(&f->bufs, b, buf) {
+		if (ffint_within(offset, b->offset, b->offset + b->len))
+			return b;
+	}
+	return NULL;
+}
+
+static void* fi_open(fcom_cmd *cmd)
+{
+	file *f;
+	if (NULL == (f = ffmem_new(file)))
+		return NULL;
+	f->fd = FF_BADFD;
+	f->locked = (uint)-1;
+	f->fn = cmd->input.fn;
+
+	if (0 != bufs_create(f))
+		goto err;
+
+	uint flags = O_RDONLY | O_NOATIME | O_NONBLOCK | FFO_NODOSNAME;
+	flags |= (inconf->directio) ? O_DIRECT : 0;
+
+	while (FF_BADFD == (f->fd = fffile_open(f->fn, flags))) {
+
+#ifdef FF_LINUX
+		if (fferr_last() == EINVAL && (flags & O_DIRECT)) {
+			flags &= ~O_DIRECT;
+			continue;
+		}
+#endif
+
+		syserrlog("%s: %s", fffile_open_S, f->fn);
+		goto err;
+	}
+
+	fffileinfo fi;
+	if (0 != fffile_info(f->fd, &fi)) {
+		syserrlog("%s: %s", fffile_info_S, f->fn);
+		goto err;
+	}
+	f->size = fffile_infosize(&fi);
+
+	ffaio_finit(&f->aio, f->fd, f);
+	if (0 != ffaio_fattach(&f->aio, core->kq, !!(flags & O_DIRECT))) {
+		syserrlog("%s: %s", ffkqu_attach_S, f->fn);
+		goto err;
+	}
+
+	cmd->input.size = f->size;
+	cmd->input.offset = 0;
+	cmd->input.attr = fffile_infoattr(&fi);
+	cmd->input.mtime = fffile_infomtime(&fi);
+
+	dbglog(0, "opened file %s, %UKB, directio:%u"
+		, cmd->input.fn, f->size / 1024, !!(flags & O_DIRECT));
+	return f;
+
+err:
+	fi_close(f, cmd);
+	return NULL;
+}
+
+static void fi_close(void *p, fcom_cmd *cmd)
+{
+	file *f = p;
+
+	if (f->fd != FF_BADFD)
+		dbglog(0, "cache-hit#:%u  read#:%u  async#:%u  seek#:%u"
+			, f->stat.ncached, f->stat.nread, f->stat.nasync, f->stat.nseek);
+
+	FF_SAFECLOSE(f->fd, FF_BADFD, fffile_close);
+	if (f->state == FI_IASYNC)
+		return; //wait until AIO is completed
+
+	bufs_free(&f->bufs);
+	ffmem_free(f);
+}
+
+/** Called by producer with the result of operation. */
+static void fi_nfy(file *f)
+{
+	com->run(f->uctx);
+}
+
+/** Return data requested by user, if available, or suspend otherwise. */
+static int fi_process(void *p, fcom_cmd *cmd)
+{
+	file *f = p;
+	buf *b;
+	int r, async = 0, cachehit = 0;
+
+	if (f->uctx != NULL) {
+		f->uctx = NULL;
+		async = 1;
+	} else {
+		if (cmd->in_seek) {
+			//read data at offset
+			dbglog(0, "seek:%U", cmd->input.offset);
+			f->stat.nseek++;
+		} else {
+			//read next data block
+			cmd->input.offset = f->next_off;
+		}
+	}
+
+	r = fi_getdata(f, &b, cmd->input.offset);
+	switch (r) {
+	case FI_RASYNC:
+		f->uctx = cmd;
+		return FCOM_ASYNC;
+	case FI_RERR:
+		return FCOM_ERR;
+	case FI_REOF:
+		return FCOM_DONE;
+	case FI_RCACHE:
+		if (!async) {
+			cachehit = 1;
+			f->stat.ncached++;
+		}
+		break;
+	}
+
+	if (cmd->in_seek)
+		cmd->in_seek = 0;
+	ffarr_setshift(&cmd->out, b->ptr, b->len, cmd->input.offset - b->offset);
+	f->next_off = b->offset + b->len;
+
+	uint ibuf = b - (buf*)f->bufs.ptr;
+	dbglog(0, "returning buf#%u  off:%Uk  cache-hit:%u"
+		, ibuf, b->offset / 1024, cachehit);
+	return FCOM_DATA;
+}
+
+/** Get data block from cache or begin reading data from file.
+Return enum FI_R. */
+static int fi_getdata(file *f, buf **pb, uint64 off)
+{
+	int r;
+	buf *b;
+
+	f->locked = (uint)-1;
+
+	if (NULL != (b = bufs_find(f, off))) {
+		r = FI_RCACHE;
+		goto done;
+	}
+
+	if (off > f->size) {
+		errlog("seek offset %U is bigger than file size %U", off, f->size);
+		return FI_RERR;
+	}
+	if (f->state == FI_IEOF && off == f->size)
+		return FI_REOF;
+
+	f->roff = ff_align_floor2(off, inconf->align);
+
+	if (f->state != FI_IASYNC)
+		fi_read(f);
+
+	if (NULL != (b = bufs_find(f, off))) {
+		r = FI_RREAD;
+		goto done;
+	}
+
+	return f->state;
+
+done:
+	*pb = b;
+	f->locked = b - (buf*)f->bufs.ptr;
+	return r;
+}
+
+/** Prepare buffer for reading. */
+static void buf_prepread(buf *b, uint64 off)
+{
+	b->len = 0;
+	b->offset = off;
+}
+
+/** Read from file.
+When in asynchronous mode, notify consumer about new events. */
+static void fi_read(void *param)
+{
+	file *f = param;
+	int r, async, nfy = 0;
+	buf *b;
+
+	async = (f->state == FI_IASYNC);
+	f->state = FI_IOK;
+	if (async && f->fd == FF_BADFD) {
+		//chain was closed while AIO is pending
+		fi_close(f, NULL);
+		return;
+	}
+
+	b = ffarr_itemT(&f->bufs, f->wbuf, buf);
+	if (!async) {
+		buf_prepread(b, f->roff);
+		if (f->last == f->wbuf)
+			f->last = (uint)-1;
+	}
+
+	for (;;) {
+		r = (int)ffaio_fread(&f->aio, b->ptr, inconf->bufsize, b->offset, &fi_read);
+		if (r < 0) {
+			if (fferr_again(fferr_last())) {
+				dbglog(f->trk, "buf#%u: async read, offset:%Uk", f->wbuf, b->offset / 1024);
+				f->state = FI_IASYNC;
+				f->stat.nasync++;
+				break;
+			}
+
+			syserrlog("%s: %s  buf#%u offset:%Uk"
+				, fffile_read_S, f->fn, f->wbuf, b->offset / 1024);
+			f->state = FI_IERR;
+			nfy = 1;
+			break;
+		}
+
+		b->len = r;
+		f->stat.nread++;
+		dbglog(0, "buf#%u: read %L bytes at offset %Uk (%u%%)"
+			, f->wbuf, b->len, b->offset / 1024, (int)(b->offset * 100 / f->size));
+
+		if ((uint)r != inconf->bufsize) {
+			dbglog(0, "read the last block", 0);
+			f->last = f->wbuf;
+			f->state = FI_REOF;
+		}
+		f->wbuf = ffint_cycleinc(f->wbuf, inconf->nbufs);
+		nfy = 1;
+		break;
+	}
+
+	if (async && nfy)
+		fi_nfy(f);
+}
+
+#undef FILT_NAME
 
 
 #define FILT_NAME  "file-out"
