@@ -13,6 +13,7 @@ Copyright (c) 2017 Simon Zolin */
 #define syserrlog(fmt, ...)  fcom_syserrlog("main", fmt, __VA_ARGS__)
 
 struct cmdconf {
+	char *out;
 	char *date_as_fn;
 	byte force;
 	byte test;
@@ -116,6 +117,7 @@ static const ffpars_arg cmdline_args[] = {
 	{ "skip-errors",	FFPARS_SETVAL('k') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(skip_errors) },
 
 	// OUTPUT
+	{ "out",	FFPARS_SETVAL('o') | FFPARS_TCHARPTR | FFPARS_FCOPY | FFPARS_FSTRZ, OFF(out) },
 	{ "force",	FFPARS_SETVAL('f') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(force) },
 	{ "test",	FFPARS_SETVAL('t') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(test) },
 	{ "date",	FFPARS_TSTR, FFPARS_DST(&arg_date) },
@@ -271,6 +273,7 @@ static void cmds_free(void)
 		ffmem_free(ent);
 	}
 
+	ffmem_safefree(g->conf.out);
 	ffmem_safefree(g->conf.date_as_fn);
 
 	ffmem_safefree(g);
@@ -303,6 +306,7 @@ static void cmd_add(void *param)
 		goto done;
 	fcom_cmd cmd = {0};
 	cmd.name = op;
+	cmd.output.fn = c->conf.out;
 	cmd.out_overwrite = c->conf.force;
 	cmd.skip_err = c->conf.skip_errors;
 	cmd.read_only = c->conf.test;

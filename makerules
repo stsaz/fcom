@@ -1,6 +1,6 @@
 
 OBJ_DIR := .
-BINS := $(BIN)
+BINS := $(BIN) arc.$(SO)
 
 all: ff $(BINS)
 
@@ -25,6 +25,14 @@ $(BIN): $(BIN_O)
 	$(LD)  $(BIN_O) $(LDFLAGS) $(LD_LWS2_32) $(LD_LDL) -o$@
 
 
+ARC_O := $(OBJ_DIR)/arc.o \
+	$(FF_OBJ_DIR)/ffxz.o \
+	$(FF_OBJ_DIR)/ffparse.o \
+	$(FF_O)
+arc.$(SO): $(ARC_O)
+	$(LD) -shared $(ARC_O) $(LDFLAGS) $(LD_LWS2_32) $(LD_LPTHREAD) -llzma-ff -o$@
+
+
 clean:
 	rm -vf $(BINS) *.debug *.o $(RES)
 
@@ -39,6 +47,7 @@ installd: all
 
 	mkdir -vp $(INSTDIR)
 	$(CP) $(BINS) \
+		$(FF3PTLIB)/liblzma-ff.$(SO) \
 		$(PROJDIR)/fcom.conf \
 		$(PROJDIR)/help.txt $(PROJDIR)/README.txt $(PROJDIR)/CHANGES.txt \
 		$(INSTDIR)/

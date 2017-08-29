@@ -2,10 +2,12 @@ fcom OPERATION [OPTIONS] ...
 
 OPERATION
 touch FILE... [--date=DATE] [--date-as=FILE]
+unxz FILE... [--out=FILE]
 
 OPTIONS
 
 OUTPUT
+--out=FILE, -o     Set output file
 --force, -f        Overwrite output files
 --test, -t         Read-only mode
 --date=DATE        Set modification date

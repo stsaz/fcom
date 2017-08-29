@@ -11,3 +11,9 @@ Features:
 		Set the specified date on a new/existing file:
 			fcom touch ./myfile --date="2011-01-01 00:00:00"
 			fcom touch ./myfile2 --date-as=./myfile
+
+	fcom unxz - unpack .xz files
+		Unpack to the current directory
+			fcom unxz ./file1.xz ./file2.xz
+		Specify output file
+			fcom unxz ./file1.xz -o ./file1.txt
