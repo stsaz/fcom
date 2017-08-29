@@ -13,8 +13,10 @@ Copyright (c) 2017 Simon Zolin */
 #define syserrlog(fmt, ...)  fcom_syserrlog("main", fmt, __VA_ARGS__)
 
 struct cmdconf {
+	char *date_as_fn;
 	byte force;
 	byte test;
+	fftime mtime;
 
 	byte skip_errors;
 
@@ -104,6 +106,7 @@ static int std_log(uint flags, const char *fmt, va_list va)
 
 static int arg_infile(ffparser_schem *p, void *obj, const ffstr *val);
 static int arg_help(ffparser_schem *p, void *obj);
+static int arg_date(ffparser_schem *p, void *obj, const ffstr *val);
 
 
 #define OFF(member)  FFPARS_DSTOFF(struct cmdconf, member)
@@ -115,6 +118,8 @@ static const ffpars_arg cmdline_args[] = {
 	// OUTPUT
 	{ "force",	FFPARS_SETVAL('f') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(force) },
 	{ "test",	FFPARS_SETVAL('t') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(test) },
+	{ "date",	FFPARS_TSTR, FFPARS_DST(&arg_date) },
+	{ "date-as",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY, OFF(date_as_fn) },
 
 	{ "verbose",	FFPARS_SETVAL('v') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(verbose) },
 	{ "debug",	FFPARS_SETVAL('D') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(debug) },
@@ -187,6 +192,16 @@ done:
 	return r;
 }
 
+static int arg_date(ffparser_schem *p, void *obj, const ffstr *val)
+{
+	struct cmdconf *c = obj;
+	ffdtm dt;
+	if (0 == fftime_fromstr(&dt, val->ptr, val->len, FFTIME_YMD))
+		return FFPARS_EBADVAL;
+	fftime_join(&c->mtime, &dt, FFTIME_TZLOCAL);
+	return 0;
+}
+
 static int cmdline(int argc, char **argv)
 {
 	ffparser_schem ps;
@@ -256,6 +271,8 @@ static void cmds_free(void)
 		ffmem_free(ent);
 	}
 
+	ffmem_safefree(g->conf.date_as_fn);
+
 	ffmem_safefree(g);
 }
 
@@ -290,6 +307,8 @@ static void cmd_add(void *param)
 	cmd.skip_err = c->conf.skip_errors;
 	cmd.read_only = c->conf.test;
 	cmd.benchmark = c->conf.benchmark;
+	cmd.mtime = c->conf.mtime;
+	cmd.date_as_fn = c->conf.date_as_fn;
 	com = core->iface("core.com");
 	if (NULL == (m = com->create(&cmd)))
 		goto done;

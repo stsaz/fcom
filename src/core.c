@@ -18,6 +18,7 @@ extern const fcom_command core_com_iface;
 extern int core_comm_sig(uint signo);
 const fcom_filter op_filt;
 extern const fcom_mod file_mod;
+extern const fcom_mod f_mod;
 
 enum {
 	KQ_EVS = 8,
@@ -170,6 +171,7 @@ const fcom_core* core_create(fcom_log log, char **argv, char **env)
 	//sub-modules may be initialized only after the core itself
 	core_comm_sig(FCOM_SIGINIT);
 	file_mod.sig(FCOM_SIGINIT);
+	f_mod.sig(FCOM_SIGINIT);
 
 	return &_core;
 
@@ -590,6 +592,8 @@ static const void* coremod_iface(const char *name)
 		return &op_filt;
 	if (NULL != (pif = file_mod.iface(name)))
 		return pif;
+	if (NULL != (pif = f_mod.iface(name)))
+		return pif;
 	return NULL;
 }
 
@@ -599,6 +603,10 @@ static int coremod_conf(const char *name, ffpars_ctx *ctx)
 
 	if (0 >= (r = file_mod.conf(name, ctx)))
 		return r;
+
+	if (0 >= (r = f_mod.conf(name, ctx)))
+		return r;
+
 	return 0;
 }
 
@@ -611,6 +619,7 @@ static int coremod_sig(uint signo)
 	case FCOM_SIGFREE:
 		core_comm_sig(signo);
 		file_mod.sig(signo);
+		f_mod.sig(signo);
 		break;
 	}
 	return 0;

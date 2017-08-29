@@ -1,12 +1,16 @@
 fcom OPERATION [OPTIONS] ...
 
 OPERATION
+touch FILE... [--date=DATE] [--date-as=FILE]
 
 OPTIONS
 
 OUTPUT
 --force, -f        Overwrite output files
 --test, -t         Read-only mode
+--date=DATE        Set modification date
+                   DATE: [YYYY-MM-DD] [hh:mm:ss]
+--date-as=FILE     Get date from file FILE
 
 --verbose, -v      Print more information to stdout
 --debug, -D        Print debug log messages to stdout
