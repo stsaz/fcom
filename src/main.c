@@ -13,6 +13,11 @@ Copyright (c) 2017 Simon Zolin */
 #define syserrlog(fmt, ...)  fcom_syserrlog("main", fmt, __VA_ARGS__)
 
 struct cmdconf {
+	byte force;
+	byte test;
+
+	byte skip_errors;
+
 	byte debug;
 	byte verbose;
 	byte benchmark;
@@ -104,6 +109,12 @@ static int arg_help(ffparser_schem *p, void *obj);
 #define OFF(member)  FFPARS_DSTOFF(struct cmdconf, member)
 static const ffpars_arg cmdline_args[] = {
 	{ "",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_infile) },
+
+	{ "skip-errors",	FFPARS_SETVAL('k') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(skip_errors) },
+
+	// OUTPUT
+	{ "force",	FFPARS_SETVAL('f') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(force) },
+	{ "test",	FFPARS_SETVAL('t') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(test) },
 
 	{ "verbose",	FFPARS_SETVAL('v') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(verbose) },
 	{ "debug",	FFPARS_SETVAL('D') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(debug) },
@@ -275,6 +286,9 @@ static void cmd_add(void *param)
 		goto done;
 	fcom_cmd cmd = {0};
 	cmd.name = op;
+	cmd.out_overwrite = c->conf.force;
+	cmd.skip_err = c->conf.skip_errors;
+	cmd.read_only = c->conf.test;
 	cmd.benchmark = c->conf.benchmark;
 	com = core->iface("core.com");
 	if (NULL == (m = com->create(&cmd)))

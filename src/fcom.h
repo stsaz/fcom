@@ -158,7 +158,17 @@ typedef struct fcom_cmd {
 	ffstr in;
 	ffstr out;
 
+	struct {
+		const char *fn;
+		fftime mtime;
+		uint64 size;
+	} input, output;
+
 	uint err :1
+		, skip_err :1
+		, out_overwrite :1
+		, out_notrunc :1
+		, read_only :1
 		, benchmark :1
 		;
 } fcom_cmd;

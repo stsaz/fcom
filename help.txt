@@ -4,6 +4,10 @@ OPERATION
 
 OPTIONS
 
+OUTPUT
+--force, -f        Overwrite output files
+--test, -t         Read-only mode
+
 --verbose, -v      Print more information to stdout
 --debug, -D        Print debug log messages to stdout
 --benchmark        Show the time spent for command execution
