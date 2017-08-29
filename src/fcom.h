@@ -135,3 +135,86 @@ do { \
 /** Initialize/destroy core.  These functions are called from the application executable. */
 FF_EXTN const fcom_core* core_create(fcom_log log, char **argv, char **env);
 FF_EXTN void core_free(void);
+
+
+/** COMMAND - manage the chain of modules (filters).
+mod1.iface1    mod2.iface1
+       \       /
+        core.com
+*/
+
+enum FCOM_CMD_F {
+	FCOM_CMD_FIRST = 1, //filter is the first in chain
+	FCOM_CMD_LAST = 2, //filter is the last in chain
+	FCOM_CMD_FWD = 4, //moved forward through chain from the previous filter
+};
+
+/** Configuration of a command, shared data between filters. */
+typedef struct fcom_cmd {
+	const char *name;
+	uint flags; //enum FCOM_CMD_F
+
+	// data being transferred from one module to the next in chain
+	ffstr in;
+	ffstr out;
+
+	uint err :1
+		, benchmark :1
+		;
+} fcom_cmd;
+
+#define FCOM_SKIP  ((void*)-1) //filter refuses to be added to the chain
+
+enum FCOM_FILT_R {
+	FCOM_MORE, //get data from the previous filter
+
+	FCOM_DATA, //pass data to the next filter
+	FCOM_DONE, //same as FCOM_DATA, but also remove this filter
+	FCOM_NEXTDONE, //close all next filters and return to this filter
+
+	FCOM_ERR, //close the chain with an error
+	FCOM_SYSERR, //same as FCOM_ERR, but also print system error
+	FCOM_FIN, //close the chain
+	FCOM_ASYNC, //pause processing until explicitely resumed by the current filter
+};
+
+/** A module implements this interface to act as a filter in command's chain. */
+typedef struct fcom_filter {
+	/** Return object or FCOM_SKIP; NULL on error. */
+	void* (*open)(fcom_cmd *cmd);
+	void (*close)(void *p, fcom_cmd *cmd);
+
+	/** Return enum FCOM_FILT_R. */
+	int (*process)(void *p, fcom_cmd *cmd);
+} fcom_filter;
+
+enum FCOM_CMD_CTL {
+	FCOM_CMD_FILTADD_PREV,
+	FCOM_CMD_FILTADD,
+};
+
+/** Execute commands. */
+typedef struct fcom_command {
+	/** Create context for a new command.  Add filter associated with command name. */
+	void* (*create)(fcom_cmd *c);
+
+	/** Close command context and all its filters. */
+	void (*close)(void *p);
+
+	/** Call filters within the chain. */
+	int (*run)(void *p);
+
+	/** Set command's parameters.
+	@cmd: enum FCOM_CMD_CTL */
+	int (*ctrl)(fcom_cmd *c, uint cmd, ...);
+
+	/** Add/get command's arguments. */
+	int (*arg_add)(fcom_cmd *c, const ffstr *arg, uint flags);
+	char* (*arg_next)(fcom_cmd *c, uint flags);
+
+	/** Associate a command name with filter. */
+	int (*reg)(const char *op, const char *mod);
+} fcom_command;
+
+#define fcom_cmd_filtadd(c, modname)  ctrl(c, FCOM_CMD_FILTADD, modname)
+#define fcom_cmd_filtadd_prev(c, modname)  ctrl(c, FCOM_CMD_FILTADD_PREV, modname)

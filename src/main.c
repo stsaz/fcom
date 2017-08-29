@@ -22,6 +22,8 @@ struct job {
 	struct cmdconf conf;
 	fcom_conf gconf;
 	ffsignal sigs_task;
+	fftask tsk;
+	uint retcode;
 
 	ffchain in_list;
 	ffchain_item *in_next;
@@ -34,6 +36,7 @@ struct in_ent {
 
 static struct job *g;
 static const fcom_core *core;
+static const fcom_command *com;
 
 enum {
 	LOG_BUF = 4096,
@@ -45,6 +48,14 @@ static int std_log(uint flags, const char *fmt, va_list va);
 static int cmdline(int argc, char **argv);
 static int in_add(struct job *c, const ffstr *s, uint flags);
 static const char* in_next(struct job *c, uint flags);
+
+// global command wrapper
+static void* op_open(fcom_cmd *cmd);
+static void op_close(void *p, fcom_cmd *cmd);
+static int op_process(void *p, fcom_cmd *cmd);
+const fcom_filter op_filt = {
+	&op_open, &op_close, &op_process,
+};
 
 
 static const char *const log_levs[] = {
@@ -237,6 +248,61 @@ static void cmds_free(void)
 	ffmem_safefree(g);
 }
 
+
+static void* op_open(fcom_cmd *cmd)
+{
+	return (void*)1;
+}
+
+static void op_close(void *p, fcom_cmd *cmd)
+{
+}
+
+static int op_process(void *p, fcom_cmd *cmd)
+{
+	g->retcode = 0;
+	core->cmd(FCOM_STOP);
+	return FCOM_DONE;
+}
+
+static void cmd_add(void *param)
+{
+	struct job *c = param;
+	const char *op;
+	fcom_cmd *m;
+
+	if (NULL == (op = in_next(c, 0)))
+		goto done;
+	fcom_cmd cmd = {0};
+	cmd.name = op;
+	cmd.benchmark = c->conf.benchmark;
+	com = core->iface("core.com");
+	if (NULL == (m = com->create(&cmd)))
+		goto done;
+
+	if (0 != com->fcom_cmd_filtadd_prev(m, "core.globop"))
+		goto done;
+
+	// set arguments
+	ffchain_item *li;
+	FFCHAIN_WALK(&c->in_list, li) {
+		if (li == ffchain_first(&c->in_list))
+			continue;
+		struct in_ent *ent = FF_GETPTR(struct in_ent, sib, li);
+		ffstr s;
+		ffstr_setz(&s, ent->fn);
+		if (0 != com->arg_add(m, &s, 0))
+			goto done;
+	}
+
+	com->run(m);
+	return;
+
+done:
+	FF_SAFECLOSE(m, NULL, com->close);
+	core->cmd(FCOM_STOP);
+}
+
 static void onsig(void *udata)
 {
 	int sig;
@@ -256,6 +322,7 @@ int main(int argc, char **argv, char **env)
 
 	if (NULL == (g = ffmem_new(struct job)))
 		return 1;
+	g->retcode = 1;
 	ffchain_init(&g->in_list);
 
 	if (NULL == (core = core_create(&std_log, argv, env)))
@@ -287,8 +354,13 @@ int main(int argc, char **argv, char **env)
 		goto done;
 	}
 
+	g->tsk.handler = &cmd_add;
+	g->tsk.param = g;
+	core->task(FCOM_TASK_ADD, &g->tsk);
+
 	core->cmd(FCOM_RUN);
-	r = 0;
+
+	r = g->retcode;
 
 done:
 	core_free();

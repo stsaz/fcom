@@ -14,6 +14,9 @@ Copyright (c) 2017 Simon Zolin */
 #define errlog(fmt, ...)  fcom_errlog("core", fmt, __VA_ARGS__)
 #define syserrlog(fmt, ...)  fcom_syserrlog("core", fmt, __VA_ARGS__)
 
+extern const fcom_command core_com_iface;
+extern int core_comm_sig(uint signo);
+const fcom_filter op_filt;
 enum {
 	KQ_EVS = 8,
 	CONF_MBUF = 4096,
@@ -158,6 +161,12 @@ const fcom_core* core_create(fcom_log log, char **argv, char **env)
 
 	fftmrq_init(&g->tmrq);
 
+	ffstr nm;
+	ffstr_setcz(&nm, "core.com");
+	if (0 != mod_add(&nm, NULL))
+		goto err;
+	//sub-modules may be initialized only after the core itself
+	core_comm_sig(FCOM_SIGINIT);
 	return &_core;
 
 err:
@@ -570,6 +579,10 @@ static const fcom_mod* coremod_getmod(const fcom_core *_core)
 
 static const void* coremod_iface(const char *name)
 {
+	if (ffsz_eq(name, "com"))
+		return &core_com_iface;
+	else if (ffsz_eq(name, "globop"))
+		return &op_filt;
 	return NULL;
 }
 
@@ -582,7 +595,10 @@ static int coremod_sig(uint signo)
 {
 	switch (signo) {
 	case FCOM_SIGINIT:
+		break;
+	case FCOM_SIGSTART:
 	case FCOM_SIGFREE:
+		core_comm_sig(signo);
 		break;
 	}
 	return 0;
