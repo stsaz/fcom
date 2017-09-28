@@ -444,41 +444,63 @@ done:
 	return r;
 }
 
+/** Add filter to chain. */
+static int filt_add(comm *c, uint cmd, const char *name)
+{
+	filter *f, *p, *n, *fcur;
+	fcur = FF_GETPTR(filter, sib, c->cur);
+	if (ffarr_isfull(&c->filters)) {
+		errlog("can't add more filters", 0);
+		return -1;
+	}
+	f = ffarr_endT(&c->filters, filter);
+	ffmem_tzero(f);
+	f->name = name;
+	if (NULL == (f->filter = core->iface(f->name))) {
+		errlog("no such interface %s", f->name);
+		return -1;
+	}
+
+	switch (cmd) {
+
+	case FCOM_CMD_FILTADD:
+		ffchain_append(&f->sib, &fcur->sib);
+		p = fcur,  n = f;
+		break;
+
+	case FCOM_CMD_FILTADD_LAST:
+		p = FF_GETPTR(filter, sib, ffchain_last(&c->chain));
+		n = f;
+		ffchain_append(&f->sib, &p->sib);
+		break;
+
+	case FCOM_CMD_FILTADD_PREV:
+		ffchain_prepend(&f->sib, &fcur->sib);
+		p = f,  n = fcur;
+		break;
+	}
+
+	dbglog(0, "added %s to chain: %s -> %s"
+		, f->name, p->name, n->name);
+	c->filters.len++;
+	return 0;
+}
+
 /** Set command's parameters. */
 static int com_ctrl(fcom_cmd *_c, uint cmd, ...)
 {
 	int r = -1;
 	comm *c = FF_GETPTR(comm, cmd, _c);
-	filter *fcur = FF_GETPTR(filter, sib, c->cur);
 	va_list va;
 	va_start(va, cmd);
 
-	switch (cmd) {
+	switch ((enum FCOM_CMD_CTL)cmd) {
 	case FCOM_CMD_FILTADD:
+	case FCOM_CMD_FILTADD_LAST:
 	case FCOM_CMD_FILTADD_PREV: {
-		filter *f;
 		const char *name = va_arg(va, char*);
-		if (ffarr_isfull(&c->filters)) {
-			errlog("can't add more filters", 0);
+		if (0 != filt_add(c, cmd, name))
 			goto err;
-		}
-		f = ffarr_endT(&c->filters, filter);
-		ffmem_tzero(f);
-		f->name = name;
-		f->filter = core->iface(f->name);
-
-		filter *p, *n;
-		if (cmd == FCOM_CMD_FILTADD) {
-			ffchain_append(&f->sib, &fcur->sib);
-			p = fcur,  n = f;
-		} else {
-			ffchain_prepend(&f->sib, &fcur->sib);
-			p = f,  n = fcur;
-		}
-
-		dbglog(0, "added %s to chain: %s -> %s"
-			, f->name, p->name, n->name);
-		c->filters.len++;
 		break;
 	}
 	}

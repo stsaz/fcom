@@ -214,6 +214,7 @@ typedef struct fcom_filter {
 enum FCOM_CMD_CTL {
 	FCOM_CMD_FILTADD_PREV,
 	FCOM_CMD_FILTADD,
+	FCOM_CMD_FILTADD_LAST,
 };
 
 /** Execute commands. */
