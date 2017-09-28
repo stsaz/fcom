@@ -20,6 +20,7 @@ Features:
 		Compute CRC32 checksum:
 			fcom crc myfile
 
+	fcom ungz - unpack .gz files
 	fcom unxz - unpack .xz files
 		Unpack to the current directory
 			fcom unxz ./file1.xz ./file2.xz

@@ -4,6 +4,7 @@ OPERATION
 touch FILE... [--date=DATE] [--date-as=FILE]
 textcount FILE...
 crc FILE...
+ungz FILE... [--out=FILE]
 unxz FILE... [--out=FILE]
 
 OPTIONS

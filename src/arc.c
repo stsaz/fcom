@@ -4,6 +4,7 @@ Copyright (c) 2017 Simon Zolin
 
 #include <fcom.h>
 
+#include <FF/pack/gz.h>
 #include <FF/pack/xz.h>
 #include <FF/path.h>
 
@@ -19,6 +20,16 @@ static const fcom_mod arc_mod = {
 	.sig = &arc_sig, .iface = &arc_iface, .conf = &arc_conf,
 	.name = "Archiver", .desc = "",
 };
+
+// UNGZ
+static void* ungz_open(fcom_cmd *cmd);
+static void ungz_close(void *p, fcom_cmd *cmd);
+static int ungz_process(void *p, fcom_cmd *cmd);
+static const fcom_filter ungz_filt = { &ungz_open, &ungz_close, &ungz_process };
+static void* ungz1_open(fcom_cmd *cmd);
+static void ungz1_close(void *p, fcom_cmd *cmd);
+static int ungz1_process(void *p, fcom_cmd *cmd);
+static const fcom_filter ungz1_filt = { &ungz1_open, &ungz1_close, &ungz1_process };
 
 // UNXZ
 static void* unxz_open(fcom_cmd *cmd);
@@ -46,6 +57,8 @@ struct cmd {
 };
 
 static const struct cmd cmds[] = {
+	{ "ungz", "arc.ungz", &ungz_filt },
+	{ "ungz1", NULL, &ungz1_filt },
 	{ "unxz", "arc.unxz", &unxz_filt },
 	{ "unxz1", NULL, &unxz1_filt },
 };
@@ -58,7 +71,7 @@ static int arc_sig(uint signo)
 		com = core->iface("core.com");
 		const struct cmd *c;
 		FFARRS_FOREACH(cmds, c) {
-			if (0 != com->reg(c->name, c->mod))
+			if (c->mod != NULL && 0 != com->reg(c->name, c->mod))
 				return -1;
 		}
 		break;
@@ -83,6 +96,164 @@ static int arc_conf(const char *name, ffpars_ctx *ctx)
 {
 	return 0;
 }
+
+
+#define FILT_NAME  "arc.ungz"
+
+static void* ungz_open(fcom_cmd *cmd)
+{
+	return FCOM_OPEN_DUMMY;
+}
+
+static void ungz_close(void *p, fcom_cmd *cmd)
+{
+}
+
+static int ungz_process(void *p, fcom_cmd *cmd)
+{
+	if (NULL == (cmd->input.fn = com->arg_next(cmd, 0)))
+		return FCOM_DONE;
+
+	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_IN(cmd));
+	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, "arc.ungz1");
+	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(cmd));
+	return FCOM_NEXTDONE;
+}
+
+typedef struct ungz {
+	uint state;
+	ffgz gz;
+	ffarr buf;
+	ffarr fn;
+} ungz;
+
+enum {
+	BUFSIZE = 64 * 1024,
+};
+
+static void* ungz1_open(fcom_cmd *cmd)
+{
+	ungz *g;
+	if (NULL == (g = ffmem_new(ungz)))
+		return FCOM_OPEN_SYSERR;
+
+	if (NULL == ffarr_alloc(&g->buf, BUFSIZE)) {
+		ungz_close(g, cmd);
+		return FCOM_OPEN_SYSERR;
+	}
+
+	return g;
+}
+
+static void ungz1_close(void *p, fcom_cmd *cmd)
+{
+	ungz *g = p;
+	ffarr_free(&g->buf);
+	ffarr_free(&g->fn);
+	ffgz_close(&g->gz);
+	ffmem_free(g);
+}
+
+static int ungz1_process(void *p, fcom_cmd *cmd)
+{
+	ungz *g = p;
+	int r;
+	enum E { R_FIRST, R_INIT, R_DATA, R_EOF, };
+
+	switch ((enum E)g->state) {
+	case R_FIRST:
+		if (cmd->in.len == 0) {
+			g->state = R_INIT;
+			return FCOM_MORE;
+		}
+		//fall through
+
+	case R_INIT:
+		cmd->output.mtime = cmd->input.mtime;
+		ffgz_init(&g->gz, cmd->input.size);
+		g->state = R_DATA;
+		break;
+
+	case R_DATA:
+		break;
+
+	case R_EOF:
+		if (cmd->in.len != 0) {
+			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%U", cmd->input.offset);
+			return FCOM_ERR;
+		}
+		return FCOM_DONE;
+	}
+
+	if (cmd->flags & FCOM_CMD_FWD)
+		g->gz.in = cmd->in;
+
+	for (;;) {
+
+	r = ffgz_read(&g->gz, ffarr_end(&g->buf), ffarr_unused(&g->buf));
+	switch (r) {
+
+	case FFGZ_INFO: {
+		uint mtime;
+		if (0 != (mtime = ffgz_mtime(&g->gz)))
+			cmd->output.mtime.s = mtime;
+
+		const char *gzfn = ffgz_fname(&g->gz);
+		cmd->output.size = ffgz_size64(&g->gz, cmd->input.size);
+
+		if (cmd->output.fn == NULL) {
+			ffstr name;
+			if (gzfn == NULL || *gzfn == '\0') {
+				// "/path/file.txt.gz" -> "file.txt"
+				ffstr_setz(&name, cmd->input.fn);
+				ffpath_split3(name.ptr, name.len, NULL, &name, NULL);
+			} else {
+				ffpath_split2(gzfn, ffsz_len(gzfn), NULL, &name);
+			}
+
+			if (FCOM_DATA != (r = fn_out(cmd, &name, &g->fn)))
+				return r;
+			cmd->output.fn = g->fn.ptr;
+		}
+
+		fcom_dbglog(0, FILT_NAME, "info: name:%s  mtime:%u  osize:%u  crc32:%xu"
+			, (gzfn != NULL) ? gzfn : "", mtime, ffgz_size(&g->gz), ffgz_crc(&g->gz));
+		continue;
+	}
+
+	case FFGZ_DATA:
+		cmd->out = g->gz.out;
+		return FCOM_DATA;
+
+	case FFGZ_DONE:
+		fcom_verblog(FILT_NAME, "finished: %U => %U (%u%%)"
+			, g->gz.insize, ffgz_size(&g->gz)
+			, (int)(g->gz.insize * 100 / ffgz_size(&g->gz)));
+
+		if (g->gz.in.len != 0) {
+			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%U", cmd->input.offset);
+			return FCOM_ERR;
+		}
+		FF_CMPSET(&cmd->output.fn, g->fn.ptr, NULL);
+		g->state = R_EOF;
+		return FCOM_MORE;
+
+	case FFGZ_MORE:
+		return FCOM_MORE;
+
+	case FFGZ_SEEK:
+		cmd->input.offset = ffgz_offset(&g->gz);
+		cmd->in_seek = 1;
+		return FCOM_MORE;
+
+	case FFGZ_ERR:
+		fcom_errlog(FILT_NAME, "%s  offset:0x%xU", ffgz_errstr(&g->gz), cmd->input.offset);
+		return FCOM_ERR;
+	}
+	}
+}
+
+#undef FILT_NAME
 
 
 #define FILT_NAME  "arc.unxz"
