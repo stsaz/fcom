@@ -35,6 +35,7 @@ struct job {
 	ffsignal sigs_task;
 	fftask tsk;
 	uint retcode;
+	uint stdout_busy :1;
 
 	ffchain in_list;
 	ffchain_item *in_next;
@@ -103,7 +104,7 @@ static int std_log(uint flags, const char *fmt, va_list va)
 
 	s = ffs_copyc(s, end, '\n');
 
-	fffd fd = (lev <= FCOM_LOGWARN) ? ffstderr : ffstdout;
+	fffd fd = (lev <= FCOM_LOGWARN || g->stdout_busy) ? ffstderr : ffstdout;
 	fffile_write(fd, buf, s - buf);
 	return 0;
 }
@@ -408,6 +409,7 @@ static void cmd_add(void *param)
 	cmd.name = op;
 	cmd.recurse = c->conf.recurse;
 	cmd.output.fn = c->conf.out;
+	g->stdout_busy = cmd.out_std = (c->conf.out != NULL && ffsz_eq(c->conf.out, "@stdout"));
 	cmd.out_overwrite = c->conf.force;
 	cmd.skip_err = c->conf.skip_errors;
 	cmd.read_only = c->conf.test;

@@ -55,6 +55,12 @@ static void diro_close(void *p, fcom_cmd *cmd);
 static int diro_process(void *p, fcom_cmd *cmd);
 static const fcom_filter diro_filt = { &diro_open, &diro_close, &diro_process };
 
+//STDOUT
+static void* fostd_open(fcom_cmd *cmd);
+static void fostd_close(void *ctx, fcom_cmd *cmd);
+static int fostd_write(void *ctx, fcom_cmd *cmd);
+static const fcom_filter fostd_filt = { &fostd_open, &fostd_close, &fostd_write, };
+
 
 static const void* file_iface(const char *name)
 {
@@ -769,3 +775,27 @@ static int diro_process(void *p, fcom_cmd *cmd)
 }
 
 #undef FILT_NAME
+
+
+static void* fostd_open(fcom_cmd *cmd)
+{
+	return FCOM_OPEN_DUMMY;
+}
+
+static void fostd_close(void *ctx, fcom_cmd *cmd)
+{
+}
+
+static int fostd_write(void *ctx, fcom_cmd *cmd)
+{
+	size_t r;
+
+	r = fffile_write(ffstdout, cmd->in.ptr, cmd->in.len);
+	if (r != cmd->in.len)
+		return FCOM_SYSERR;
+
+	if (cmd->flags & FCOM_CMD_FIRST)
+		return FCOM_DONE;
+
+	return FCOM_MORE;
+}

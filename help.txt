@@ -12,6 +12,7 @@ INPUT
 
 OUTPUT
 --out=FILE, -o     Set output file
+                    @stdout - write to standard output
 --force, -f        Overwrite output files
 --test, -t         Read-only mode
 --date=DATE        Set modification date
