@@ -470,6 +470,7 @@ typedef struct fout {
 	ffarr buf;
 	ffstr name;
 	fftime mtime;
+	uint attr;
 	uint64 off;
 	uint64 size;
 	uint64 prealloc;
@@ -538,6 +539,7 @@ static void* fo_open(fcom_cmd *cmd)
 	}
 
 	f->mtime = cmd->output.mtime;
+	f->attr = cmd->output.attr;
 
 	f->prealloc_by = outconf->prealloc;
 	return f;
@@ -571,6 +573,14 @@ static void fo_close(void *p, fcom_cmd *cmd)
 				dbglog(0, "removed file %S", &f->name);
 
 		} else {
+
+#ifdef FF_UNIX
+			if (f->attr != 0 && !cmd->out_attr_win)
+				fffile_attrset(f->fd, f->attr);
+#else
+			if (f->attr != 0 && cmd->out_attr_win)
+				fffile_attrset(f->fd, f->attr);
+#endif
 
 			if (f->mtime.s != 0)
 				fffile_settime(f->fd, &f->mtime);

@@ -180,6 +180,7 @@ typedef struct fcom_cmd {
 		, in_seek :1
 		, out_overwrite :1
 		, out_notrunc :1
+		, out_attr_win :1
 		, recurse :1
 		, read_only :1
 		, benchmark :1
