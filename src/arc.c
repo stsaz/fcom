@@ -24,9 +24,13 @@ static const fcom_mod arc_mod = {
 static void* unxz_open(fcom_cmd *cmd);
 static void unxz_close(void *p, fcom_cmd *cmd);
 static int unxz_process(void *p, fcom_cmd *cmd);
-const fcom_filter unxz_filt = {
+static const fcom_filter unxz_filt = {
 	&unxz_open, &unxz_close, &unxz_process,
 };
+static void* unxz1_open(fcom_cmd *cmd);
+static void unxz1_close(void *p, fcom_cmd *cmd);
+static int unxz1_process(void *p, fcom_cmd *cmd);
+static const fcom_filter unxz1_filt = { &unxz1_open, &unxz1_close, &unxz1_process };
 
 
 FF_EXP const fcom_mod* fcom_getmod(const fcom_core *_core)
@@ -43,6 +47,7 @@ struct cmd {
 
 static const struct cmd cmds[] = {
 	{ "unxz", "arc.unxz", &unxz_filt },
+	{ "unxz1", NULL, &unxz1_filt },
 };
 
 static int arc_sig(uint signo)
@@ -82,6 +87,26 @@ static int arc_conf(const char *name, ffpars_ctx *ctx)
 
 #define FILT_NAME  "arc.unxz"
 
+static void* unxz_open(fcom_cmd *cmd)
+{
+	return FCOM_OPEN_DUMMY;
+}
+
+static void unxz_close(void *p, fcom_cmd *cmd)
+{
+}
+
+static int unxz_process(void *p, fcom_cmd *cmd)
+{
+	if (NULL == (cmd->input.fn = com->arg_next(cmd, 0)))
+		return FCOM_DONE;
+
+	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_IN(cmd));
+	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, "arc.unxz1");
+	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(cmd));
+	return FCOM_NEXTDONE;
+}
+
 typedef struct unxz {
 	uint state;
 	ffxz xz;
@@ -93,25 +118,21 @@ enum {
 	UNXZ_BUFSIZE = 64 * 1024,
 };
 
-static void* unxz_open(fcom_cmd *cmd)
+static void* unxz1_open(fcom_cmd *cmd)
 {
 	unxz *x;
 	if (NULL == (x = ffmem_new(unxz)))
-		return NULL;
+		return FCOM_OPEN_SYSERR;
 
 	if (NULL == ffarr_alloc(&x->buf, UNXZ_BUFSIZE)) {
-		fcom_syserrlog(FILT_NAME, "%s", ffmem_alloc_S);
-		goto err;
+		unxz_close(x, cmd);
+		return FCOM_OPEN_SYSERR;
 	}
 
 	return x;
-
-err:
-	unxz_close(x, cmd);
-	return NULL;
 }
 
-static void unxz_close(void *p, fcom_cmd *cmd)
+static void unxz1_close(void *p, fcom_cmd *cmd)
 {
 	unxz *x = p;
 	ffarr_free(&x->buf);
@@ -120,34 +141,35 @@ static void unxz_close(void *p, fcom_cmd *cmd)
 	ffmem_free(x);
 }
 
-static int unxz_process(void *p, fcom_cmd *cmd)
+static int unxz1_process(void *p, fcom_cmd *cmd)
 {
 	unxz *x = p;
 	int r;
-	enum { R_FIRST, R_INIT, R_DATA, R_EOF, };
+	enum E { R_FIRST, R_INIT, R_DATA, R_EOF, };
 
-	switch (x->state) {
-	case R_EOF:
-		if (!(cmd->flags & FCOM_CMD_FWD))
-			return FCOM_MORE;
-		if (cmd->in.len != 0)
-			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%U", cmd->input.offset);
-		FF_CMPSET(&cmd->output.fn, x->fn.ptr, NULL);
-		x->state = R_FIRST;
-		//fall through
-
+	switch ((enum E)x->state) {
 	case R_FIRST:
-		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0)))
-			return FCOM_DONE;
-		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, "core.file-in");
-		x->state = R_INIT;
-		return FCOM_MORE;
+		if (cmd->in.len == 0) {
+			x->state = R_INIT;
+			return FCOM_MORE;
+		}
+		//fall through
 
 	case R_INIT:
 		ffxz_init(&x->xz, cmd->input.size);
 		cmd->output.mtime = cmd->input.mtime;
 		x->state = R_DATA;
 		break;
+
+	case R_DATA:
+		break;
+
+	case R_EOF:
+		if (cmd->in.len != 0) {
+			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%U", cmd->input.offset);
+			return FCOM_ERR;
+		}
+		return FCOM_DONE;
 	}
 
 	if (cmd->flags & FCOM_CMD_FWD)
@@ -157,22 +179,20 @@ static int unxz_process(void *p, fcom_cmd *cmd)
 
 	r = ffxz_read(&x->xz, ffarr_end(&x->buf), ffarr_unused(&x->buf));
 	switch (r) {
+
 	case FFXZ_INFO:
 		cmd->output.size = ffxz_size(&x->xz);
 		cmd->output.mtime = cmd->input.mtime;
 		cmd->output.attr = cmd->input.attr;
-		if (cmd->flags & FCOM_CMD_LAST) {
+
+		if (cmd->output.fn == NULL) {
 			// "/path/file.txt.xz" -> "file.txt"
 			ffstr name;
-			ffpath_split2(cmd->input.fn, ffsz_len(cmd->input.fn), NULL, &name);
-			ffpath_splitname(name.ptr, name.len, &name, NULL);
-			x->fn.len = 0;
-			if (cmd->output.fn == NULL) {
-				if (0 == ffstr_catfmt(&x->fn, "%S%Z", &name))
-					return FCOM_SYSERR;
-				cmd->output.fn = x->fn.ptr;
-			}
-			com->ctrl(cmd, FCOM_CMD_FILTADD, "core.file-out");
+			ffstr_setz(&name, cmd->input.fn);
+			ffpath_split3(name.ptr, name.len, NULL, &name, NULL);
+			if (FCOM_DATA != (r = fn_out(cmd, &name, &x->fn)))
+				return r;
+			cmd->output.fn = x->fn.ptr;
 		}
 		continue;
 
@@ -181,11 +201,17 @@ static int unxz_process(void *p, fcom_cmd *cmd)
 		return FCOM_DATA;
 
 	case FFXZ_DONE:
-		fcom_verblog(FILT_NAME, "finished: %U => %U", x->xz.insize, x->xz.outsize);
-		ffxz_close(&x->xz);
-		ffmem_tzero(&x->xz);
+		fcom_verblog(FILT_NAME, "finished: %U => %U (%u%%)"
+			, x->xz.insize, x->xz.outsize
+			, (int)(x->xz.insize * 100 / x->xz.outsize));
+
+		if (x->xz.in.len != 0) {
+			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%U", cmd->input.offset);
+			return FCOM_ERR;
+		}
+		FF_CMPSET(&cmd->output.fn, x->fn.ptr, NULL);
 		x->state = R_EOF;
-		return FCOM_NEXTDONE;
+		return FCOM_MORE;
 
 	case FFXZ_MORE:
 		return FCOM_MORE;
