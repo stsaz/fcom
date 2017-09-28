@@ -49,6 +49,12 @@ static const fcom_filter fo_filt = {
 	&fo_open, &fo_close, &fo_adddata,
 };
 
+// DIR OUTPUT
+static void* diro_open(fcom_cmd *cmd);
+static void diro_close(void *p, fcom_cmd *cmd);
+static int diro_process(void *p, fcom_cmd *cmd);
+static const fcom_filter diro_filt = { &diro_open, &diro_close, &diro_process };
+
 
 static const void* file_iface(const char *name)
 {
@@ -56,6 +62,8 @@ static const void* file_iface(const char *name)
 		return &fi_filt;
 	else if (ffsz_eq(name, "file-out"))
 		return &fo_filt;
+	else if (ffsz_eq(name, "dir-out"))
+		return &diro_filt;
 	return NULL;
 }
 
@@ -696,6 +704,68 @@ static int fo_adddata(void *p, fcom_cmd *cmd)
 		if (0 != fo_write(f, cmd, &s))
 			return FCOM_SYSERR;
 	}
+}
+
+#undef FILT_NAME
+
+
+#define FILT_NAME  "dir-out"
+
+static void* diro_open(fcom_cmd *cmd)
+{
+	const char *fn = cmd->output.fn;
+
+	if (cmd->read_only) {
+		fcom_verblog(FILT_NAME, "created directory %s"
+			, fn);
+		return FCOM_SKIP;
+	}
+
+	if (0 != ffdir_make(fn)) {
+
+		if (outconf->mkpath && fferr_nofile(fferr_last())) {
+			if (0 != ffdir_rmake((void*)fn, 0)) {
+				syserrlog("%s: for filename %s", ffdir_make_S, fn);
+				goto err_nolog;
+			}
+
+		} else if (fferr_exist(fferr_last())) {
+
+		} else
+			goto err;
+	}
+
+#ifdef FF_UNIX
+	if (cmd->output.attr != 0 && !cmd->out_attr_win)
+		fffile_attrsetfn(fn, cmd->output.attr);
+#else
+	if (cmd->output.attr != 0 && cmd->out_attr_win)
+		fffile_attrsetfn(fn, cmd->output.attr);
+#endif
+
+	if (cmd->output.mtime.s != 0)
+		fffile_settimefn(fn, &cmd->output.mtime);
+
+	fcom_verblog(FILT_NAME, "created directory %s"
+		, fn);
+
+	return FCOM_SKIP;
+
+err:
+	syserrlog("%s", fn);
+err_nolog:
+	if (cmd->skip_err)
+		return FCOM_SKIP;
+	return NULL;
+}
+
+static void diro_close(void *p, fcom_cmd *cmd)
+{
+}
+
+static int diro_process(void *p, fcom_cmd *cmd)
+{
+	return FCOM_ERR;
 }
 
 #undef FILT_NAME
