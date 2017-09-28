@@ -454,7 +454,7 @@ static int core_cmd(uint cmd, ...)
 	va_list va;
 	va_start(va, cmd);
 
-	switch (cmd) {
+	switch ((enum FCOM_CMD)cmd) {
 	case FCOM_READCONF:
 		r = readconf(va_arg(va, char*));
 		break;
@@ -492,17 +492,14 @@ static void core_task(uint cmd, fftask *tsk)
 	dbglog(0, "task:%p, cmd:%u, active:%u, handler:%p, param:%p"
 		, tsk, cmd, fftask_active(&g->tskmgr, tsk), tsk->handler, tsk->param);
 
-	switch (cmd) {
+	switch ((enum FCOM_TASK)cmd) {
 	case FCOM_TASK_ADD:
-		if (fftask_active(&g->tskmgr, tsk))
-			fftask_del(&g->tskmgr, tsk);
-		fftask_post(&g->tskmgr, tsk);
-		ffkqu_post(&g->kqpost, &g->evposted);
+		if (1 == fftask_post(&g->tskmgr, tsk))
+			ffkqu_post(&g->kqpost, &g->evposted);
 		break;
 
 	case FCOM_TASK_DEL:
-		if (fftask_active(&g->tskmgr, tsk))
-			fftask_del(&g->tskmgr, tsk);
+		fftask_del(&g->tskmgr, tsk);
 		break;
 
 	default:

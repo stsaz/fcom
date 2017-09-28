@@ -6,3 +6,16 @@ HISTORY OF FCOM
  "*" - change, update or a small improvement
  "-" - bugfix
  "!" - broken compatibility
+
+
+fcom v0.1 - Sep 26, 2017
+
+ + fcom unpack (.gz, .xz, .tar, .zip, .7z)
+ + fcom unzip
+ + fcom un7z
+ + fcom untar
+ + fcom ungz
+ + fcom unxz
+ + fcom crc
+ + fcom textcount
+ + fcom touch

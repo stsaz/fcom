@@ -114,6 +114,9 @@ static void* com_create(fcom_cmd *cmd)
 	ffchain_init(&c->in_list);
 	c->in_next = ffchain_first(&c->in_list);
 
+	if (c->cmd.benchmark)
+		ffclk_get(&c->tm_start);
+
 	if (NULL == ffarr_allocT(&c->filters, 8, filter))
 		goto err;
 
@@ -145,9 +148,6 @@ static void* com_create(fcom_cmd *cmd)
 	}
 	c->cmd.flags |= FCOM_CMD_FWD;
 
-	if (c->cmd.benchmark)
-		ffclk_get(&c->tm_start);
-
 	return &c->cmd;
 
 err:
@@ -165,7 +165,7 @@ static void com_close(void *p)
 		ffclk_get(&t);
 		ffclk_diff(&c->tm_start, &t);
 		inflog("'%s' processing time: %u.%06u sec"
-			, c->cmd.name, t.s, t.mcs / 1000);
+			, c->cmd.name, t.s, t.mcs);
 	}
 
 	filter *f;
@@ -228,7 +228,7 @@ static int com_run(void *p)
 
 		dbglog(0, "  %s returned %s, output:%L", f->name, filt_rstr[r], c->cmd.out.len);
 
-		switch (r) {
+		switch ((enum FCOM_FILT_R)r) {
 		case FCOM_DATA:
 			op = FFLIST_CUR_NEXT;
 			break;
@@ -358,11 +358,14 @@ static int com_arg_add(fcom_cmd *_c, const ffstr *arg, uint flags)
 	dbglog(0, "adding arg '%S'", arg);
 	comm *c = FF_GETPTR(comm, cmd, _c);
 	struct in_ent *e;
-	if (NULL == (e = ffmem_calloc(1, sizeof(struct in_ent) + arg->len + 1)))
+
+	if (NULL == (e = ffmem_alloc(sizeof(struct in_ent) + arg->len + 1)))
 		return -1;
+
 	ffchain_add(&c->in_list, &e->sib);
 	if (c->in_next == ffchain_sentl(&c->in_list))
 		c->in_next = ffchain_first(&c->in_list);
+
 	ffsz_fcopy(e->fn, arg->ptr, arg->len);
 	return 0;
 }

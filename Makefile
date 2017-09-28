@@ -1,8 +1,11 @@
+# fcom v0.1 makefile
 
 PROJ := fcom
-ROOT := .
+ROOT := ..
 PROJDIR := $(ROOT)/fcom
 SRCDIR := $(PROJDIR)/src
+OPT := LTO3
+
 FFOS := $(ROOT)/ffos
 FF := $(ROOT)/ff
 FF3PT := $(ROOT)/ff-3pt

@@ -68,14 +68,26 @@ static int fostd_write(void *ctx, fcom_cmd *cmd);
 static const fcom_filter fostd_filt = { &fostd_open, &fostd_close, &fostd_write, };
 
 
+struct cmd {
+	const char *name;
+	const fcom_filter *iface;
+};
+
+static const struct cmd cmds[] = {
+	{ "file-in", &fi_filt },
+	{ "file-out", &fo_filt },
+	{ "dir-out", &diro_filt },
+	{ "stdin", &fistd_filt },
+	{ "stdout", &fostd_filt },
+};
+
 static const void* file_iface(const char *name)
 {
-	if (ffsz_eq(name, "file-in"))
-		return &fi_filt;
-	else if (ffsz_eq(name, "file-out"))
-		return &fo_filt;
-	else if (ffsz_eq(name, "dir-out"))
-		return &diro_filt;
+	const struct cmd *cmd;
+	FFARRS_FOREACH(cmds, cmd) {
+		if (ffsz_eq(name, cmd->name))
+			return cmd->iface;
+	}
 	return NULL;
 }
 
@@ -311,7 +323,7 @@ static void fi_nfy(file *f)
 static int fi_process(void *p, fcom_cmd *cmd)
 {
 	file *f = p;
-	buf *b;
+	buf *b = NULL;
 	int r, async = 0, cachehit = 0;
 
 	if (f->uctx != NULL) {
@@ -550,13 +562,13 @@ static void* fo_open(fcom_cmd *cmd)
 		return NULL;
 	f->fd = FF_BADFD;
 
+	if (NULL == ffstr_alcopyz(&f->name, cmd->output.fn))
+		goto err;
+
 	if (cmd->read_only)
 		return f;
 
 	if (NULL == ffarr_alloc(&f->buf, outconf->bufsize))
-		goto err;
-
-	if (NULL == ffstr_alcopyz(&f->name, cmd->output.fn))
 		goto err;
 
 	const char *filename = cmd->output.fn;
@@ -572,7 +584,6 @@ static void* fo_open(fcom_cmd *cmd)
 				goto err;
 			}
 
-			f->fd = fffile_open(filename, flags);
 			if (ffbit_testset32(&mask, 0))
 				goto err;
 
@@ -615,6 +626,7 @@ Delete file on error. */
 static void fo_close(void *p, fcom_cmd *cmd)
 {
 	fout *f = p;
+	uint verbose = cmd->read_only;
 
 	if (f->fd != FF_BADFD) {
 
@@ -644,10 +656,13 @@ static void fo_close(void *p, fcom_cmd *cmd)
 
 			if (0 != fffile_close(f->fd))
 				syserrlog("%s", fffile_close_S);
-
-			fcom_verblog(FILT_NAME, "saved file %S, %Ukb written"
-				, &f->name, (int64)ffmax(f->size / 1024, f->size != 0));
+			verbose = 1;
 		}
+	}
+
+	if (verbose) {
+		fcom_verblog(FILT_NAME, "saved file %S, %Ukb written"
+			, &f->name, (int64)ffmax(f->size / 1024, f->size != 0));
 	}
 
 	ffstr_free(&f->name);

@@ -121,7 +121,7 @@ static const char* next_file(fcom_cmd *cmd)
 
 static void* f_touch_open(fcom_cmd *cmd)
 {
-	return (void*)1;
+	return FCOM_OPEN_DUMMY;
 }
 
 static void f_touch_close(void *p, fcom_cmd *cmd)
@@ -133,7 +133,7 @@ static int f_touch_process(void *p, fcom_cmd *cmd)
 	if (NULL == (cmd->output.fn = com->arg_next(cmd, 0)))
 		return FCOM_DONE;
 
-	if (0 != com->fcom_cmd_filtadd(cmd, "core.file-out"))
+	if (0 != com->fcom_cmd_filtadd(cmd, FCOM_CMD_FILT_OUT(cmd)))
 		return FCOM_ERR;
 
 	if (cmd->mtime.s != 0 && cmd->date_as_fn != NULL)

@@ -407,7 +407,7 @@ static void cmds_free(void)
 
 static void* op_open(fcom_cmd *cmd)
 {
-	return (void*)1;
+	return FCOM_OPEN_DUMMY;
 }
 
 static void op_close(void *p, fcom_cmd *cmd)
@@ -425,7 +425,7 @@ static void cmd_add(void *param)
 {
 	struct job *c = param;
 	const char *op;
-	fcom_cmd *m;
+	fcom_cmd *m = NULL;
 
 	if (NULL == (op = in_next(c, 0)))
 		goto done;
