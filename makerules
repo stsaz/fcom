@@ -31,6 +31,7 @@ ARC_O := $(OBJ_DIR)/arc.o \
 	$(FF_OBJ_DIR)/ffgz.o \
 	$(FF_OBJ_DIR)/ffxz.o \
 	$(FF_OBJ_DIR)/fftar.o \
+	$(FF_OBJ_DIR)/ff7z.o $(FF_OBJ_DIR)/ff7z-fmt.o \
 	$(FF_OBJ_DIR)/ffparse.o \
 	$(FF_O)
 arc.$(SO): $(ARC_O)
