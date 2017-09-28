@@ -136,7 +136,13 @@ static void* com_create(fcom_cmd *cmd)
 	dbglog(0, "creating context for %s", f->name);
 	if (NULL == (f->ptr = f->filter->open(&c->cmd)))
 		goto err;
-	FF_ASSERT(f->ptr != FCOM_SKIP);
+	else if (f->ptr == FCOM_SKIP) {
+		errlog("the first filter %s can't be skipped", f->name);
+		goto err;
+	} else if (f->ptr == FCOM_OPEN_SYSERR) {
+		syserrlog("%s", f->name);
+		goto err;
+	}
 	c->cmd.flags |= FCOM_CMD_FWD;
 
 	if (c->cmd.benchmark)
@@ -199,11 +205,16 @@ static int com_run(void *p)
 			dbglog(0, "creating context for %s", f->name);
 			if (NULL == (f->ptr = f->filter->open(&c->cmd)))
 				goto err;
-			if (f->ptr == FCOM_SKIP) {
+			else if (f->ptr == FCOM_SKIP) {
 				dbglog(0, "%s is skipped", f->name);
 				f->ptr = NULL;
+				if (ffarr_endT(&c->filters, filter) == f + 1)
+					c->filters.len--;
 				op = FFLIST_CUR_NEXT | FFLIST_CUR_RM;
 				goto shift;
+			} else if (f->ptr == FCOM_OPEN_SYSERR) {
+				syserrlog("%s", f->name);
+				goto err;
 			}
 		}
 
@@ -375,7 +386,8 @@ static char* com_arg_next(fcom_cmd *_c, uint flags)
 		}
 	}
 
-	c->in_next = e->sib.next;
+	if (!(flags & FCOM_CMD_ARG_PEEK))
+		c->in_next = e->sib.next;
 	return e->fn;
 }
 

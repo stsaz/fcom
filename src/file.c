@@ -242,6 +242,7 @@ static void* fi_open(fcom_cmd *cmd)
 	cmd->input.offset = 0;
 	cmd->input.attr = fffile_infoattr(&fi);
 	cmd->input.mtime = fffile_infomtime(&fi);
+	cmd->in_last = 0;
 
 	dbglog(0, "opened file %s, %UKB, directio:%u"
 		, cmd->input.fn, f->size / 1024, !!(flags & O_DIRECT));
@@ -303,6 +304,7 @@ static int fi_process(void *p, fcom_cmd *cmd)
 	case FI_RERR:
 		return FCOM_ERR;
 	case FI_REOF:
+		cmd->in_last = 1;
 		return FCOM_DONE;
 	case FI_RCACHE:
 		if (!async) {

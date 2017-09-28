@@ -178,6 +178,7 @@ typedef struct fcom_cmd {
 	uint err :1
 		, skip_err :1
 		, in_seek :1
+		, in_last :1 //the last input data block
 		, out_overwrite :1
 		, out_notrunc :1
 		, out_attr_win :1
@@ -187,7 +188,10 @@ typedef struct fcom_cmd {
 		;
 } fcom_cmd;
 
+// enum FCOM_FILT_OPEN
 #define FCOM_SKIP  ((void*)-1) //filter refuses to be added to the chain
+#define FCOM_OPEN_DUMMY ((void*)1) //filter doesn't have a context
+#define FCOM_OPEN_SYSERR ((void*)2) //print system error message
 
 enum FCOM_FILT_R {
 	FCOM_MORE, //get data from the previous filter
@@ -204,7 +208,7 @@ enum FCOM_FILT_R {
 
 /** A module implements this interface to act as a filter in command's chain. */
 typedef struct fcom_filter {
-	/** Return object or FCOM_SKIP; NULL on error. */
+	/** Return object or enum FCOM_FILT_OPEN; NULL on error. */
 	void* (*open)(fcom_cmd *cmd);
 	void (*close)(void *p, fcom_cmd *cmd);
 
@@ -216,6 +220,10 @@ enum FCOM_CMD_CTL {
 	FCOM_CMD_FILTADD_PREV,
 	FCOM_CMD_FILTADD,
 	FCOM_CMD_FILTADD_LAST,
+};
+
+enum FCOM_CMD_ARG {
+	FCOM_CMD_ARG_PEEK = 1, // get next argument, but don't increment cursor
 };
 
 /** Execute commands. */
@@ -233,7 +241,9 @@ typedef struct fcom_command {
 	@cmd: enum FCOM_CMD_CTL */
 	int (*ctrl)(fcom_cmd *c, uint cmd, ...);
 
-	/** Add/get command's arguments. */
+	/** Add/get command's arguments.
+	@flags: enum FCOM_CMD_ARG
+	*/
 	int (*arg_add)(fcom_cmd *c, const ffstr *arg, uint flags);
 	char* (*arg_next)(fcom_cmd *c, uint flags);
 
