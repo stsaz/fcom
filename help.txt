@@ -2,6 +2,7 @@ fcom OPERATION [OPTIONS] ...
 
 OPERATION
 touch FILE... [--date=DATE] [--date-as=FILE]
+textcount FILE...
 unxz FILE... [--out=FILE]
 
 OPTIONS

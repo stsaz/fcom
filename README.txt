@@ -12,6 +12,10 @@ Features:
 			fcom touch ./myfile --date="2011-01-01 00:00:00"
 			fcom touch ./myfile2 --date-as=./myfile
 
+	fcom textcount - show information about text files
+		Count lines in all files in directory:
+			fcom textcount ./mydir -R
+
 	fcom unxz - unpack .xz files
 		Unpack to the current directory
 			fcom unxz ./file1.xz ./file2.xz
