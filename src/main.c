@@ -9,6 +9,7 @@ Copyright (c) 2017 Simon Zolin */
 #include <FFOS/sig.h>
 
 
+#define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, "main", fmt, __VA_ARGS__)
 #define errlog(fmt, ...)  fcom_errlog("main", fmt, __VA_ARGS__)
 #define syserrlog(fmt, ...)  fcom_syserrlog("main", fmt, __VA_ARGS__)
 
@@ -107,6 +108,7 @@ static int std_log(uint flags, const char *fmt, va_list va)
 }
 
 static int arg_infile(ffparser_schem *p, void *obj, const ffstr *val);
+static int arg_flist(ffparser_schem *p, void *obj, const char *fn);
 static int arg_help(ffparser_schem *p, void *obj);
 static int arg_date(ffparser_schem *p, void *obj, const ffstr *val);
 
@@ -114,6 +116,7 @@ static int arg_date(ffparser_schem *p, void *obj, const ffstr *val);
 #define OFF(member)  FFPARS_DSTOFF(struct cmdconf, member)
 static const ffpars_arg cmdline_args[] = {
 	{ "",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_infile) },
+	{ "flist",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_flist) },
 	{ "recurse",	FFPARS_SETVAL('R') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(recurse) },
 
 	{ "skip-errors",	FFPARS_SETVAL('k') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(skip_errors) },
@@ -160,6 +163,52 @@ static int arg_infile(ffparser_schem *p, void *obj, const ffstr *val)
 	if (0 != in_add(g, val, 0))
 		return FFPARS_ESYS;
 	return 0;
+}
+
+/** Read file line by line and add filenames as input arguments. */
+static int arg_flist(ffparser_schem *p, void *obj, const char *fn)
+{
+	int r = FFPARS_ESYS;
+	uint cnt = 0;
+	ssize_t n;
+	fffd f = FF_BADFD;
+	ffarr buf = {0};
+	ffstr line;
+	const char *d, *end, *lf, *ln_end;
+
+	dbglog(0, "opening file %s", fn);
+
+	if (FF_BADFD == (f = fffile_open(fn, O_RDONLY | O_NOATIME)))
+		goto done;
+	if (NULL == ffarr_alloc(&buf, fffile_size(f)))
+		goto done;
+	if (0 > (n = fffile_read(f, buf.ptr, buf.cap)))
+		goto done;
+	d = buf.ptr;
+	end = buf.ptr + n;
+	while (d != end) {
+		lf = ffs_find(d, end - d, '\n');
+		d = ffs_skipof(d, lf - d, " \t", 2);
+		ln_end = ffs_rskipof(d, lf - d, " \t\r", 3);
+		ffstr_set(&line, d, ln_end - d);
+		if (lf == end)
+			break;
+		d = lf + 1;
+		if (line.len == 0)
+			continue;
+		if (0 != in_add(g, &line, 0))
+			goto done;
+		cnt++;
+	}
+
+	dbglog(0, "added %u filenames from %s", cnt, fn);
+
+	r = 0;
+
+done:
+	FF_SAFECLOSE(f, FF_BADFD, fffile_close);
+	ffarr_free(&buf);
+	return r;
 }
 
 static int arg_help(ffparser_schem *p, void *obj)
