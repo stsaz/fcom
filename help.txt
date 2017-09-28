@@ -7,6 +7,8 @@ unxz FILE... [--out=FILE]
 OPTIONS
 
 INPUT
+"FILE"             Input file path
+                    @stdin - read from standard input
 --flist=FILE       Read filenames from FILE
 --recurse, -R      Recurse into sub-directories
 

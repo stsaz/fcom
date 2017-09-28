@@ -255,5 +255,6 @@ typedef struct fcom_command {
 #define fcom_cmd_filtadd(c, modname)  ctrl(c, FCOM_CMD_FILTADD, modname)
 #define fcom_cmd_filtadd_prev(c, modname)  ctrl(c, FCOM_CMD_FILTADD_PREV, modname)
 
-/** Get the name of data output filter. */
+/** Get the name of data input/output filter. */
+#define FCOM_CMD_FILT_IN(cmd)  (ffsz_eq((cmd)->input.fn, "@stdin") ? "core.stdin" : "core.file-in")
 #define FCOM_CMD_FILT_OUT(cmd)  (((cmd)->out_std) ? "core.stdout" : "core.file-out")
