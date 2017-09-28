@@ -16,6 +16,10 @@ Features:
 		Count lines in all files in directory:
 			fcom textcount ./mydir -R
 
+	fcom crc - compute file checksums
+		Compute CRC32 checksum:
+			fcom crc myfile
+
 	fcom unxz - unpack .xz files
 		Unpack to the current directory
 			fcom unxz ./file1.xz ./file2.xz

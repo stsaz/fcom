@@ -17,6 +17,7 @@ BIN_O := $(OBJ_DIR)/main.o \
 	$(OBJ_DIR)/com.o \
 	$(OBJ_DIR)/file.o \
 	$(OBJ_DIR)/fop.o \
+	$(FF_OBJ_DIR)/crc.o \
 	$(FF_O) \
 	$(FF_OBJ_DIR)/fftmr.o \
 	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffpsarg.o $(FF_OBJ_DIR)/ffconf.o

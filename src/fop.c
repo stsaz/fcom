@@ -5,6 +5,7 @@ Copyright (c) 2017 Simon Zolin
 #include <fcom.h>
 
 #include <FF/number.h>
+#include <FF/crc.h>
 #include <FFOS/file.h>
 
 
@@ -43,6 +44,12 @@ static void f_tcnt_analyze(struct tcnt_stat *f, ffstr *ss);
 static void f_tcnt_print(struct tcnt_stat *f, fcom_cmd *cmd);
 static void f_tcnt_add(struct tcount *c, const struct tcnt_stat *f);
 
+// CRC
+static void* f_crc_open(fcom_cmd *cmd);
+static void f_crc_close(void *p, fcom_cmd *cmd);
+static int f_crc_process(void *p, fcom_cmd *cmd);
+static const fcom_filter f_crc_filt = { &f_crc_open, &f_crc_close, &f_crc_process };
+
 
 struct oper {
 	const char *name;
@@ -53,6 +60,7 @@ struct oper {
 static const struct oper cmds[] = {
 	{ "touch", "core.f-touch", &f_touch_filt },
 	{ "textcount", "core.f-textcount", &f_tcnt_filt },
+	{ "crc", "core.f-crc", &f_crc_filt },
 };
 
 static const void* f_iface(const char *name)
@@ -277,6 +285,59 @@ static void f_tcnt_add(struct tcount *c, const struct tcnt_stat *f)
 	ffint_setmin(c->sz_f_min, f->sz);
 	ffint_setmax(c->sz_f_max, f->sz);
 	c->f++;
+}
+
+#undef FILT_NAME
+
+
+#define FILT_NAME  "f-crc"
+
+struct f_crc {
+	uint state;
+	uint cur;
+};
+
+static void* f_crc_open(fcom_cmd *cmd)
+{
+	struct f_crc *c;
+	if (NULL == (c = ffmem_new(struct f_crc)))
+		return NULL;
+	return c;
+}
+
+static void f_crc_close(void *p, fcom_cmd *cmd)
+{
+	struct f_crc *c = p;
+	ffmem_free(c);
+}
+
+static int f_crc_process(void *p, fcom_cmd *cmd)
+{
+	enum { I_NEXTFILE, I_DATA, };
+	struct f_crc *c = p;
+
+	switch (c->state) {
+	case I_NEXTFILE:
+		if (NULL == (cmd->input.fn = next_file(cmd)))
+			return FCOM_DONE;
+		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
+		c->state = I_DATA;
+		c->cur = 0;
+		return FCOM_MORE;
+
+	case I_DATA:
+		break;
+	}
+
+	c->cur = crc32((void*)cmd->in.ptr, cmd->in.len, c->cur);
+
+	if (cmd->in_last) {
+		fcom_infolog(FILT_NAME, "%s: CRC32:%xu"
+			, cmd->input.fn, c->cur);
+		c->state = I_NEXTFILE;
+	}
+
+	return FCOM_MORE;
 }
 
 #undef FILT_NAME
