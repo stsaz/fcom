@@ -16,12 +16,16 @@ Copyright (c) 2017 Simon Zolin */
 
 struct cmdconf {
 	char *out;
+	char *outdir;
 	char *date_as_fn;
 	byte force;
 	byte test;
 	fftime mtime;
 
+	ffarr members; //char*[]
+
 	byte recurse;
+	byte show;
 	byte skip_errors;
 
 	byte debug;
@@ -111,6 +115,7 @@ static int std_log(uint flags, const char *fmt, va_list va)
 
 static int arg_infile(ffparser_schem *p, void *obj, const ffstr *val);
 static int arg_flist(ffparser_schem *p, void *obj, const char *fn);
+static int arg_member(ffparser_schem *p, void *obj, const char *fn);
 static int arg_help(ffparser_schem *p, void *obj);
 static int arg_date(ffparser_schem *p, void *obj, const ffstr *val);
 
@@ -120,11 +125,14 @@ static const ffpars_arg cmdline_args[] = {
 	{ "",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_infile) },
 	{ "flist",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_flist) },
 	{ "recurse",	FFPARS_SETVAL('R') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(recurse) },
+	{ "member",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_member) },
+	{ "show",	FFPARS_TBOOL8 | FFPARS_FALONE, OFF(show) },
 
 	{ "skip-errors",	FFPARS_SETVAL('k') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(skip_errors) },
 
 	// OUTPUT
 	{ "out",	FFPARS_SETVAL('o') | FFPARS_TCHARPTR | FFPARS_FCOPY | FFPARS_FSTRZ, OFF(out) },
+	{ "outdir",	FFPARS_SETVAL('C') | FFPARS_TCHARPTR | FFPARS_FCOPY | FFPARS_FSTRZ, OFF(outdir) },
 	{ "force",	FFPARS_SETVAL('f') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(force) },
 	{ "test",	FFPARS_SETVAL('t') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(test) },
 	{ "date",	FFPARS_TSTR, FFPARS_DST(&arg_date) },
@@ -261,6 +269,16 @@ done:
 	return r;
 }
 
+static int arg_member(ffparser_schem *p, void *obj, const char *fn)
+{
+	char **ps;
+	if (NULL == (ps = ffarr_pushgrowT(&g->conf.members, 8, char*)))
+		return FFPARS_ESYS;
+	if (NULL == (*ps = ffsz_alcopyz(fn)))
+		return FFPARS_ESYS;
+	return 0;
+}
+
 static int arg_help(ffparser_schem *p, void *obj)
 {
 	ffarr buf = {0};
@@ -375,7 +393,13 @@ static void cmds_free(void)
 	}
 
 	ffmem_safefree(g->conf.out);
+	ffmem_safefree(g->conf.outdir);
 	ffmem_safefree(g->conf.date_as_fn);
+
+	char **ps;
+	FFARR_WALKT(&g->conf.members, ps, char*)
+		ffmem_safefree(*ps);
+	ffarr_free(&g->conf.members);
 
 	ffmem_safefree(g);
 }
@@ -407,15 +431,18 @@ static void cmd_add(void *param)
 		goto done;
 	fcom_cmd cmd = {0};
 	cmd.name = op;
+	ffarr_set(&cmd.members, c->conf.members.ptr, c->conf.members.len);
 	cmd.recurse = c->conf.recurse;
 	cmd.output.fn = c->conf.out;
 	g->stdout_busy = cmd.out_std = (c->conf.out != NULL && ffsz_eq(c->conf.out, "@stdout"));
+	cmd.outdir = c->conf.outdir;
 	cmd.out_overwrite = c->conf.force;
 	cmd.skip_err = c->conf.skip_errors;
 	cmd.read_only = c->conf.test;
 	cmd.benchmark = c->conf.benchmark;
 	cmd.mtime = c->conf.mtime;
 	cmd.date_as_fn = c->conf.date_as_fn;
+	cmd.show = c->conf.show;
 	com = core->iface("core.com");
 	if (NULL == (m = com->create(&cmd)))
 		goto done;

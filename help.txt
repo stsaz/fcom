@@ -15,10 +15,13 @@ INPUT
                     @stdin - read from standard input
 --flist=FILE       Read filenames from FILE
 --recurse, -R      Recurse into sub-directories
+--member=FILE      Process just this archive member
+--show             Show contents
 
 OUTPUT
 --out=FILE, -o     Set output file
                     @stdout - write to standard output
+--outdir=DIR, -C   Set output directory
 --force, -f        Overwrite output files
 --test, -t         Read-only mode
 --date=DATE        Set modification date

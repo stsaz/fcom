@@ -172,6 +172,9 @@ typedef struct fcom_cmd {
 		uint attr;
 	} input, output;
 
+	ffarr2 members; //char*[]
+
+	const char *outdir;
 	const char *date_as_fn;
 	fftime mtime;
 	byte fsort; //enum FCOM_CMD_SORT
@@ -186,6 +189,7 @@ typedef struct fcom_cmd {
 		, recurse :1
 		, read_only :1
 		, benchmark :1
+		, show :1
 		;
 } fcom_cmd;
 
