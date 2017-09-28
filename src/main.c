@@ -456,7 +456,10 @@ int main(int argc, char **argv, char **env)
 	int r = 1;
 
 	ffmem_init();
+	(void)sigs_block;
+#ifndef _DEBUG
 	ffsig_mask(SIG_BLOCK, sigs_block, FFCNT(sigs_block));
+#endif
 
 	if (NULL == (g = ffmem_new(struct job)))
 		return 1;
