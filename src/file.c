@@ -75,7 +75,11 @@ static int file_sig(uint signo)
 		com = core->iface("core.com");
 		break;
 	case FCOM_SIGSTART:
+		if (0 != ffaio_fctxinit())
+			return -1;
+		break;
 	case FCOM_SIGFREE:
+		ffaio_fctxclose();
 		break;
 	}
 	return 0;
@@ -98,6 +102,7 @@ static const ffpars_arg fi_conf_args[] = {
 	{ "bufsize",	FFPARS_TSIZE | FFPARS_FNOTZERO,  OFF(bufsize) },
 	{ "nbufs",	FFPARS_TINT8 | FFPARS_FNOTZERO,  OFF(nbufs) },
 	{ "direct_io",	FFPARS_TBOOL8,  OFF(directio) },
+	{ "readahead",	FFPARS_TBOOL8,  OFF(readahead) },
 };
 #undef OFF
 
@@ -111,9 +116,11 @@ struct file {
 	const char *fn;
 	fffd fd;
 	uint64 roff; //aligned offset for the next read operation
+	uint64 roff_ahead;
 	uint64 size;
 	ffaio_filetask aio;
 	uint state; //enum FI_ST
+	uint rdahead :1;
 
 	ffarr2 bufs; //buf[]
 	uint wbuf;
@@ -154,6 +161,7 @@ static int fi_conf(ffpars_ctx *ctx)
 	inconf->nbufs = 3;
 	inconf->align = 4096;
 	inconf->directio = 1;
+	inconf->readahead = 1;
 	ffpars_setargs(ctx, inconf, fi_conf_args, FFCNT(fi_conf_args));
 	return 0;
 }
@@ -205,6 +213,7 @@ static void* fi_open(fcom_cmd *cmd)
 	f->fd = FF_BADFD;
 	f->locked = (uint)-1;
 	f->fn = cmd->input.fn;
+	f->roff_ahead = (uint64)-1;
 
 	if (0 != bufs_create(f))
 		goto err;
@@ -237,6 +246,7 @@ static void* fi_open(fcom_cmd *cmd)
 		syserrlog("%s: %s", ffkqu_attach_S, f->fn);
 		goto err;
 	}
+	f->rdahead = inconf->readahead && !!(flags & O_DIRECT) && (inconf->nbufs != 1);
 
 	cmd->input.size = f->size;
 	cmd->input.offset = 0;
@@ -272,6 +282,8 @@ static void fi_close(void *p, fcom_cmd *cmd)
 /** Called by producer with the result of operation. */
 static void fi_nfy(file *f)
 {
+	if (f->uctx == NULL)
+		return;
 	com->run(f->uctx);
 }
 
@@ -297,7 +309,7 @@ static int fi_process(void *p, fcom_cmd *cmd)
 	}
 
 	r = fi_getdata(f, &b, cmd->input.offset);
-	switch (r) {
+	switch ((enum FI_R)r) {
 	case FI_RASYNC:
 		f->uctx = cmd;
 		return FCOM_ASYNC;
@@ -311,6 +323,8 @@ static int fi_process(void *p, fcom_cmd *cmd)
 			cachehit = 1;
 			f->stat.ncached++;
 		}
+		break;
+	case FI_RREAD:
 		break;
 	}
 
@@ -336,6 +350,13 @@ static int fi_getdata(file *f, buf **pb, uint64 off)
 
 	if (NULL != (b = bufs_find(f, off))) {
 		r = FI_RCACHE;
+		uint64 next = b->offset + b->len;
+		if (f->rdahead && next < f->size
+			&& NULL == bufs_find(f, next)) {
+			f->roff = next;
+			if (f->state != FI_IASYNC)
+				fi_read(f);
+		}
 		goto done;
 	}
 
@@ -347,6 +368,8 @@ static int fi_getdata(file *f, buf **pb, uint64 off)
 		return FI_REOF;
 
 	f->roff = ff_align_floor2(off, inconf->align);
+	if (f->rdahead && f->roff + inconf->bufsize < f->size)
+		f->roff_ahead = f->roff + inconf->bufsize;
 
 	if (f->state != FI_IASYNC)
 		fi_read(f);
@@ -423,6 +446,18 @@ static void fi_read(void *param)
 		}
 		f->wbuf = ffint_cycleinc(f->wbuf, inconf->nbufs);
 		nfy = 1;
+
+		if (f->roff_ahead != (uint64)-1) {
+			b = ffarr_itemT(&f->bufs, f->wbuf, buf);
+			buf_prepread(b, f->roff_ahead);
+			if (f->last == f->wbuf)
+				f->last = (uint)-1;
+			f->roff_ahead = (uint64)-1;
+			if (f->wbuf == f->locked)
+				break;
+			continue;
+		}
+
 		break;
 	}
 
