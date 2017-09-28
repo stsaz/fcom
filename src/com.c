@@ -4,6 +4,7 @@ Copyright (c) 2017 Simon Zolin
 
 #include <fcom.h>
 
+#include <FF/sys/dir.h>
 #include <FF/list.h>
 #include <FF/path.h>
 
@@ -71,6 +72,7 @@ const fcom_command core_com_iface = {
 
 static const char* getmod_bycmd(const char *cmdname);
 static void filt_close(comm *c, filter *f);
+static int dir_scan(comm *c, char *name);
 
 
 int core_comm_sig(uint signo)
@@ -356,12 +358,88 @@ static int com_arg_add(fcom_cmd *_c, const ffstr *arg, uint flags)
 static char* com_arg_next(fcom_cmd *_c, uint flags)
 {
 	comm *c = FF_GETPTR(comm, cmd, _c);
+	struct in_ent *e;
+
 	if (c->in_next == ffchain_sentl(&c->in_list))
 		return NULL;
 
-	struct in_ent *e = FF_GETPTR(struct in_ent, sib, c->in_next);
-	c->in_next = c->in_next->next;
+	e = FF_GETPTR(struct in_ent, sib, c->in_next);
+
+	if (c->cmd.recurse) {
+		fffileinfo fi;
+		if (0 == fffile_infofn(e->fn, &fi)
+			&& fffile_isdir(fffile_infoattr(&fi))) {
+			dir_scan(c, e->fn);
+		}
+	}
+
+	c->in_next = e->sib.next;
 	return e->fn;
+}
+
+/** List directory contents and add its filenames to the arguments list. */
+static int dir_scan(comm *c, char *name)
+{
+	ffdirexp dr = {0};
+	fffileinfo fi;
+	const char *fn;
+	int r = -1;
+	ffchain files, dirs;
+	ffchain_item *last = c->in_next;
+
+	ffchain_init(&files);
+	ffchain_init(&dirs);
+
+	dbglog(0, "opening directory %s", name);
+
+	if (0 != ffdir_expopen(&dr, name, 0)) {
+		if (fferr_last() != ENOMOREFILES) {
+			syserrlog("%s", ffdir_open_S);
+			return -1;
+		}
+		return 0;
+	}
+
+	while (NULL != (fn = ffdir_expread(&dr))) {
+		ffstr s;
+		ffstr_setz(&s, fn);
+		struct in_ent *e;
+
+		if (NULL == (e = ffmem_alloc(sizeof(struct in_ent) + s.len + 1)))
+			goto done;
+
+		if (c->cmd.fsort == FCOM_CMD_SORT_ALPHA) {
+			ffchain_append(&e->sib, last);
+			last = &e->sib;
+		} else {
+			if (0 == fffile_infofn(fn, &fi)
+				&& fffile_isdir(fffile_infoattr(&fi))) {
+				ffchain_add(&dirs, &e->sib);
+			} else {
+				ffchain_add(&files, &e->sib);
+			}
+		}
+
+		ffsz_fcopy(e->fn, s.ptr, s.len);
+	}
+
+	if (c->cmd.fsort == FCOM_CMD_SORT_FILES_DIRS) {
+		//args -> files -> dirs -> ...args
+		_ffchain_link2(ffchain_last(&dirs), c->in_next->next);
+		_ffchain_link2(ffchain_last(&files), ffchain_first(&dirs));
+		_ffchain_link2(c->in_next, ffchain_first(&files));
+	} else if (c->cmd.fsort == FCOM_CMD_SORT_DIRS_FILES) {
+		//args -> dirs -> files -> ...args
+		_ffchain_link2(ffchain_last(&files), c->in_next->next);
+		_ffchain_link2(ffchain_last(&dirs), ffchain_first(&files));
+		_ffchain_link2(c->in_next, ffchain_first(&dirs));
+	}
+
+	r = 0;
+
+done:
+	ffdir_expclose(&dr);
+	return r;
 }
 
 /** Set command's parameters. */

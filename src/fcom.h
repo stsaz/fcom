@@ -149,6 +149,12 @@ enum FCOM_CMD_F {
 	FCOM_CMD_FWD = 4, //moved forward through chain from the previous filter
 };
 
+enum FCOM_CMD_SORT {
+	FCOM_CMD_SORT_ALPHA,
+	FCOM_CMD_SORT_DIRS_FILES,
+	FCOM_CMD_SORT_FILES_DIRS,
+};
+
 /** Configuration of a command, shared data between filters. */
 typedef struct fcom_cmd {
 	const char *name;
@@ -168,11 +174,13 @@ typedef struct fcom_cmd {
 
 	const char *date_as_fn;
 	fftime mtime;
+	byte fsort; //enum FCOM_CMD_SORT
 	uint err :1
 		, skip_err :1
 		, in_seek :1
 		, out_overwrite :1
 		, out_notrunc :1
+		, recurse :1
 		, read_only :1
 		, benchmark :1
 		;

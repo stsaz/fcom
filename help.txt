@@ -6,6 +6,9 @@ unxz FILE... [--out=FILE]
 
 OPTIONS
 
+INPUT
+--recurse, -R      Recurse into sub-directories
+
 OUTPUT
 --out=FILE, -o     Set output file
 --force, -f        Overwrite output files

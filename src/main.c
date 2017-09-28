@@ -19,6 +19,7 @@ struct cmdconf {
 	byte test;
 	fftime mtime;
 
+	byte recurse;
 	byte skip_errors;
 
 	byte debug;
@@ -113,6 +114,7 @@ static int arg_date(ffparser_schem *p, void *obj, const ffstr *val);
 #define OFF(member)  FFPARS_DSTOFF(struct cmdconf, member)
 static const ffpars_arg cmdline_args[] = {
 	{ "",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_infile) },
+	{ "recurse",	FFPARS_SETVAL('R') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(recurse) },
 
 	{ "skip-errors",	FFPARS_SETVAL('k') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(skip_errors) },
 
@@ -306,6 +308,7 @@ static void cmd_add(void *param)
 		goto done;
 	fcom_cmd cmd = {0};
 	cmd.name = op;
+	cmd.recurse = c->conf.recurse;
 	cmd.output.fn = c->conf.out;
 	cmd.out_overwrite = c->conf.force;
 	cmd.skip_err = c->conf.skip_errors;
