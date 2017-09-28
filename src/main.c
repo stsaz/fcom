@@ -4,6 +4,7 @@ Copyright (c) 2017 Simon Zolin */
 #include <fcom.h>
 
 #include <FF/data/psarg.h>
+#include <FF/sys/dir.h>
 #include <FF/time.h>
 #include <FFOS/file.h>
 #include <FFOS/sig.h>
@@ -136,8 +137,56 @@ static const ffpars_arg cmdline_args[] = {
 #undef OFF
 
 
+enum IN_ADD {
+	ADD_NO_WCARD = 1,
+};
+
+#ifdef FF_WIN
+/** Add filenames expanded by wildcard. */
+static int wcard_open(struct job *c, const ffstr *s)
+{
+	int r = -1;
+	ffdirexp de;
+	char *wc = NULL;
+	const char *fn;
+
+	if (ffarr_end(s) == ffs_findof(s->ptr, s->len, "*?", 2))
+		return 0;
+
+	if (NULL == (wc = ffsz_alcopy(s->ptr, s->len)))
+		return -1;
+
+	if (0 != ffdir_expopen(&de, wc, 0))
+		goto done;
+
+	while (NULL != (fn = ffdir_expread(&de))) {
+		ffstr sfn;
+		ffstr_setz(&sfn, fn);
+		if (0 != in_add(c, &sfn, ADD_NO_WCARD))
+			goto done;
+	}
+	r = 1;
+
+done:
+	ffdir_expclose(&de);
+	ffmem_safefree(wc);
+	return r;
+}
+#else
+static int wcard_open(struct job *c, const ffstr *s)
+{
+	return 0;
+}
+#endif //FF_WIN
+
+/**
+@flags: enum IN_ADD */
 static int in_add(struct job *c, const ffstr *s, uint flags)
 {
+	int r;
+	if (!(flags & ADD_NO_WCARD) && 0 != (r = wcard_open(c, s)))
+		return (r > 0) ? 0 : -1;
+
 	struct in_ent *e;
 	if (NULL == (e = ffmem_calloc(1, sizeof(struct in_ent) + s->len + 1)))
 		return -1;
