@@ -32,3 +32,19 @@ Features:
 	fcom un7z - unpack .7z files
 		Unpack 2 files from gzip-compressed tar archive to the specified directory
 			fcom untar ./arc.tar.gz --member=file1.txt --member=file2.txt --outdir=mydir
+
+	fcom unpack - unpack archives (determine format by file extension)
+			fcom unpack ./arc.tar.gz ./arc.zip ./arc.7z
+
+
+---------------
+LICENSE
+---------------
+The code provided here is free for use in open-source and proprietary projects.
+You may distribute, redistribute, modify the whole code or the parts of it, just keep the original copyright statement inside the files.
+
+
+---------------
+HOMEPAGE
+---------------
+http://github.com/stsaz/fcom

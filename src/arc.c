@@ -22,7 +22,8 @@ static const void* arc_iface(const char *name);
 static int arc_conf(const char *name, ffpars_ctx *ctx);
 static const fcom_mod arc_mod = {
 	.sig = &arc_sig, .iface = &arc_iface, .conf = &arc_conf,
-	.name = "Archiver", .desc = "",
+	.ver = FCOM_VER,
+	.name = "Archiver", .desc = "Pack/unpack archives .gz, .xz, .tar, .zip, .7z",
 };
 
 static int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf);
@@ -76,6 +77,12 @@ static const fcom_filter un7z_filt = { &un7z_open, &un7z_close, &un7z_process };
 struct un7z;
 static void un7z_showinfo(struct un7z *z, const ff7zfile *f);
 
+// UNPACK
+static void* unpack_open(fcom_cmd *cmd);
+static void unpack_close(void *p, fcom_cmd *cmd);
+static int unpack_process(void *p, fcom_cmd *cmd);
+static const fcom_filter unpack_filt = { &unpack_open, &unpack_close, &unpack_process };
+
 
 FF_EXP const fcom_mod* fcom_getmod(const fcom_core *_core)
 {
@@ -97,6 +104,7 @@ static const struct cmd cmds[] = {
 	{ "untar", "arc.untar", &untar_filt },
 	{ "unzip", "arc.unzip", &unzip_filt },
 	{ "un7z", "arc.un7z", &un7z_filt },
+	{ "unpack", "arc.unpack", &unpack_filt },
 };
 
 static int arc_sig(uint signo)
@@ -1002,3 +1010,56 @@ static void un7z_showinfo(un7z *z, const ff7zfile *f)
 }
 
 #undef FILT_NAME
+
+
+static void* unpack_open(fcom_cmd *cmd)
+{
+	return FCOM_OPEN_DUMMY;
+}
+
+static void unpack_close(void *p, fcom_cmd *cmd)
+{
+}
+
+static const char arc_exts[][4] = {
+	"7z",
+	"gz",
+	"tar",
+	"tgz",
+	"txz",
+	"xz",
+	"zip",
+};
+static const char *const arc_filts[] = {
+	"arc.un7z",
+	"arc.ungz",
+	"arc.untar",
+	"arc.untar",
+	"arc.untar",
+	"arc.unxz",
+	"arc.unzip",
+};
+
+static int unpack_process(void *p, fcom_cmd *cmd)
+{
+	if (NULL == (cmd->input.fn = com->arg_next(cmd, FCOM_CMD_ARG_PEEK)))
+		return FCOM_DONE;
+
+	const char *name;
+	int r;
+	ffstr nm, ext;
+	ffstr_setz(&nm, cmd->input.fn);
+	ffpath_split3(nm.ptr, nm.len, NULL, &nm, &ext);
+	if ((ffstr_ieqcz(&ext, "gz") || ffstr_ieqcz(&ext, "xz"))
+		&& nm.len >= FFSLEN(".tar") && ffstr_irmatchz(&nm, ".tar"))
+		ffstr_setz(&ext, "tar");
+
+	if (0 > (r = ffcharr_findsorted(arc_exts, FFCNT(arc_exts), sizeof(arc_exts[0]), ext.ptr, ext.len))) {
+		fcom_errlog("arc.unpack", "unknown archive file extension .%S", &ext);
+		return FCOM_ERR;
+	}
+
+	name = arc_filts[r];
+	com->fcom_cmd_filtadd(cmd, name);
+	return FCOM_DONE;
+}
