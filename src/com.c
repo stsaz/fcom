@@ -43,8 +43,7 @@ typedef struct {
 	ffarr filters; //filter[]
 	ffchain chain;
 	fflist_cursor cur;
-	fflist_cursor cur_stored;
-	// uint out_flush :1;
+	ffchain_item chain_stored;
 
 	ffchain in_list; //struct in_ent[]
 	ffchain_item *in_next;
@@ -242,12 +241,13 @@ Split the chain into 2, finish the second chain, then continue with the first on
 2)                        -> next <-...-> ...
 3) ... -> cur <-
 */
-			FF_ASSERT(c->cur_stored == NULL); //only one NEXTDONE is supported per chain
+			FF_ASSERT(c->chain_stored.next == NULL); //only one NEXTDONE is supported per chain
 			FF_ASSERT(c->cur->next != ffchain_sentl(&c->chain)); //@ handle as noop
 			ffchain_item *nxt;
 			nxt = c->cur->next;
 			ffchain_split(c->cur, ffchain_sentl(&c->chain));
-			c->cur_stored = c->cur;
+			c->chain_stored.next = c->chain.next;
+			c->chain_stored.prev = c->cur;
 			c->cur = nxt;
 			f = FF_GETPTR(filter, sib, c->cur);
 			c->cmd.in = c->cmd.out;
@@ -295,7 +295,7 @@ shift:
 			if (f->done) {
 				f->done = 0;
 				filt_close(c, f);
-				op = FFLIST_CUR_NEXT | FFLIST_CUR_RM;
+				op = FFLIST_CUR_NEXT | FFLIST_CUR_RM | FFLIST_CUR_BOUNCE;
 				goto shift;
 			}
 			c->cmd.in.len = 0;
@@ -303,8 +303,10 @@ shift:
 			break;
 
 		case FFLIST_CUR_NONEXT:
-			if (c->cur_stored != NULL) {
-				c->cur = FF_SWAP(&c->cur_stored, NULL);
+			if (c->chain_stored.next != NULL) {
+				c->chain = c->chain_stored;
+				c->chain_stored.next = c->chain_stored.prev = NULL;
+				c->cur = c->chain.prev;
 				c->cmd.in.len = 0;
 				c->cmd.flags &= ~FCOM_CMD_FWD;
 				break;
