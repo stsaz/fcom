@@ -6,6 +6,7 @@ textcount FILE...
 crc FILE...
 ungz FILE... [--out=FILE]
 unxz FILE... [--out=FILE]
+untar FILE... [--out=FILE] [--member=FILE]... [--show]
 
 OPTIONS
 

@@ -6,7 +6,9 @@ Copyright (c) 2017 Simon Zolin
 
 #include <FF/pack/gz.h>
 #include <FF/pack/xz.h>
+#include <FF/pack/tar.h>
 #include <FF/path.h>
+#include <FF/time.h>
 
 
 static const fcom_core *core;
@@ -20,6 +22,8 @@ static const fcom_mod arc_mod = {
 	.sig = &arc_sig, .iface = &arc_iface, .conf = &arc_conf,
 	.name = "Archiver", .desc = "",
 };
+
+static int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf);
 
 // UNGZ
 static void* ungz_open(fcom_cmd *cmd);
@@ -43,6 +47,15 @@ static void unxz1_close(void *p, fcom_cmd *cmd);
 static int unxz1_process(void *p, fcom_cmd *cmd);
 static const fcom_filter unxz1_filt = { &unxz1_open, &unxz1_close, &unxz1_process };
 
+// UNTAR
+static void* untar_open(fcom_cmd *cmd);
+static void untar_close(void *p, fcom_cmd *cmd);
+static int untar_process(void *p, fcom_cmd *cmd);
+static const fcom_filter untar_filt = { &untar_open, &untar_close, &untar_process };
+
+struct untar;
+static void untar_showinfo(struct untar *t, const fftar_file *f);
+
 
 FF_EXP const fcom_mod* fcom_getmod(const fcom_core *_core)
 {
@@ -61,6 +74,7 @@ static const struct cmd cmds[] = {
 	{ "ungz1", NULL, &ungz1_filt },
 	{ "unxz", "arc.unxz", &unxz_filt },
 	{ "unxz1", NULL, &unxz1_filt },
+	{ "untar", "arc.untar", &untar_filt },
 };
 
 static int arc_sig(uint signo)
@@ -95,6 +109,32 @@ static const void* arc_iface(const char *name)
 static int arc_conf(const char *name, ffpars_ctx *ctx)
 {
 	return 0;
+}
+
+
+/** Get output filename.  Handle user-defined output directory. */
+static int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf)
+{
+	size_t n;
+	char *p, *end;
+
+	n = input->len + 1;
+	n += (cmd->outdir != NULL) ? ffsz_len(cmd->outdir) + FFSLEN("/") : 0;
+	if (NULL == ffarr_grow(buf, n, 0))
+		return FCOM_SYSERR;
+
+	p = buf->ptr;
+	end = ffarr_edge(buf);
+	if (cmd->outdir) {
+		p = ffs_copyz(p, end, cmd->outdir);
+		p = ffs_copyc(p, end, '/');
+	}
+	if (0 == (n = ffpath_norm(p, end - p, input->ptr, input->len, FFPATH_NOWINDOWS | FFPATH_TOREL | FFPATH_MERGEDOTS)))
+		return FCOM_ERR;
+	p += n;
+	*p = '\0';
+
+	return FCOM_DATA;
 }
 
 
@@ -397,6 +437,200 @@ static int unxz1_process(void *p, fcom_cmd *cmd)
 		return FCOM_ERR;
 	}
 	}
+}
+
+#undef FILT_NAME
+
+
+#define FILT_NAME  "arc.untar"
+
+typedef struct untar {
+	uint state;
+	fftar tar;
+	ffarr fn;
+	uint skipfile :1;
+} untar;
+
+static void* untar_open(fcom_cmd *cmd)
+{
+	untar *t;
+	if (NULL == (t = ffmem_new(untar)))
+		return FCOM_OPEN_SYSERR;
+	if (NULL == ffarr_alloc(&t->fn, 4096)) {
+		untar_close(t, cmd);
+		return FCOM_OPEN_SYSERR;
+	}
+
+	return t;
+}
+
+static void untar_close(void *p, fcom_cmd *cmd)
+{
+	untar *t = p;
+	fftar_close(&t->tar);
+	ffarr_free(&t->fn);
+	ffmem_free(t);
+}
+
+static int untar_process(void *p, fcom_cmd *cmd)
+{
+	untar *t = p;
+	int r;
+	fftar_file *f;
+	enum E { R_FIRST, R_NEXT, R_DATA1, R_DATA, R_EOF, };
+
+	switch ((enum E)t->state) {
+	case R_EOF:
+		if (cmd->in.len != 0) {
+			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%U", cmd->input.offset);
+			return FCOM_ERR;
+		}
+		t->state = R_FIRST;
+		//fall through
+
+	case R_FIRST: {
+		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0)))
+			return FCOM_DONE;
+		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
+
+		const char *comp = NULL;
+		ffstr ext;
+		ffpath_split3(cmd->input.fn, ffsz_len(cmd->input.fn), NULL, NULL, &ext);
+		if (ffstr_ieqcz(&ext, "tgz") || ffstr_ieqcz(&ext, "gz"))
+			comp = "arc.ungz1";
+		else if (ffstr_ieqcz(&ext, "txz") || ffstr_ieqcz(&ext, "xz"))
+			comp = "arc.unxz1";
+		if (comp != NULL) {
+			com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, comp);
+			FF_CMPSET(&cmd->output.fn, NULL, (void*)1); //decompression filters won't set output filename
+		}
+
+		fftar_init(&t->tar);
+		t->state = R_DATA1;
+		return FCOM_MORE;
+	}
+
+	case R_DATA1:
+		FF_CMPSET(&cmd->output.fn, (void*)1, NULL);
+		t->state = R_DATA;
+		//fall through
+
+	case R_DATA:
+		break;
+
+	case R_NEXT:
+		FF_CMPSET(&cmd->output.fn, t->fn.ptr, NULL);
+		t->state = R_DATA;
+		break;
+	}
+
+	if (cmd->flags & FCOM_CMD_FWD) {
+		if (cmd->in_last)
+			fftar_fin(&t->tar);
+		t->tar.in = cmd->in;
+	}
+
+	for (;;) {
+
+	r = fftar_read(&t->tar);
+	switch (r) {
+
+	case FFTAR_FILEHDR: {
+		f = fftar_nextfile(&t->tar);
+
+		if (cmd->members.len != 0) {
+			if (0 > ffs_findarrz((void*)cmd->members.ptr, cmd->members.len, f->name, ffsz_len(f->name))) {
+				t->skipfile = 1;
+				continue;
+			}
+		}
+
+		if (fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
+			untar_showinfo(t, f);
+		if (cmd->show) {
+			t->skipfile = 1;
+			continue;
+		}
+
+		if (!(f->type == FFTAR_FILE || f->type == FFTAR_FILE0 || f->type == FFTAR_DIR)) {
+			fcom_warnlog(FILT_NAME, "%s: unsupported file type '%c'", f->name, f->type);
+			t->skipfile = 1;
+			continue;
+		}
+
+		if (f->type == FFTAR_DIR && f->size != 0)
+			fcom_warnlog(FILT_NAME, "directory %s has non-zero size", f->name);
+
+		if (cmd->output.fn == NULL) {
+			ffstr name;
+			ffstr_setz(&name, f->name);
+			if (FCOM_DATA != (r = fn_out(cmd, &name, &t->fn)))
+				return r;
+			cmd->output.fn = t->fn.ptr;
+		}
+		cmd->output.size = f->size;
+		cmd->output.mtime = f->mtime;
+		cmd->output.attr = f->mode & 0777;
+
+		const char *filt = (f->type == FFTAR_DIR) ? "core.dir-out" : FCOM_CMD_FILT_OUT(cmd);
+		com->ctrl(cmd, FCOM_CMD_FILTADD, filt);
+		continue;
+	}
+
+	case FFTAR_DATA:
+		if (t->skipfile)
+			continue;
+		cmd->out = t->tar.out;
+		return FCOM_DATA;
+
+	case FFTAR_FILEDONE:
+		if (t->skipfile) {
+			t->skipfile = 0;
+			continue;
+		}
+		t->state = R_NEXT;
+		return FCOM_NEXTDONE;
+
+	case FFTAR_DONE:
+		fftar_fin(&t->tar);
+		ffmem_tzero(&t->tar);
+		t->state = R_EOF;
+		return FCOM_MORE;
+
+	case FFTAR_MORE:
+		return FCOM_MORE;
+
+	case FFTAR_ERR:
+		fcom_errlog(FILT_NAME, "%s", fftar_errstr(&t->tar));
+		return FCOM_ERR;
+	}
+	}
+}
+
+/* "mode user group size date name" */
+static void untar_showinfo(untar *t, const fftar_file *f)
+{
+	char *p = t->fn.ptr, *end = ffarr_edge(&t->fn);
+
+	p += fffile_unixattr_tostr(p, end - p, fftar_mode(f));
+	p = ffs_copyc(p, end, ' ');
+
+	p += ffs_fromint(f->uid, p, end - p, FFINT_WIDTH(4));
+	p = ffs_copyc(p, end, ' ');
+	p += ffs_fromint(f->gid, p, end - p, FFINT_WIDTH(4));
+	p = ffs_copyc(p, end, ' ');
+
+	p += ffs_fromint(f->size, p, end - p, FFINT_WIDTH(12));
+	p = ffs_copyc(p, end, ' ');
+
+	ffdtm dt;
+	fftime_split(&dt, &f->mtime, FFTIME_TZLOCAL);
+	p += fftime_tostr(&dt, p, end - p, FFTIME_DATE_YMD | FFTIME_HMS);
+	p = ffs_copyc(p, end, ' ');
+
+	p = ffs_copyz(p, end, f->name);
+
+	fcom_verblog(FILT_NAME, "%*s", p - t->fn.ptr, t->fn.ptr);
 }
 
 #undef FILT_NAME

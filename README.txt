@@ -26,3 +26,7 @@ Features:
 			fcom unxz ./file1.xz ./file2.xz
 		Specify output file
 			fcom unxz ./file1.xz -o ./file1.txt
+
+	fcom untar - unpack .tar files
+		Unpack 2 files from gzip-compressed tar archive to the specified directory
+			fcom untar ./arc.tar.gz --member=file1.txt --member=file2.txt --outdir=mydir
