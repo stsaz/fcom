@@ -7,6 +7,7 @@ crc FILE...
 wregfind STR... [--member=KEY]...
 
 Pack files
+gz FILE... [--out=FILE]
 tar FILE... --out=FILE
 
 Unpack archives
@@ -36,6 +37,7 @@ OUTPUT
 --date=DATE        Set modification date
                    DATE: [YYYY-MM-DD] [hh:mm:ss]
 --date-as=FILE     Get date from file FILE
+--deflate-level    Set compression level for Deflate algorithm (1..9)
 
 --verbose, -v      Print more information to stdout
 --debug, -D        Print debug log messages to stdout

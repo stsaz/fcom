@@ -27,6 +27,7 @@ struct cmdconf {
 	byte recurse;
 	byte show;
 	byte skip_errors;
+	byte deflate_level;
 
 	byte debug;
 	byte verbose;
@@ -129,6 +130,7 @@ static const ffpars_arg cmdline_args[] = {
 	{ "show",	FFPARS_TBOOL8 | FFPARS_FALONE, OFF(show) },
 
 	{ "skip-errors",	FFPARS_SETVAL('k') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(skip_errors) },
+	{ "deflate-level",	FFPARS_TINT8, OFF(deflate_level) },
 
 	// OUTPUT
 	{ "out",	FFPARS_SETVAL('o') | FFPARS_TCHARPTR | FFPARS_FCOPY | FFPARS_FSTRZ, OFF(out) },
@@ -438,6 +440,7 @@ static void cmd_add(void *param)
 	cmd.outdir = c->conf.outdir;
 	cmd.out_overwrite = c->conf.force;
 	cmd.skip_err = c->conf.skip_errors;
+	cmd.deflate_level = c->conf.deflate_level;
 	cmd.read_only = c->conf.test;
 	cmd.benchmark = c->conf.benchmark;
 	cmd.mtime = c->conf.mtime;
@@ -495,6 +498,7 @@ int main(int argc, char **argv, char **env)
 	g->retcode = 1;
 	ffchain_init(&g->in_list);
 	g->in_next = ffchain_sentl(&g->in_list);
+	g->conf.deflate_level = 255;
 
 	if (NULL == (core = core_create(&std_log, argv, env)))
 		return 1;

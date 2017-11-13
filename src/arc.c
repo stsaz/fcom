@@ -26,7 +26,17 @@ static const fcom_mod arc_mod = {
 	.name = "Archiver", .desc = "Pack/unpack archives .gz, .xz, .tar, .zip, .7z",
 };
 
+enum {
+	BUFSIZE = 64 * 1024,
+};
+
 static int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf);
+
+// GZIP
+static void* gzip_open(fcom_cmd *cmd);
+static void gzip_close(void *p, fcom_cmd *cmd);
+static int gzip_process(void *p, fcom_cmd *cmd);
+static const fcom_filter gzip_filt = { &gzip_open, &gzip_close, &gzip_process };
 
 // UNGZ
 static void* ungz_open(fcom_cmd *cmd);
@@ -103,6 +113,7 @@ struct cmd {
 };
 
 static const struct cmd cmds[] = {
+	{ "gz", "arc.gz", &gzip_filt },
 	{ "ungz", "arc.ungz", &ungz_filt },
 	{ "ungz1", NULL, &ungz1_filt },
 	{ "unxz", "arc.unxz", &unxz_filt },
@@ -175,6 +186,138 @@ static int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf)
 }
 
 
+#define FILT_NAME  "arc.gz"
+
+typedef struct gzip {
+	uint state;
+	ffgz_cook gz;
+	ffarr buf;
+	ffarr fn;
+} gzip;
+
+static void* gzip_open(fcom_cmd *cmd)
+{
+	gzip *g;
+	if (NULL == (g = ffmem_new(gzip)))
+		return FCOM_OPEN_SYSERR;
+
+	if (NULL == ffarr_alloc(&g->buf, BUFSIZE)
+		|| NULL == ffarr_alloc(&g->fn, 1024)) {
+		fcom_syserrlog(FILT_NAME, "%s", ffmem_alloc_S);
+		goto err;
+	}
+
+	return g;
+
+err:
+	gzip_close(g, cmd);
+	return FCOM_OPEN_SYSERR;
+}
+
+static void gzip_close(void *p, fcom_cmd *cmd)
+{
+	gzip *g = p;
+	ffarr_free(&g->buf);
+	ffarr_free(&g->fn);
+	ffgz_wclose(&g->gz);
+	ffmem_free(g);
+}
+
+static int gzip_process(void *p, fcom_cmd *cmd)
+{
+	gzip *g = p;
+	int r;
+	enum E { W_NEXT, W_NEWFILE, W_EOF, W_DATA };
+
+	switch ((enum E)g->state) {
+
+	case W_EOF:
+		if (!(cmd->flags & FCOM_CMD_FWD))
+			return FCOM_MORE;
+		FF_ASSERT(cmd->in.len == 0);
+		g->state = W_NEXT;
+		//fall through
+
+	case W_NEXT:
+		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0)))
+			return FCOM_DONE;
+		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
+
+		g->state = W_NEWFILE;
+		return FCOM_MORE;
+
+	case W_NEWFILE: {
+		if (cmd->output.fn == NULL) {
+			ffstr outdir, name;
+			ffstr_setz(&name, cmd->input.fn);
+			if (cmd->outdir != NULL)
+				ffstr_setz(&outdir, cmd->outdir);
+			else
+				ffstr_setz(&outdir, ".");
+			ffpath_split2(name.ptr, name.len, NULL, &name);
+			g->fn.len = 0;
+			if (0 == ffstr_catfmt(&g->fn, "%S/%S.gz%Z", &outdir, &name))
+				return FCOM_SYSERR;
+			cmd->output.fn = g->fn.ptr;
+		}
+		com->ctrl(cmd, FCOM_CMD_FILTADD, FCOM_CMD_FILT_OUT(cmd));
+
+		uint lev = (cmd->deflate_level != 255) ? cmd->deflate_level : 6;
+		if (0 != ffgz_winit(&g->gz, lev, 0)) {
+			fcom_errlog(FILT_NAME, "%s", ffgz_errstr(&g->gz));
+			return FCOM_ERR;
+		}
+
+		if (0 != ffgz_wfile(&g->gz, cmd->input.fn, cmd->input.mtime.s)) {
+			fcom_errlog(FILT_NAME, "%s", ffgz_errstr(&g->gz));
+			return FCOM_ERR;
+		}
+
+		g->state = W_DATA;
+		//fall through
+	}
+
+	case W_DATA:
+		break;
+	}
+
+	if (cmd->flags & FCOM_CMD_FWD) {
+		if (cmd->in_last)
+			ffgz_wfinish(&g->gz);
+		g->gz.in = cmd->in;
+	}
+
+	r = ffgz_write(&g->gz, ffarr_end(&g->buf), ffarr_unused(&g->buf));
+
+	switch (r) {
+	case FFGZ_DATA:
+		cmd->out = g->gz.out;
+		return FCOM_DATA;
+
+	case FFGZ_DONE:
+		if (g->gz.insize > (uint)-1)
+			fcom_warnlog(FILT_NAME, "truncated input file size", 0);
+		fcom_infolog(FILT_NAME, "%U => %U (%u%%)"
+			, g->gz.insize, g->gz.outsize, (uint)FFINT_DIVSAFE(g->gz.outsize * 100, g->gz.insize));
+		ffgz_wclose(&g->gz);
+		ffmem_tzero(&g->gz);
+		FF_CMPSET(&cmd->output.fn, g->fn.ptr, NULL);
+		g->state = W_EOF;
+		return FCOM_NEXTDONE;
+
+	case FFGZ_MORE:
+		return FCOM_MORE;
+
+	case FFGZ_ERR:
+		fcom_errlog(FILT_NAME, "%s", ffgz_errstr(&g->gz));
+		return FCOM_ERR;
+	}
+	return FCOM_ERR;
+}
+
+#undef FILT_NAME
+
+
 #define FILT_NAME  "arc.ungz"
 
 static void* ungz_open(fcom_cmd *cmd)
@@ -203,10 +346,6 @@ typedef struct ungz {
 	ffarr buf;
 	ffarr fn;
 } ungz;
-
-enum {
-	BUFSIZE = 64 * 1024,
-};
 
 static void* ungz1_open(fcom_cmd *cmd)
 {

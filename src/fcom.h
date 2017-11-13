@@ -179,6 +179,7 @@ typedef struct fcom_cmd {
 	const char *date_as_fn;
 	fftime mtime;
 	byte fsort; //enum FCOM_CMD_SORT
+	byte deflate_level;
 	uint err :1
 		, skip_err :1
 		, in_seek :1
