@@ -72,6 +72,7 @@ const fcom_command core_com_iface = {
 static const char* getmod_bycmd(const char *cmdname);
 static void filt_close(comm *c, filter *f);
 static int dir_scan(comm *c, char *name);
+static char* chain_print(comm *c, const ffchain_item *mark, char *buf, size_t cap);
 
 
 int core_comm_sig(uint signo)
@@ -170,7 +171,7 @@ static void com_close(void *p)
 
 	filter *f;
 	FFARR_WALKT(&c->filters, f, filter) {
-		if (f->ptr != NULL) {
+		if (f->ptr != NULL && f->ptr != FCOM_SKIP) {
 			c->cur = &f->sib;
 			dbglog(0, "closing %s", f->name);
 			f->filter->close(f->ptr, &c->cmd);
@@ -214,7 +215,6 @@ static int com_run(void *p)
 				goto err;
 			else if (f->ptr == FCOM_SKIP) {
 				dbglog(0, "%s is skipped", f->name);
-				f->ptr = NULL;
 				if (ffarr_endT(&c->filters, filter) == f + 1)
 					c->filters.len--;
 				op = FFLIST_CUR_NEXT | FFLIST_CUR_RM;
@@ -266,6 +266,7 @@ Split the chain into 2, finish the second chain, then continue with the first on
 			ffchain_split(c->cur, ffchain_sentl(&c->chain));
 			c->chain_stored.next = c->chain.next;
 			c->chain_stored.prev = c->cur;
+			c->chain.next = nxt;
 			c->cur = nxt;
 			f = FF_GETPTR(filter, sib, c->cur);
 			c->cmd.in = c->cmd.out;
@@ -469,7 +470,7 @@ done:
 /** Add filter to chain. */
 static int filt_add(comm *c, uint cmd, const char *name)
 {
-	filter *f, *p, *n, *fcur;
+	filter *f, *p, *fcur;
 	fcur = FF_GETPTR(filter, sib, c->cur);
 	if (ffarr_isfull(&c->filters)) {
 		errlog("can't add more filters", 0);
@@ -487,23 +488,21 @@ static int filt_add(comm *c, uint cmd, const char *name)
 
 	case FCOM_CMD_FILTADD:
 		ffchain_append(&f->sib, &fcur->sib);
-		p = fcur,  n = f;
 		break;
 
 	case FCOM_CMD_FILTADD_LAST:
 		p = FF_GETPTR(filter, sib, ffchain_last(&c->chain));
-		n = f;
 		ffchain_append(&f->sib, &p->sib);
 		break;
 
 	case FCOM_CMD_FILTADD_PREV:
 		ffchain_prepend(&f->sib, &fcur->sib);
-		p = f,  n = fcur;
 		break;
 	}
 
-	dbglog(0, "added %s to chain: %s -> %s"
-		, f->name, p->name, n->name);
+	char buf[255];
+	dbglog(0, "added %s to chain [%s]"
+		, f->name, chain_print(c, &f->sib, buf, sizeof(buf)));
 	c->filters.len++;
 	return 0;
 }
@@ -537,9 +536,43 @@ err:
 
 static void filt_close(comm *c, filter *f)
 {
-	dbglog(0, "closing %s", f->name);
+	char buf[255];
+	dbglog(0, "closing %s in chain [%s]"
+		, f->name, chain_print(c, &f->sib, buf, sizeof(buf)));
 	f->filter->close(f->ptr, &c->cmd);
-	f->ptr = NULL;
-	if (ffarr_endT(&c->filters, filter) == f + 1)
-		c->filters.len--;
+	f->ptr = FCOM_SKIP;
+
+	uint n = 0;
+	FFARR_RWALKT(&c->filters, f, filter) {
+		if (f->ptr != FCOM_SKIP)
+			break;
+		n++;
+	}
+	c->filters.len -= n;
+}
+
+/** Print names of all filters in chain. */
+static char* chain_print(comm *c, const ffchain_item *mark, char *buf, size_t cap)
+{
+	FF_ASSERT(cap != 0);
+	char *p = buf, *end = buf + cap - 1;
+	ffchain_item *it;
+	filter *f;
+
+	if (c->chain_stored.next != NULL) {
+		FFCHAIN_WALK(&c->chain_stored, it) {
+			if (it == ffchain_sentl(&c->chain))
+				break;
+			f = FF_GETPTR(filter, sib, it);
+			p += ffs_fmt(p, end, (it == mark) ? "*%s -> " : "%s -> ", f->name);
+		}
+	}
+
+	FFCHAIN_WALK(&c->chain, it) {
+		f = FF_GETPTR(filter, sib, it);
+		p += ffs_fmt(p, end, (it == mark) ? "*%s -> " : "%s -> ", f->name);
+	}
+
+	*p = '\0';
+	return buf;
 }
