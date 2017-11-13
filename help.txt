@@ -9,6 +9,7 @@ wregfind STR... [--member=KEY]...
 Pack files
 gz FILE... [--out=FILE]
 tar FILE... --out=FILE
+zip FILE... --out=FILE
 
 Unpack archives
 unpack FILE... [--out=FILE] [--member=FILE]... [--show]

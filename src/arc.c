@@ -75,6 +75,12 @@ static const fcom_filter untar_filt = { &untar_open, &untar_close, &untar_proces
 struct untar;
 static void untar_showinfo(struct untar *t, const fftar_file *f);
 
+// ZIP
+static void* zip_open(fcom_cmd *cmd);
+static void zip_close(void *p, fcom_cmd *cmd);
+static int zip_process(void *p, fcom_cmd *cmd);
+static const fcom_filter zip_filt = { &zip_open, &zip_close, &zip_process };
+
 // UNZIP
 static void* unzip_open(fcom_cmd *cmd);
 static void unzip_close(void *p, fcom_cmd *cmd);
@@ -120,6 +126,7 @@ static const struct cmd cmds[] = {
 	{ "unxz1", NULL, &unxz1_filt },
 	{ "tar", "arc.tar", &tar_filt },
 	{ "untar", "arc.untar", &untar_filt },
+	{ "zip", "arc.zip", &zip_filt },
 	{ "unzip", "arc.unzip", &unzip_filt },
 	{ "un7z", "arc.un7z", &un7z_filt },
 	{ "unpack", "arc.unpack", &unpack_filt },
@@ -927,6 +934,129 @@ static void untar_showinfo(untar *t, const fftar_file *f)
 	p = ffs_copyz(p, end, f->name);
 
 	fcom_verblog(FILT_NAME, "%*s", p - t->fn.ptr, t->fn.ptr);
+}
+
+#undef FILT_NAME
+
+
+#define FILT_NAME  "arc.zip"
+
+typedef struct zip {
+	uint state;
+	ffzip_cook zip;
+	ffarr buf;
+} zip;
+
+static void* zip_open(fcom_cmd *cmd)
+{
+	zip *z;
+	if (NULL == (z = ffmem_new(zip)))
+		return FCOM_OPEN_SYSERR;
+
+	if (NULL == ffarr_alloc(&z->buf, BUFSIZE)) {
+		fcom_syserrlog(FILT_NAME, "%s", ffmem_alloc_S);
+		goto err;
+	}
+
+	uint lev = (cmd->deflate_level != 255) ? cmd->deflate_level : 6;
+	if (0 != ffzip_winit(&z->zip, lev, 0)) {
+		fcom_errlog(FILT_NAME, "%s", ffzip_errstr(&z->zip));
+		goto err;
+	}
+
+	if (cmd->output.fn == NULL) {
+		fcom_errlog(FILT_NAME, "Output file name must be specified", 0);
+		goto err;
+	}
+
+	com->ctrl(cmd, FCOM_CMD_FILTADD, FCOM_CMD_FILT_OUT(cmd));
+	return z;
+
+err:
+	zip_close(z, cmd);
+	return NULL;
+}
+
+static void zip_close(void *p, fcom_cmd *cmd)
+{
+	zip *z = p;
+	ffarr_free(&z->buf);
+	ffzip_wclose(&z->zip);
+	ffmem_free(z);
+}
+
+static int zip_process(void *p, fcom_cmd *cmd)
+{
+	zip *z = p;
+	int r;
+	enum E { W_NEXT, W_NEWFILE, W_DATA, W_EOF };
+
+	switch ((enum E)z->state) {
+
+	case W_EOF:
+		FF_ASSERT(cmd->in.len == 0);
+		z->state = W_NEXT;
+		//fall through
+
+	case W_NEXT:
+		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0))) {
+			ffzip_wfinish(&z->zip);
+			z->state = W_DATA;
+			break;
+		}
+		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
+
+		z->state = W_NEWFILE;
+		return FCOM_MORE;
+
+	case W_NEWFILE: {
+		ffzip_fattr attr = {0};
+		ffzip_setsysattr(&attr, cmd->input.attr);
+		if (0 != ffzip_wfile(&z->zip, cmd->input.fn, &cmd->input.mtime, &attr)) {
+			fcom_errlog(FILT_NAME, "%s", ffzip_errstr(&z->zip));
+			return FCOM_ERR;
+		}
+		z->state = W_DATA;
+		//fall through
+	}
+
+	case W_DATA:
+		break;
+	}
+
+	if (cmd->flags & FCOM_CMD_FWD) {
+		if (cmd->in_last)
+			ffzip_wfiledone(&z->zip);
+		z->zip.in = cmd->in;
+	}
+
+	for (;;) {
+
+	r = ffzip_write(&z->zip, ffarr_end(&z->buf), ffarr_unused(&z->buf));
+	switch (r) {
+
+	case FFZIP_DATA:
+		cmd->out = z->zip.out;
+		return FCOM_DATA;
+
+	case FFZIP_FILEDONE:
+		fcom_infolog(FILT_NAME, "%s: %U => %U (%u%%)"
+			, cmd->input.fn, z->zip.file_insize, z->zip.file_outsize
+			, (uint)FFINT_DIVSAFE(z->zip.file_outsize * 100, z->zip.file_insize));
+		z->state = W_EOF;
+		return FCOM_MORE;
+
+	case FFZIP_MORE:
+		return FCOM_MORE;
+
+	case FFZIP_DONE:
+		return FCOM_DONE;
+
+	case FFZIP_ERR:
+		fcom_errlog(FILT_NAME, "%s", ffzip_errstr(&z->zip));
+		return FCOM_ERR;
+	}
+	}
 }
 
 #undef FILT_NAME
