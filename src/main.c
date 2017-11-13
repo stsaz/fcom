@@ -200,7 +200,7 @@ static int in_add(struct job *c, const ffstr *s, uint flags)
 	if (NULL == (e = ffmem_calloc(1, sizeof(struct in_ent) + s->len + 1)))
 		return -1;
 	ffchain_add(&c->in_list, &e->sib);
-	if (c->in_next == NULL)
+	if (c->in_next == ffchain_sentl(&c->in_list))
 		c->in_next = ffchain_first(&c->in_list);
 	ffsz_fcopy(e->fn, s->ptr, s->len);
 	return 0;
@@ -494,6 +494,7 @@ int main(int argc, char **argv, char **env)
 		return 1;
 	g->retcode = 1;
 	ffchain_init(&g->in_list);
+	g->in_next = ffchain_sentl(&g->in_list);
 
 	if (NULL == (core = core_create(&std_log, argv, env)))
 		return 1;
