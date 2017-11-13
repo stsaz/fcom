@@ -17,7 +17,7 @@ INSTDIR := ./$(PROJ)
 BIN := fcom.exe
 else
 INSTDIR := ./$(PROJ)-0
-BIN := fcom-bin
+BIN := fcom
 endif
 VER :=
 
