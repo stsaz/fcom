@@ -18,6 +18,7 @@ unxz FILE... [--out=FILE]
 untar FILE... [--out=FILE] [--member=FILE]... [--show]
 unzip FILE... [--out=FILE] [--member=FILE]... [--show]
 un7z FILE... [--out=FILE] [--member=FILE]... [--show]
+uniso FILE... [--out=FILE] [--member=FILE]... [--show]
 
 OPTIONS
 

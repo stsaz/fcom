@@ -9,6 +9,7 @@ Copyright (c) 2017 Simon Zolin
 #include <FF/pack/tar.h>
 #include <FF/pack/zip.h>
 #include <FF/pack/7z.h>
+#include <FF/pack/iso.h>
 #include <FF/path.h>
 #include <FF/time.h>
 
@@ -99,6 +100,15 @@ static const fcom_filter un7z_filt = { &un7z_open, &un7z_close, &un7z_process };
 struct un7z;
 static void un7z_showinfo(struct un7z *z, const ff7zfile *f);
 
+// UNISO
+static void* uniso_open(fcom_cmd *cmd);
+static void uniso_close(void *p, fcom_cmd *cmd);
+static int uniso_process(void *p, fcom_cmd *cmd);
+static const fcom_filter uniso_filt = { &uniso_open, &uniso_close, &uniso_process };
+
+struct uniso;
+static void uniso_showinfo(struct uniso *o, const ffiso_file *f, uint show);
+
 // UNPACK
 static void* unpack_open(fcom_cmd *cmd);
 static void unpack_close(void *p, fcom_cmd *cmd);
@@ -129,6 +139,7 @@ static const struct cmd cmds[] = {
 	{ "zip", "arc.zip", &zip_filt },
 	{ "unzip", "arc.unzip", &unzip_filt },
 	{ "un7z", "arc.un7z", &un7z_filt },
+	{ "uniso", "arc.uniso", &uniso_filt },
 	{ "unpack", "arc.unpack", &unpack_filt },
 };
 
@@ -1410,6 +1421,195 @@ static void un7z_showinfo(un7z *z, const ff7zfile *f)
 #undef FILT_NAME
 
 
+#define FILT_NAME  "arc.uniso"
+
+struct uniso {
+	uint state;
+	ffiso iso;
+	ffarr fn;
+	uint init :1;
+};
+
+static void* uniso_open(fcom_cmd *cmd)
+{
+	struct uniso *o;
+	if (NULL == (o = ffmem_new(struct uniso)))
+		return NULL;
+
+	if (NULL == ffarr_alloc(&o->fn, 4096))
+		goto err;
+
+	return o;
+
+err:
+	uniso_close(o, cmd);
+	return FCOM_OPEN_SYSERR;
+}
+
+static void uniso_close(void *p, fcom_cmd *cmd)
+{
+	struct uniso *o = p;
+	if (o->init)
+		ffiso_close(&o->iso);
+	ffarr_free(&o->fn);
+	ffmem_free(o);
+}
+
+static int uniso_process(void *p, fcom_cmd *cmd)
+{
+	struct uniso *o = p;
+	int r;
+	ffiso_file *f;
+	enum E { R_FIRST, R_INIT, R_DATA, R_EOF, R_NEXT };
+
+again:
+	switch ((enum E)o->state) {
+	case R_EOF:
+		ffiso_close(&o->iso);
+		ffmem_tzero(&o->iso);
+		o->init = 0;
+		if (!(cmd->flags & FCOM_CMD_FWD))
+			return FCOM_MORE;
+		o->state = R_FIRST;
+		//fall through
+
+	case R_FIRST:
+		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0)))
+			return FCOM_FIN;
+		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
+		o->state = R_INIT;
+		return FCOM_MORE;
+
+	case R_INIT:
+		ffiso_init(&o->iso);
+		o->init = 1;
+		o->state = R_DATA;
+		break;
+
+	case R_NEXT:
+		FF_CMPSET(&cmd->output.fn, o->fn.ptr, NULL);
+		if (NULL == (f = ffiso_nextfile(&o->iso))) {
+			o->state = R_EOF;
+			return FCOM_MORE;
+		}
+
+		if (cmd->members.len != 0) {
+			if (0 > ffs_findarrz((void*)cmd->members.ptr, cmd->members.len, f->name.ptr, f->name.len))
+				goto again;
+		}
+
+		if (cmd->output.fn == NULL) {
+			if (FCOM_DATA != (r = fn_out(cmd, &f->name, &o->fn)))
+				return r;
+			cmd->output.fn = o->fn.ptr;
+		}
+		cmd->output.size = f->size;
+		cmd->output.mtime = f->mtime;
+
+		const char *filt = ffiso_file_isdir(f) ? "core.dir-out" : FCOM_CMD_FILT_OUT(cmd);
+		com->ctrl(cmd, FCOM_CMD_FILTADD, filt);
+
+		ffiso_readfile(&o->iso, f);
+		o->state = R_DATA;
+		break;
+
+	case R_DATA:
+		break;
+	}
+
+	if (cmd->flags & FCOM_CMD_FWD)
+		ffiso_input(&o->iso, cmd->in.ptr, cmd->in.len);
+
+	for (;;) {
+
+	r = ffiso_read(&o->iso);
+	switch ((enum FFISO_R)r) {
+
+	case FFISO_HDR:
+		break;
+
+	case FFISO_FILEMETA:
+		f = ffiso_getfile(&o->iso);
+
+		if (cmd->members.len != 0) {
+			ffbool skip = 0;
+			if (0 > ffs_findarrz((void*)cmd->members.ptr, cmd->members.len, f->name.ptr, f->name.len))
+				skip = 1;
+			else {
+				if (cmd->show || fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
+					uniso_showinfo(o, f, cmd->show);
+			}
+			if (!skip || ffiso_file_isdir(f)) {
+				if (0 != ffiso_storefile(&o->iso))
+					return FCOM_ERR;
+			}
+			continue;
+		}
+
+		if (cmd->show || fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
+			uniso_showinfo(o, f, cmd->show);
+
+		if (0 != ffiso_storefile(&o->iso))
+			return FCOM_ERR;
+		continue;
+
+	case FFISO_LISTEND:
+		if (cmd->show) {
+			o->state = R_EOF;
+			return FCOM_MORE;
+		}
+		o->state = R_NEXT;
+		goto again;
+
+	case FFISO_DATA:
+		cmd->out = ffiso_output(&o->iso);
+		return FCOM_DATA;
+
+	case FFISO_FILEDONE:
+		o->state = R_NEXT;
+		return FCOM_NEXTDONE;
+
+	case FFISO_MORE:
+		return FCOM_MORE;
+
+	case FFISO_SEEK:
+		fcom_cmd_seek(cmd, ffiso_offset(&o->iso));
+		return FCOM_MORE;
+
+	case FFISO_ERR:
+		fcom_errlog(FILT_NAME, "%s  offset:0x%xU", ffiso_errstr(&o->iso), cmd->input.offset);
+		return FCOM_ERR;
+	}
+	}
+}
+
+/* "size date name" */
+static void uniso_showinfo(struct uniso *o, const ffiso_file *f, uint show)
+{
+	char *p = o->fn.ptr, *end = ffarr_edge(&o->fn);
+
+	if (ffiso_file_isdir(f))
+		p = ffs_copy(p, end, "       <DIR>", 12);
+	else
+		p += ffs_fromint(f->size, p, end - p, FFINT_WIDTH(12));
+	p = ffs_copyc(p, end, ' ');
+
+	ffdtm dt;
+	fftime_split(&dt, &f->mtime, FFTIME_TZLOCAL);
+	p += fftime_tostr(&dt, p, end - p, FFTIME_DATE_YMD | FFTIME_HMS);
+	p = ffs_copyc(p, end, ' ');
+
+	p = ffs_copystr(p, end, &f->name);
+
+	if (show)
+		fcom_infolog(FILT_NAME, "%*s", p - o->fn.ptr, o->fn.ptr);
+	else
+		fcom_verblog(FILT_NAME, "%*s", p - o->fn.ptr, o->fn.ptr);
+}
+
+#undef FILT_NAME
+
+
 static void* unpack_open(fcom_cmd *cmd)
 {
 	return FCOM_OPEN_DUMMY;
@@ -1422,6 +1622,7 @@ static void unpack_close(void *p, fcom_cmd *cmd)
 static const char arc_exts[][4] = {
 	"7z",
 	"gz",
+	"iso",
 	"tar",
 	"tgz",
 	"txz",
@@ -1431,6 +1632,7 @@ static const char arc_exts[][4] = {
 static const char *const arc_filts[] = {
 	"arc.un7z",
 	"arc.ungz",
+	"arc.uniso",
 	"arc.untar",
 	"arc.untar",
 	"arc.untar",
