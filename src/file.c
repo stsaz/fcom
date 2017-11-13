@@ -35,6 +35,8 @@ static int fi_process(void *p, fcom_cmd *cmd);
 static const fcom_filter fi_filt = {
 	&fi_open, &fi_close, &fi_process,
 };
+struct inconf;
+static struct inconf *inconf;
 typedef struct file file;
 typedef struct buf buf;
 static int fi_getdata(file *f, buf **pb, uint64 off);
@@ -48,6 +50,8 @@ static int fo_adddata(void *p, fcom_cmd *cmd);
 static const fcom_filter fo_filt = {
 	&fo_open, &fo_close, &fo_adddata,
 };
+struct outconf;
+static struct outconf *outconf;
 
 // DIR OUTPUT
 static void* diro_open(fcom_cmd *cmd);
@@ -111,6 +115,8 @@ static int file_sig(uint signo)
 			return -1;
 		break;
 	case FCOM_SIGFREE:
+		ffmem_safefree(inconf);
+		ffmem_safefree(outconf);
 		ffaio_fctxclose();
 		break;
 	}
@@ -127,7 +133,6 @@ struct inconf {
 	byte directio;
 	byte readahead;
 };
-static struct inconf *inconf;
 
 #define OFF(member)  FFPARS_DSTOFF(struct inconf, member)
 static const ffpars_arg fi_conf_args[] = {
@@ -509,7 +514,6 @@ struct outconf {
 	byte mkpath;
 	byte del_on_err;
 };
-static struct outconf *outconf;
 
 #define OFF(member)  FFPARS_DSTOFF(struct outconf, member)
 static const ffpars_arg fo_conf_args[] = {

@@ -178,6 +178,13 @@ static void com_close(void *p)
 	}
 	ffarr_free(&c->filters);
 
+	ffchain_item *it;
+	FFCHAIN_FOR(&c->in_list, it) {
+		struct in_ent *e = FF_GETPTR(struct in_ent, sib, it);
+		it = it->next;
+		ffmem_free(e);
+	}
+
 	dbglog(0, "'%s' finished", c->cmd.name);
 	ffmem_free(c);
 }

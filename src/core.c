@@ -192,6 +192,11 @@ void core_free(void)
 	ffkqu_post_detach(&g->kqpost, g->kq);
 	fftmrq_destroy(&g->tmrq, g->kq);
 	FF_SAFECLOSE(g->kq, FF_BADFD, ffkqu_close);
+	struct iface *pif;
+	FFARR_WALKT(&g->ifaces, pif, struct iface) {
+		ffmem_safefree(pif->name);
+	}
+	ffarr_free(&g->ifaces);
 	mods_destroy();
 	ffenv_destroy(&g->env);
 	conf_destroy(&g->conf);
