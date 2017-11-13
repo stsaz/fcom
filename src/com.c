@@ -44,6 +44,7 @@ typedef struct {
 	ffchain chain;
 	fflist_cursor cur;
 	ffchain_item chain_stored;
+	const struct fcom_cmd_mon *mon;
 
 	ffchain in_list; //struct in_ent[]
 	ffchain_item *in_next;
@@ -185,6 +186,9 @@ static void com_close(void *p)
 		it = it->next;
 		ffmem_free(e);
 	}
+
+	if (c->mon != NULL)
+		c->mon->onsig(NULL, 0);
 
 	dbglog(0, "'%s' finished", c->cmd.name);
 	ffmem_free(c);
@@ -516,6 +520,11 @@ static int com_ctrl(fcom_cmd *_c, uint cmd, ...)
 	va_start(va, cmd);
 
 	switch ((enum FCOM_CMD_CTL)cmd) {
+	case FCOM_CMD_MONITOR:
+		c->mon = va_arg(va, void*);
+		dbglog(0, "set monitor iface: %p", c->mon);
+		break;
+
 	case FCOM_CMD_FILTADD:
 	case FCOM_CMD_FILTADD_LAST:
 	case FCOM_CMD_FILTADD_PREV: {

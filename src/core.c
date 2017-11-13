@@ -16,7 +16,6 @@ Copyright (c) 2017 Simon Zolin */
 
 extern const fcom_command core_com_iface;
 extern int core_comm_sig(uint signo);
-const fcom_filter op_filt;
 extern const fcom_mod file_mod;
 extern const fcom_mod f_mod;
 
@@ -590,8 +589,6 @@ static const void* coremod_iface(const char *name)
 	const void *pif;
 	if (ffsz_eq(name, "com"))
 		return &core_com_iface;
-	else if (ffsz_eq(name, "globop"))
-		return &op_filt;
 	if (NULL != (pif = file_mod.iface(name)))
 		return pif;
 	if (NULL != (pif = f_mod.iface(name)))

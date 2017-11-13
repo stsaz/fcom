@@ -225,6 +225,7 @@ typedef struct fcom_filter {
 } fcom_filter;
 
 enum FCOM_CMD_CTL {
+	FCOM_CMD_MONITOR,
 	FCOM_CMD_FILTADD_PREV,
 	FCOM_CMD_FILTADD,
 	FCOM_CMD_FILTADD_LAST,
@@ -268,3 +269,9 @@ typedef struct fcom_command {
 
 #define fcom_cmd_seek(cmd, off) \
 	(cmd)->input.offset = off,  (cmd)->in_seek = 1
+
+struct fcom_cmd_mon {
+	void (*onsig)(fcom_cmd *cmd, uint sig);
+};
+/** Associate monitor interface with a command. */
+#define fcom_cmd_monitor(cmd, mon)  ctrl(cmd, FCOM_CMD_MONITOR, mon)

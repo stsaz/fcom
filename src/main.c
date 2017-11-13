@@ -66,13 +66,8 @@ static int cmdline(int argc, char **argv);
 static int in_add(struct job *c, const ffstr *s, uint flags);
 static const char* in_next(struct job *c, uint flags);
 
-// global command wrapper
-static void* op_open(fcom_cmd *cmd);
-static void op_close(void *p, fcom_cmd *cmd);
-static int op_process(void *p, fcom_cmd *cmd);
-const fcom_filter op_filt = {
-	&op_open, &op_close, &op_process,
-};
+static void mon_onsig(fcom_cmd *cmd, uint sig);
+static const struct fcom_cmd_mon mon = { &mon_onsig };
 
 
 static const char *const log_levs[] = {
@@ -412,20 +407,10 @@ static void cmds_free(void)
 }
 
 
-static void* op_open(fcom_cmd *cmd)
-{
-	return FCOM_OPEN_DUMMY;
-}
-
-static void op_close(void *p, fcom_cmd *cmd)
-{
-}
-
-static int op_process(void *p, fcom_cmd *cmd)
+static void mon_onsig(fcom_cmd *cmd, uint sig)
 {
 	g->retcode = 0;
 	core->cmd(FCOM_STOP);
-	return FCOM_DONE;
 }
 
 static void cmd_add(void *param)
@@ -455,7 +440,7 @@ static void cmd_add(void *param)
 	if (NULL == (m = com->create(&cmd)))
 		goto done;
 
-	if (0 != com->fcom_cmd_filtadd_prev(m, "core.globop"))
+	if (0 != com->fcom_cmd_monitor(m, &mon))
 		goto done;
 
 	// set arguments
