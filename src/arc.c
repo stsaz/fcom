@@ -184,8 +184,10 @@ static int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf)
 		p = ffs_copyz(p, end, cmd->outdir);
 		p = ffs_copyc(p, end, '/');
 	}
-	if (0 == (n = ffpath_norm(p, end - p, input->ptr, input->len, FFPATH_NOWINDOWS | FFPATH_TOREL | FFPATH_MERGEDOTS)))
+	if (0 == (n = ffpath_norm(p, end - p, input->ptr, input->len, FFPATH_NOWINDOWS | FFPATH_FORCESLASH | FFPATH_TOREL | FFPATH_MERGEDOTS)))
 		return FCOM_ERR;
+
+	n = ffpath_makefn_full(p, end - p, p, n, '_');
 	p += n;
 	*p = '\0';
 
