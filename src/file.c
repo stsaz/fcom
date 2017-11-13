@@ -89,7 +89,7 @@ static const struct cmd cmds[] = {
 static const void* file_iface(const char *name)
 {
 	const struct cmd *cmd;
-	FFARRS_FOREACH(cmds, cmd) {
+	FFARR_WALKNT(cmds, FFCNT(cmds), cmd, struct cmd) {
 		if (ffsz_eq(name, cmd->name))
 			return cmd->iface;
 	}

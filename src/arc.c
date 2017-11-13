@@ -150,7 +150,7 @@ static int arc_sig(uint signo)
 		ffmem_init();
 		com = core->iface("core.com");
 		const struct cmd *c;
-		FFARRS_FOREACH(cmds, c) {
+		FFARR_WALKNT(cmds, FFCNT(cmds), c, struct cmd) {
 			if (c->mod != NULL && 0 != com->reg(c->name, c->mod))
 				return -1;
 		}
@@ -415,7 +415,7 @@ static int ungz1_process(void *p, fcom_cmd *cmd)
 
 	case R_EOF:
 		if (cmd->in.len != 0) {
-			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%U", cmd->input.offset);
+			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%xU", cmd->input.offset);
 			return FCOM_ERR;
 		}
 		return FCOM_DONE;
@@ -467,7 +467,7 @@ static int ungz1_process(void *p, fcom_cmd *cmd)
 			, (int)(g->gz.insize * 100 / ffgz_size(&g->gz)));
 
 		if (g->gz.in.len != 0) {
-			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%U", cmd->input.offset);
+			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%xU", cmd->input.offset);
 			return FCOM_ERR;
 		}
 		FF_CMPSET(&cmd->output.fn, g->fn.ptr, NULL);
@@ -573,7 +573,7 @@ static int unxz1_process(void *p, fcom_cmd *cmd)
 
 	case R_EOF:
 		if (cmd->in.len != 0) {
-			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%U", cmd->input.offset);
+			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%xU", cmd->input.offset);
 			return FCOM_ERR;
 		}
 		return FCOM_DONE;
@@ -613,7 +613,7 @@ static int unxz1_process(void *p, fcom_cmd *cmd)
 			, (int)(x->xz.insize * 100 / x->xz.outsize));
 
 		if (x->xz.in.len != 0) {
-			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%U", cmd->input.offset);
+			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%xU", cmd->input.offset);
 			return FCOM_ERR;
 		}
 		FF_CMPSET(&cmd->output.fn, x->fn.ptr, NULL);
@@ -798,7 +798,7 @@ static int untar_process(void *p, fcom_cmd *cmd)
 	switch ((enum E)t->state) {
 	case R_EOF:
 		if (cmd->in.len != 0) {
-			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%U", cmd->input.offset);
+			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%xU", cmd->input.offset);
 			return FCOM_ERR;
 		}
 		t->state = R_FIRST;

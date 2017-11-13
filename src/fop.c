@@ -69,7 +69,7 @@ static const struct oper cmds[] = {
 static const void* f_iface(const char *name)
 {
 	const struct oper *op;
-	FFARRS_FOREACH(cmds, op) {
+	FFARR_WALKNT(cmds, FFCNT(cmds), op, struct oper) {
 		if (ffsz_eq(name, op->mod + FFSLEN("core.")))
 			return op->iface;
 	}
@@ -88,7 +88,7 @@ static int f_sig(uint signo)
 		com = core->iface("core.com");
 
 		const struct oper *op;
-		FFARRS_FOREACH(cmds, op) {
+		FFARR_WALKNT(cmds, FFCNT(cmds), op, struct oper) {
 			if (0 != com->reg(op->name, op->mod))
 				return -1;
 		}

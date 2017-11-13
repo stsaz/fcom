@@ -8,6 +8,18 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.2 - Nov 13, 2017
+
+ + fcom zip - pack files into .zip
+ + fcom tar - pack files into .tar
+ + fcom gz - pack file into .gz
+ + fcom wregfind - search within Windows system registry
+ + fcom uniso - unpack .iso
+ - arc.unpack: replace bad characters in filename
+ - file read: could hang when readahead is enabled
+ - core: segfault on empty file list
+
+
 fcom v0.1 - Sep 26, 2017
 
  + fcom unpack (.gz, .xz, .tar, .zip, .7z)

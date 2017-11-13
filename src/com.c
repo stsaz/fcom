@@ -217,7 +217,7 @@ static int com_run(void *p)
 				dbglog(0, "%s is skipped", f->name);
 				if (ffarr_endT(&c->filters, filter) == f + 1)
 					c->filters.len--;
-				op = FFLIST_CUR_NEXT | FFLIST_CUR_RM;
+				op = FFLIST_CUR_NEXT | FFLIST_CUR_RM | FFLIST_CUR_BOUNCE;
 				goto shift;
 			} else if (f->ptr == FCOM_OPEN_SYSERR) {
 				syserrlog("%s", f->name);

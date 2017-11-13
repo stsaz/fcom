@@ -15,9 +15,9 @@ Copyright (c) 2017 Simon Zolin */
 #define FCOM_VER_MK(maj, minor) \
 	(((maj) << 8) | (minor))
 #define FCOM_VER_MAJ  0
-#define FCOM_VER_MIN  1
+#define FCOM_VER_MIN  2
 #define FCOM_VER  FCOM_VER_MK(FCOM_VER_MAJ, FCOM_VER_MIN)
-#define FCOM_VER_STR  "0.1"
+#define FCOM_VER_STR  "0.2"
 #define FCOM_CONF_FN  "fcom.conf"
 
 enum FCOM_LOGLEV {
@@ -29,6 +29,7 @@ enum FCOM_LOGLEV {
 	_FCOM_LEVMASK = 0x0f,
 
 	FCOM_LOGSYS = 0x10,
+	FCOM_LOGNOPFX = 0x20, //no prefix
 };
 
 typedef struct fcom_conf {
@@ -210,7 +211,7 @@ enum FCOM_FILT_R {
 	FCOM_ERR, //close the chain with an error
 	FCOM_SYSERR, //same as FCOM_ERR, but also print system error
 	FCOM_FIN, //close the chain
-	FCOM_ASYNC, //pause processing until explicitely resumed by the current filter
+	FCOM_ASYNC, //pause processing until explicitly resumed by the current filter
 };
 
 /** A module implements this interface to act as a filter in command's chain. */
@@ -264,3 +265,6 @@ typedef struct fcom_command {
 /** Get the name of data input/output filter. */
 #define FCOM_CMD_FILT_IN(cmd)  (ffsz_eq((cmd)->input.fn, "@stdin") ? "core.stdin" : "core.file-in")
 #define FCOM_CMD_FILT_OUT(cmd)  (((cmd)->out_std) ? "core.stdout" : "core.file-out")
+
+#define fcom_cmd_seek(cmd, off) \
+	(cmd)->input.offset = off,  (cmd)->in_seek = 1

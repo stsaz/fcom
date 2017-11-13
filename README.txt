@@ -1,8 +1,10 @@
 fcom is a fast file commander for Windows, Linux and FreeBSD.
 
-Note: devel version.
+Note: beta version.
 
-Features:
+---------------
+FEATURES
+---------------
 	fcom touch - create/set attributes on files or directories
 		Create an empty file:
 			fcom touch ./myfile
@@ -20,6 +22,10 @@ Features:
 		Compute CRC32 checksum:
 			fcom crc myfile
 
+	fcom gz - pack file to .gz
+		Pack to separate .gz files in the current directory
+			fcom gz /file1.txt /file2.txt
+
 	fcom ungz - unpack .gz files
 	fcom unxz - unpack .xz files
 		Unpack to the current directory
@@ -27,14 +33,23 @@ Features:
 		Specify output file
 			fcom unxz ./file1.xz -o ./file1.txt
 
+	fcom tar - pack files to .tar
+	fcom zip - pack files to .zip
+		fcom zip /file1.txt /file2.txt -o arc.zip
+
 	fcom untar - unpack .tar files
 	fcom unzip - unpack .zip files
 	fcom un7z - unpack .7z files
+	fcom uniso - unpack .iso files
 		Unpack 2 files from gzip-compressed tar archive to the specified directory
 			fcom untar ./arc.tar.gz --member=file1.txt --member=file2.txt --outdir=mydir
 
 	fcom unpack - unpack archives (determine format by file extension)
 			fcom unpack ./arc.tar.gz ./arc.zip ./arc.7z
+
+	fcom wregfind - search within Windows system registry
+		Search "sometext" in HKEY_CURRENT_USER
+			fcom wregfind sometext --member=HKCU
 
 
 ---------------

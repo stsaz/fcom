@@ -91,17 +91,22 @@ static int std_log(uint flags, const char *fmt, va_list va)
 	uint lev = flags & _FCOM_LEVMASK;
 	int e;
 
-	if (flags & FCOM_LOGSYS)
-		e = fferr_last();
-
-	fftime_now(&t);
-	fftime_split(&dt, &t, FFTIME_TZLOCAL);
-	tm.len = fftime_tostr(&dt, stime, sizeof(stime), FFTIME_HMS_MSEC);
-	tm.ptr = stime;
-
 	s = buf;
 	end = buf + FFCNT(buf) - FFSLEN("\n");
-	s += ffs_fmt(s, end, "%S fcom: [%s] ", &tm, log_levs[lev]);
+
+	if (lev != FCOM_LOGVERB && !(flags & FCOM_LOGNOPFX)) {
+
+		if (flags & FCOM_LOGSYS)
+			e = fferr_last();
+
+		fftime_now(&t);
+		fftime_split(&dt, &t, FFTIME_TZLOCAL);
+		tm.len = fftime_tostr(&dt, stime, sizeof(stime), FFTIME_HMS_MSEC);
+		tm.ptr = stime;
+
+		s += ffs_fmt(s, end, "%S fcom: [%s] ", &tm, log_levs[lev]);
+	}
+
 	s += ffs_fmtv(s, end, fmt, va);
 
 	if (flags & FCOM_LOGSYS)
