@@ -22,6 +22,11 @@ BIN_O := $(OBJ_DIR)/main.o \
 	$(FF_OBJ_DIR)/fftmr.o \
 	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffpsarg.o $(FF_OBJ_DIR)/ffconf.o
 
+ifeq ($(OS),win)
+BIN_O += $(OBJ_DIR)/sys-win.o \
+	$(FF_OBJ_DIR)/ffwreg.o $(FF_OBJ_DIR)/ffwreg2.o
+endif
+
 $(BIN): $(BIN_O)
 	$(LD)  $(BIN_O) $(LDFLAGS) $(LD_LWS2_32) $(LD_LDL) -o$@
 

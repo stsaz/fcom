@@ -57,10 +57,13 @@ struct oper {
 	const fcom_filter *iface;
 };
 
+const fcom_filter wregfind_filt;
+
 static const struct oper cmds[] = {
 	{ "touch", "core.f-touch", &f_touch_filt },
 	{ "textcount", "core.f-textcount", &f_tcnt_filt },
 	{ "crc", "core.f-crc", &f_crc_filt },
+	{ "wregfind", "core.wregfind", &wregfind_filt },
 };
 
 static const void* f_iface(const char *name)
