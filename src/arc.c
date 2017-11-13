@@ -50,6 +50,12 @@ static void unxz1_close(void *p, fcom_cmd *cmd);
 static int unxz1_process(void *p, fcom_cmd *cmd);
 static const fcom_filter unxz1_filt = { &unxz1_open, &unxz1_close, &unxz1_process };
 
+// TAR
+static void* tar_open(fcom_cmd *cmd);
+static void tar_close(void *p, fcom_cmd *cmd);
+static int tar_process(void *p, fcom_cmd *cmd);
+static const fcom_filter tar_filt = { &tar_open, &tar_close, &tar_process };
+
 // UNTAR
 static void* untar_open(fcom_cmd *cmd);
 static void untar_close(void *p, fcom_cmd *cmd);
@@ -101,6 +107,7 @@ static const struct cmd cmds[] = {
 	{ "ungz1", NULL, &ungz1_filt },
 	{ "unxz", "arc.unxz", &unxz_filt },
 	{ "unxz1", NULL, &unxz1_filt },
+	{ "tar", "arc.tar", &tar_filt },
 	{ "untar", "arc.untar", &untar_filt },
 	{ "unzip", "arc.unzip", &unzip_filt },
 	{ "un7z", "arc.un7z", &un7z_filt },
@@ -464,6 +471,126 @@ static int unxz1_process(void *p, fcom_cmd *cmd)
 
 	case FFXZ_ERR:
 		fcom_errlog(FILT_NAME, "%s  offset:0x%xU", ffxz_errstr(&x->xz), cmd->input.offset);
+		return FCOM_ERR;
+	}
+	}
+}
+
+#undef FILT_NAME
+
+
+#define FILT_NAME  "arc.tar"
+
+typedef struct tar {
+	uint state;
+	fftar_cook tar;
+} tar;
+
+static void* tar_open(fcom_cmd *cmd)
+{
+	tar *t;
+	if (NULL == (t = ffmem_new(tar)))
+		return FCOM_OPEN_SYSERR;
+
+	if (0 != fftar_create(&t->tar)) {
+		fcom_errlog(FILT_NAME, "%s", fftar_errstr(&t->tar));
+		goto end;
+	}
+
+	if (cmd->output.fn == NULL) {
+		fcom_errlog(FILT_NAME, "Output file name must be specified", 0);
+		goto end;
+	}
+
+	com->ctrl(cmd, FCOM_CMD_FILTADD, FCOM_CMD_FILT_OUT(cmd));
+	return t;
+
+end:
+	tar_close(t, cmd);
+	return NULL;
+}
+
+static void tar_close(void *p, fcom_cmd *cmd)
+{
+	tar *t = p;
+	fftar_wclose(&t->tar);
+	ffmem_free(t);
+}
+
+static int tar_process(void *p, fcom_cmd *cmd)
+{
+	tar *t = p;
+	int r;
+	enum E { W_NEXT, W_NEWFILE, W_DATA, W_EOF };
+
+	switch ((enum E)t->state) {
+
+	case W_EOF:
+		FF_ASSERT(cmd->in.len == 0);
+		t->state = W_NEXT;
+		//fall through
+
+	case W_NEXT:
+		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0))) {
+			fftar_wfinish(&t->tar);
+			t->state = W_DATA;
+			break;
+		}
+		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
+
+		t->state = W_NEWFILE;
+		return FCOM_MORE;
+
+	case W_NEWFILE: {
+		fftar_file f = {0};
+		f.name = cmd->input.fn;
+#ifdef FF_UNIX
+		f.mode = cmd->input.attr;
+#else
+		f.mode = (fffile_isdir(cmd->input.attr)) ? FFUNIX_FILE_DIR | 0755 : 0644;
+#endif
+		f.size = cmd->input.size;
+		f.mtime = cmd->input.mtime;
+		if (0 != fftar_newfile(&t->tar, &f)) {
+			fcom_errlog(FILT_NAME, "%s", fftar_errstr(&t->tar));
+			return FCOM_ERR;
+		}
+		t->state = W_DATA;
+		//fall through
+	}
+
+	case W_DATA:
+		break;
+	}
+
+	if (cmd->flags & FCOM_CMD_FWD) {
+		if (cmd->in_last)
+			fftar_wfiledone(&t->tar);
+		t->tar.in = cmd->in;
+	}
+
+	for (;;) {
+
+	r = fftar_write(&t->tar);
+	switch (r) {
+
+	case FFTAR_DATA:
+		cmd->out = t->tar.out;
+		return FCOM_DATA;
+
+	case FFTAR_FILEDONE:
+		fcom_verblog(FILT_NAME, "added %s: %U", cmd->input.fn, t->tar.fsize);
+		t->state = W_EOF;
+		return FCOM_MORE;
+
+	case FFTAR_MORE:
+		return FCOM_MORE;
+
+	case FFTAR_DONE:
+		return FCOM_DONE;
+
+	case FFTAR_ERR:
+		fcom_errlog(FILT_NAME, "%s", fftar_errstr(&t->tar));
 		return FCOM_ERR;
 	}
 	}

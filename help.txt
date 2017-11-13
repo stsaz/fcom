@@ -6,6 +6,9 @@ textcount FILE...
 crc FILE...
 wregfind STR... [--member=KEY]...
 
+Pack files
+tar FILE... --out=FILE
+
 Unpack archives
 unpack FILE... [--out=FILE] [--member=FILE]... [--show]
 ungz FILE... [--out=FILE]
