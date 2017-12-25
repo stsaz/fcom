@@ -329,6 +329,12 @@ static int fi_process(void *p, fcom_cmd *cmd)
 	buf *b = NULL;
 	int r, async = 0, cachehit = 0;
 
+	if (fffile_isdir(cmd->input.attr)) {
+		cmd->in_last = 1;
+		ffstr_null(&cmd->out);
+		return FCOM_DONE;
+	}
+
 	if (f->uctx != NULL) {
 		f->uctx = NULL;
 		async = 1;
