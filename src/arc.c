@@ -191,7 +191,7 @@ static int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf)
 
 	p = buf->ptr;
 	end = ffarr_edge(buf);
-	if (cmd->outdir) {
+	if (cmd->outdir != NULL) {
 		p = ffs_copyz(p, end, cmd->outdir);
 		p = ffs_copyc(p, end, '/');
 	}
@@ -288,7 +288,7 @@ static int gzip_process(void *p, fcom_cmd *cmd)
 			return FCOM_ERR;
 		}
 
-		if (0 != ffgz_wfile(&g->gz, cmd->input.fn, cmd->input.mtime.s)) {
+		if (0 != ffgz_wfile(&g->gz, cmd->input.fn, &cmd->input.mtime)) {
 			fcom_errlog(FILT_NAME, "%s", ffgz_errstr(&g->gz));
 			return FCOM_ERR;
 		}
@@ -431,8 +431,7 @@ static int ungz1_process(void *p, fcom_cmd *cmd)
 
 	case FFGZ_INFO: {
 		uint mtime;
-		if (0 != (mtime = ffgz_mtime(&g->gz)))
-			cmd->output.mtime.s = mtime;
+		mtime = ffgz_mtime(&g->gz, &cmd->output.mtime);
 
 		const char *gzfn = ffgz_fname(&g->gz);
 		cmd->output.size = ffgz_size64(&g->gz, cmd->input.size);
@@ -795,6 +794,12 @@ static int untar_process(void *p, fcom_cmd *cmd)
 	fftar_file *f;
 	enum E { R_FIRST, R_NEXT, R_DATA1, R_DATA, R_EOF, };
 
+	if (cmd->flags & FCOM_CMD_FWD) {
+		if (cmd->in_last)
+			fftar_fin(&t->tar);
+		t->tar.in = cmd->in;
+	}
+
 	switch ((enum E)t->state) {
 	case R_EOF:
 		if (cmd->in.len != 0) {
@@ -840,12 +845,6 @@ static int untar_process(void *p, fcom_cmd *cmd)
 		break;
 	}
 
-	if (cmd->flags & FCOM_CMD_FWD) {
-		if (cmd->in_last)
-			fftar_fin(&t->tar);
-		t->tar.in = cmd->in;
-	}
-
 	for (;;) {
 
 	r = fftar_read(&t->tar);
@@ -868,14 +867,16 @@ static int untar_process(void *p, fcom_cmd *cmd)
 			continue;
 		}
 
-		if (!(f->type == FFTAR_FILE || f->type == FFTAR_FILE0 || f->type == FFTAR_DIR)) {
+		switch (f->type) {
+		case FFTAR_FILE:
+		case FFTAR_FILE0:
+		case FFTAR_DIR:
+			break;
+		default:
 			fcom_warnlog(FILT_NAME, "%s: unsupported file type '%c'", f->name, f->type);
 			t->skipfile = 1;
 			continue;
 		}
-
-		if (f->type == FFTAR_DIR && f->size != 0)
-			fcom_warnlog(FILT_NAME, "directory %s has non-zero size", f->name);
 
 		if (cmd->output.fn == NULL) {
 			ffstr name;
@@ -1121,6 +1122,10 @@ static int unzip_process(void *p, fcom_cmd *cmd)
 	ffzip_file *f;
 	enum E { R_FIRST, R_NEXT, R_DATA1, R_DATA, R_EOF, };
 
+	if (cmd->flags & FCOM_CMD_FWD) {
+		z->zip.in = cmd->in;
+	}
+
 again:
 	switch ((enum E)z->state) {
 	case R_EOF:
@@ -1167,10 +1172,6 @@ again:
 		}
 		z->state = R_DATA;
 		break;
-	}
-
-	if (cmd->flags & FCOM_CMD_FWD) {
-		z->zip.in = cmd->in;
 	}
 
 	for (;;) {
@@ -1462,6 +1463,9 @@ static int uniso_process(void *p, fcom_cmd *cmd)
 	ffiso_file *f;
 	enum E { R_FIRST, R_INIT, R_DATA, R_EOF, R_NEXT };
 
+	if (cmd->flags & FCOM_CMD_FWD)
+		ffiso_input(&o->iso, cmd->in.ptr, cmd->in.len);
+
 again:
 	switch ((enum E)o->state) {
 	case R_EOF:
@@ -1516,9 +1520,6 @@ again:
 	case R_DATA:
 		break;
 	}
-
-	if (cmd->flags & FCOM_CMD_FWD)
-		ffiso_input(&o->iso, cmd->in.ptr, cmd->in.len);
 
 	for (;;) {
 
