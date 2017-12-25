@@ -228,8 +228,12 @@ typedef struct fcom_filter {
 
 enum FCOM_CMD_CTL {
 	FCOM_CMD_MONITOR,
+
+	/** Add a filter to the chain.
+	Return a pointer that can later be passed as a parameter to FCOM_CMD_FILTADD_AFTER. */
 	FCOM_CMD_FILTADD_PREV,
 	FCOM_CMD_FILTADD,
+	FCOM_CMD_FILTADD_AFTER,
 	FCOM_CMD_FILTADD_LAST,
 };
 
@@ -250,7 +254,7 @@ typedef struct fcom_command {
 
 	/** Set command's parameters.
 	@cmd: enum FCOM_CMD_CTL */
-	int (*ctrl)(fcom_cmd *c, uint cmd, ...);
+	size_t (*ctrl)(fcom_cmd *c, uint cmd, ...);
 
 	/** Add/get command's arguments.
 	@flags: enum FCOM_CMD_ARG
