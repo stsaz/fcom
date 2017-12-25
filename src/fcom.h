@@ -189,6 +189,7 @@ typedef struct fcom_cmd {
 	byte fsort; //enum FCOM_CMD_SORT
 	byte deflate_level; //default:-1
 	byte jpeg_quality; //default:-1
+	byte png_comp; //default:-1
 	uint err :1
 		, skip_err :1
 		, in_seek :1

@@ -7,6 +7,7 @@ Copyright (c) 2017 Simon Zolin
 #include <FF/pic/pic.h>
 #include <FF/pic/bmp.h>
 #include <FF/pic/jpeg.h>
+#include <FF/pic/png.h>
 #include <FF/path.h>
 
 
@@ -62,6 +63,21 @@ static void jpgo_close(void *p, fcom_cmd *cmd);
 static int jpgo_process(void *p, fcom_cmd *cmd);
 static const fcom_filter jpgo_filt = { &jpgo_open, &jpgo_close, &jpgo_process };
 
+// PNG INPUT
+static void* pngi_open(fcom_cmd *cmd);
+static void pngi_close(void *_p, fcom_cmd *cmd);
+static int pngi_process(void *_p, fcom_cmd *cmd);
+static const fcom_filter pngi_filt = { &pngi_open, &pngi_close, &pngi_process };
+
+// PNG OUTPUT
+struct pngo_conf;
+static struct pngo_conf *pngo_conf;
+static int pngo_config(ffpars_ctx *ctx);
+static void* pngo_open(fcom_cmd *cmd);
+static void pngo_close(void *_p, fcom_cmd *cmd);
+static int pngo_process(void *_p, fcom_cmd *cmd);
+static const fcom_filter pngo_filt = { &pngo_open, &pngo_close, &pngo_process };
+
 
 FF_EXP const fcom_mod* fcom_getmod(const fcom_core *_core)
 {
@@ -85,6 +101,8 @@ static const struct cmd filters[] = {
 	{ "bmp-out", NULL, &bmpo_filt },
 	{ "jpg-in", NULL, &jpgi_filt },
 	{ "jpg-out", NULL, &jpgo_filt },
+	{ "png-in", NULL, &pngi_filt },
+	{ "png-out", NULL, &pngo_filt },
 };
 
 static int pic_sig(uint signo)
@@ -102,6 +120,7 @@ static int pic_sig(uint signo)
 	}
 	case FCOM_SIGFREE:
 		ffmem_safefree(jpgo_conf);
+		ffmem_safefree(pngo_conf);
 		break;
 	}
 	return 0;
@@ -121,6 +140,8 @@ static int pic_conf(const char *name, ffpars_ctx *ctx)
 {
 	if (ffsz_eq(name, "jpg-out"))
 		return jpgo_config(ctx);
+	else if (ffsz_eq(name, "png-out"))
+		return pngo_config(ctx);
 	return 1;
 }
 
@@ -546,6 +567,182 @@ data:
 #undef FILT_NAME
 
 
+#define FILT_NAME  "pic.png-in"
+
+struct pngi {
+	uint state;
+	ffpng png;
+};
+
+static void* pngi_open(fcom_cmd *cmd)
+{
+	struct pngi *p;
+	if (NULL == (p = ffmem_tcalloc1(struct pngi)))
+		return NULL;
+	ffpng_open(&p->png);
+	p->png.info.total_size = cmd->input.size;
+	return p;
+}
+
+static void pngi_close(void *_p, fcom_cmd *cmd)
+{
+	struct pngi *p = _p;
+	ffpng_close(&p->png);
+	ffmem_free(p);
+}
+
+static int pngi_process(void *_p, fcom_cmd *cmd)
+{
+	struct pngi *p = _p;
+	int r;
+
+	if (cmd->flags & FCOM_CMD_FWD) {
+		ffpng_input(&p->png, cmd->in.ptr, cmd->in.len);
+	}
+
+	for (;;) {
+	r = ffpng_read(&p->png);
+
+	switch (r) {
+	case FFPNG_MORE:
+		p->state = 0;
+		return FCOM_MORE;
+
+	case FFPNG_HDR:
+		fcom_dbglog(0, FILT_NAME, "%u/%u %s"
+			, p->png.info.width, p->png.info.height, ffpic_fmtstr(p->png.info.format));
+
+		cmd->pic.width = p->png.info.width;
+		cmd->pic.height = p->png.info.height;
+		cmd->pic.format = p->png.info.format;
+		break;
+
+	case FFPNG_DATA:
+		goto data;
+
+	case FFPNG_DONE:
+		return FCOM_OUTPUTDONE;
+
+	case FFPNG_ERR:
+		fcom_errlog(FILT_NAME, "ffpng_read(): %s", ffpng_errstr(&p->png));
+		return FCOM_ERR;
+	}
+	}
+
+data:
+	cmd->out = ffpng_output(&p->png);
+	return FCOM_DATA;
+}
+
+#undef FILT_NAME
+
+
+#define FILT_NAME  "pic.png-out"
+
+struct pngo_conf {
+	uint compression;
+};
+
+#define OFF(member)  FFPARS_DSTOFF(struct pngo_conf, member)
+static const ffpars_arg pngo_conf_args[] = {
+	{ "compression",	FFPARS_TINT8,  OFF(compression) },
+};
+#undef OFF
+
+static int pngo_config(ffpars_ctx *ctx)
+{
+	if (NULL == (pngo_conf = ffmem_new(struct pngo_conf)))
+		return -1;
+	pngo_conf->compression = 9;
+	ffpars_setargs(ctx, pngo_conf, pngo_conf_args, FFCNT(pngo_conf_args));
+	return 0;
+}
+
+struct pngo {
+	uint state;
+	ffpng_cook png;
+};
+
+static void* pngo_open(fcom_cmd *cmd)
+{
+	struct pngo *p;
+	if (NULL == (p = ffmem_new(struct pngo)))
+		return FCOM_OPEN_SYSERR;
+	return p;
+}
+
+static void pngo_close(void *_p, fcom_cmd *cmd)
+{
+	struct pngo *p = _p;
+	ffpng_wclose(&p->png);
+	ffmem_free(p);
+}
+
+static int pngo_process(void *_p, fcom_cmd *cmd)
+{
+	struct pngo *p = _p;
+	int r;
+	enum { W_FMT, W_FMT2, W_DATA };
+
+	if (cmd->flags & FCOM_CMD_FWD) {
+		ffpng_winput(&p->png, cmd->in.ptr, cmd->in.len);
+	}
+
+	switch (p->state) {
+	case W_FMT:
+	case W_FMT2: {
+		ffpic_info info;
+		info.width = cmd->pic.width;
+		info.height = cmd->pic.height;
+		info.format = cmd->pic.format;
+		r = ffpng_create(&p->png, &info);
+		if (r == FFPNG_EFMT && p->state == W_FMT) {
+			cmd->pic.out_format = info.format;
+			com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, "pic.pxconv");
+			p->state = W_FMT2;
+			cmd->out = cmd->in;
+			return FCOM_BACK;
+		} else if (r != 0) {
+			fcom_errlog(FILT_NAME, "ffpng_create()", 0);
+			return FCOM_ERR;
+		}
+
+		p->png.info.complevel = (cmd->png_comp != 255) ? cmd->png_comp : pngo_conf->compression;
+		p->state = W_DATA;
+		break;
+	}
+
+	case W_DATA:
+		break;
+	}
+
+	for (;;) {
+	r = ffpng_write(&p->png);
+
+	switch (r) {
+	case FFPNG_DATA:
+		goto data;
+
+	case FFPNG_MORE:
+		return FCOM_MORE;
+
+	case FFPNG_DONE:
+		return FCOM_DONE;
+
+	case FFPNG_ERR:
+		fcom_errlog(FILT_NAME, "ffpng_write(): %s", ffpng_werrstr(&p->png));
+		return FCOM_ERR;
+	}
+	}
+
+data:
+	cmd->out = ffpng_woutput(&p->png);
+	return FCOM_DATA;
+}
+
+#undef FILT_NAME
+
+
 #define FILT_NAME  "pic.conv"
 
 struct piconv {
@@ -572,16 +769,19 @@ static const char exts[][8] = {
 	"bmp",
 	"jpeg",
 	"jpg",
+	"png",
 };
 static const char *const ifilters[] = {
 	"pic.bmp-in",
 	"pic.jpg-in",
 	"pic.jpg-in",
+	"pic.png-in",
 };
 static const char *const ofilters[] = {
 	"pic.bmp-out",
 	"pic.jpg-out",
 	"pic.jpg-out",
+	"pic.png-out",
 };
 
 /** The same as ffpath_split3() except that for fullname="path/.ext" ".ext" is treated as extension. */

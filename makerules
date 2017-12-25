@@ -49,10 +49,11 @@ PIC_O := $(OBJ_DIR)/pic.o \
 	$(FF_OBJ_DIR)/ffpic.o \
 	$(FF_OBJ_DIR)/ffbmp.o \
 	$(FF_OBJ_DIR)/ffjpeg.o \
+	$(FF_OBJ_DIR)/ffpng.o \
 	$(FF_OBJ_DIR)/ffparse.o \
 	$(FF_O)
 pic.$(SO): $(PIC_O)
-	$(LD) -shared $(PIC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) -ljpeg-ff -o$@
+	$(LD) -shared $(PIC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) -ljpeg-ff -lpng-ff -o$@
 
 
 clean:
@@ -70,7 +71,7 @@ installd: all
 	mkdir -vp $(INSTDIR)
 	$(CP) $(BINS) \
 		$(FF3PTLIB)/libz-ff.$(SO) $(FF3PTLIB)/liblzma-ff.$(SO) \
-		$(FF3PTLIB)/libjpeg-ff.$(SO) \
+		$(FF3PTLIB)/libjpeg-ff.$(SO) $(FF3PTLIB)/libpng-ff.$(SO) \
 		$(PROJDIR)/fcom.conf \
 		$(PROJDIR)/help.txt $(PROJDIR)/README.txt $(PROJDIR)/CHANGES.txt \
 		$(INSTDIR)/
