@@ -12,6 +12,7 @@ Copyright (c) 2017 Simon Zolin
 #include <FF/pack/iso.h>
 #include <FF/path.h>
 #include <FF/time.h>
+#include <FFOS/dir.h>
 
 
 static const fcom_core *core;
@@ -203,6 +204,44 @@ static int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf)
 	*p = '\0';
 
 	return FCOM_DATA;
+}
+
+/** Create hard link. */
+static int out_hlink(fcom_cmd *cmd, const char *target, const char *linkname)
+{
+	int r = FCOM_ERR;
+
+	if (0 != fffile_hardlink(target, linkname)) {
+		fcom_syserrlog("arc", "fffile_hardlink(): %s -> %s"
+			, linkname, target);
+		if (!cmd->skip_err)
+			goto end;
+	} else
+		fcom_dbglog(0, "arc", "created hard link: %s -> %s"
+			, linkname, target);
+
+	r = FCOM_DONE;
+end:
+	return r;
+}
+
+/** Create symbolic link. */
+static int out_slink(fcom_cmd *cmd, const char *target, const char *linkname)
+{
+	int r = FCOM_ERR;
+
+	if (0 != fffile_symlink(target, linkname)) {
+		fcom_syserrlog("arc", "fffile_symlink(): %s -> %s"
+			, linkname, target);
+		if (!cmd->skip_err)
+			goto end;
+	} else
+		fcom_dbglog(0, "arc", "created symbolic link: %s -> %s"
+			, linkname, target);
+
+	r = FCOM_DONE;
+end:
+	return r;
 }
 
 
@@ -800,6 +839,7 @@ static int untar_process(void *p, fcom_cmd *cmd)
 		t->tar.in = cmd->in;
 	}
 
+again:
 	switch ((enum E)t->state) {
 	case R_EOF:
 		if (cmd->in.len != 0) {
@@ -871,6 +911,8 @@ static int untar_process(void *p, fcom_cmd *cmd)
 		case FFTAR_FILE:
 		case FFTAR_FILE0:
 		case FFTAR_DIR:
+		case FFTAR_HLINK:
+		case FFTAR_SLINK:
 			break;
 		default:
 			fcom_warnlog(FILT_NAME, "%s: unsupported file type '%c'", f->name, f->type);
@@ -889,6 +931,21 @@ static int untar_process(void *p, fcom_cmd *cmd)
 		cmd->output.mtime = f->mtime;
 		cmd->output.attr = f->mode & 0777;
 
+		switch (f->type) {
+
+		case FFTAR_HLINK:
+			if (FCOM_DONE != (r = out_hlink(cmd, f->link_to, cmd->output.fn)))
+				return r;
+			t->skipfile = 1;
+			continue;
+
+		case FFTAR_SLINK:
+			if (FCOM_DONE != (r = out_slink(cmd, "../r", cmd->output.fn)))
+				return r;
+			t->skipfile = 1;
+			continue;
+		}
+
 		const char *filt = (f->type == FFTAR_DIR) ? "core.dir-out" : FCOM_CMD_FILT_OUT(cmd);
 		com->ctrl(cmd, FCOM_CMD_FILTADD, filt);
 		continue;
@@ -901,11 +958,11 @@ static int untar_process(void *p, fcom_cmd *cmd)
 		return FCOM_DATA;
 
 	case FFTAR_FILEDONE:
+		t->state = R_NEXT;
 		if (t->skipfile) {
 			t->skipfile = 0;
-			continue;
+			goto again;
 		}
-		t->state = R_NEXT;
 		return FCOM_NEXTDONE;
 
 	case FFTAR_DONE:
