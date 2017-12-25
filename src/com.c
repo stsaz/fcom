@@ -34,6 +34,7 @@ typedef struct {
 	const fcom_filter *filter;
 	const char *name;
 	uint done :1;
+	uint done_prev :1;
 } filter;
 
 typedef struct {
@@ -195,7 +196,7 @@ static void com_close(void *p)
 }
 
 static const char* const filt_rstr[] = {
-	"more", "data", "done", "next-done", "err", "syserr", "fin", "async",
+	"more", "data", "done", "output-done", "next-done", "err", "syserr", "fin", "async",
 };
 
 /** Call filters within the chain. */
@@ -250,6 +251,17 @@ static int com_run(void *p)
 				op = FFLIST_CUR_NEXT | FFLIST_CUR_RM | FFLIST_CUR_BOUNCE;
 			} else {
 				// close filter after next filters are done with its data
+				f->done = 1;
+				op = FFLIST_CUR_NEXT;
+			}
+			break;
+
+		case FCOM_OUTPUTDONE:
+			if (c->cur->next == ffchain_sentl(&c->chain)) {
+				goto ok;
+			} else {
+				// close all previous filters after the next filters are done with the current filter's data
+				f->done_prev = 1;
 				f->done = 1;
 				op = FFLIST_CUR_NEXT;
 			}
@@ -315,6 +327,18 @@ shift:
 		case FFLIST_CUR_SAME:
 		case FFLIST_CUR_PREV:
 			f = FF_GETPTR(filter, sib, c->cur);
+			if (f->done_prev) {
+				f->done_prev = 0;
+				ffchain_item *it;
+				FFCHAIN_FOR(&c->chain, it) {
+					if (it == c->cur)
+						break;
+					filter *ftmp = FF_GETPTR(filter, sib, it);
+					it = it->next;
+					filt_close(c, ftmp);
+					ffchain_rm(&c->chain, &ftmp->sib);
+				}
+			}
 			if (f->done) {
 				f->done = 0;
 				filt_close(c, f);

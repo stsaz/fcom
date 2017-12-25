@@ -206,6 +206,7 @@ enum FCOM_FILT_R {
 
 	FCOM_DATA, //pass data to the next filter
 	FCOM_DONE, //same as FCOM_DATA, but also remove this filter
+	FCOM_OUTPUTDONE, //same as FCOM_DONE, but also close all previous filters
 	FCOM_NEXTDONE, //close all next filters and return to this filter
 
 	FCOM_ERR, //close the chain with an error
