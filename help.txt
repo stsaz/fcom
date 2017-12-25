@@ -1,47 +1,54 @@
 fcom OPERATION [OPTIONS] ...
 
 OPERATION
-touch FILE... [--date=DATE] [--date-as=FILE]
-textcount FILE...
-crc FILE...
-wregfind STR... [--member=KEY]...
 
-Pack files
-gz FILE... [--out=FILE]
-tar FILE... --out=FILE
-zip FILE... --out=FILE
+ touch FILE... [--date=DATE] [--date-as=FILE]
+ textcount FILE...
+ crc FILE...
+ wregfind STR... [--member=KEY]...
 
-Unpack archives
-unpack FILE... [--out=FILE] [--member=FILE]... [--show]
-ungz FILE... [--out=FILE]
-unxz FILE... [--out=FILE]
-untar FILE... [--out=FILE] [--member=FILE]... [--show]
-unzip FILE... [--out=FILE] [--member=FILE]... [--show]
-un7z FILE... [--out=FILE] [--member=FILE]... [--show]
-uniso FILE... [--out=FILE] [--member=FILE]... [--show]
+Pack files (.gz, .tar, .zip):
+ gz FILE... [--out=FILE]
+ tar FILE... --out=FILE
+ zip FILE... --out=FILE
+
+Unpack archives (.gz, .xz, .tar, .zip, .7z, .iso):
+ unpack FILE... [--out=FILE] [--member=FILE]... [--show]
+ ungz FILE... [--out=FILE]
+ unxz FILE... [--out=FILE]
+ untar FILE... [--out=FILE] [--member=FILE]... [--show]
+ unzip FILE... [--out=FILE] [--member=FILE]... [--show]
+ un7z FILE... [--out=FILE] [--member=FILE]... [--show]
+ uniso FILE... [--out=FILE] [--member=FILE]... [--show]
+
+Convert pictures (.bmp, .jpg, .png):
+ pic-convert FILE... --out=FILE
+
 
 OPTIONS
 
 INPUT
-"FILE"             Input file path
-                    @stdin - read from standard input
---flist=FILE       Read filenames from FILE
---recurse, -R      Recurse into sub-directories
---member=FILE      Process just this archive member
---show             Show contents
+ "FILE"             Input file path
+                     @stdin - read from standard input
+ --flist=FILE       Read filenames from FILE
+ --recurse, -R      Recurse into sub-directories
+ --member=FILE      Process just this archive member
+ --show             Show contents
 
 OUTPUT
---out=FILE, -o     Set output file
-                    @stdout - write to standard output
---outdir=DIR, -C   Set output directory
---force, -f        Overwrite output files
---test, -t         Read-only mode
---date=DATE        Set modification date
-                   DATE: [YYYY-MM-DD] [hh:mm:ss]
---date-as=FILE     Get date from file FILE
---deflate-level    Set compression level for Deflate algorithm (1..9)
+ --out=FILE, -o     Set output file
+                     @stdout - write to standard output
+ --outdir=DIR, -C   Set output directory
+ --force, -f        Overwrite output files
+ --test, -t         Read-only mode
+ --date=DATE        Set modification date
+                    DATE: [YYYY-MM-DD] [hh:mm:ss]
+ --date-as=FILE     Get date from file FILE
+ --deflate-level    Set compression level for Deflate algorithm (1..9)
 
---verbose, -v      Print more information to stdout
---debug, -D        Print debug log messages to stdout
---benchmark        Show the time spent for command execution
---help             Show help
+MISC
+ --skip-errors, -k  Print but skip errors and continue operation
+ --verbose, -v      Print more information to stdout
+ --debug, -D        Print debug log messages to stdout
+ --benchmark        Show the time spent for command execution
+ --help             Show help
