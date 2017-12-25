@@ -196,7 +196,7 @@ static void com_close(void *p)
 }
 
 static const char* const filt_rstr[] = {
-	"more", "data", "done", "output-done", "next-done", "err", "syserr", "fin", "async",
+	"more", "back", "data", "done", "output-done", "next-done", "err", "syserr", "fin", "async",
 };
 
 /** Call filters within the chain. */
@@ -296,6 +296,10 @@ Split the chain into 2, finish the second chain, then continue with the first on
 			op = FFLIST_CUR_PREV;
 			break;
 
+		case FCOM_BACK:
+			op = FFLIST_CUR_PREV;
+			break;
+
 		case FCOM_ASYNC:
 			return 0;
 
@@ -345,8 +349,15 @@ shift:
 				op = FFLIST_CUR_NEXT | FFLIST_CUR_RM | FFLIST_CUR_BOUNCE;
 				goto shift;
 			}
-			c->cmd.in.len = 0;
-			c->cmd.flags &= ~FCOM_CMD_FWD;
+
+			if (r == FCOM_BACK) {
+				c->cmd.in = c->cmd.out;
+				c->cmd.out.len = 0;
+				c->cmd.flags |= FCOM_CMD_FWD;
+			} else {
+				c->cmd.in.len = 0;
+				c->cmd.flags &= ~FCOM_CMD_FWD;
+			}
 			break;
 
 		case FFLIST_CUR_NONEXT:

@@ -203,6 +203,7 @@ typedef struct fcom_cmd {
 
 enum FCOM_FILT_R {
 	FCOM_MORE, //get data from the previous filter
+	FCOM_BACK, //same as FCOM_MORE, but pass the current output data to the previous filter
 
 	FCOM_DATA, //pass data to the next filter
 	FCOM_DONE, //same as FCOM_DATA, but also remove this filter
