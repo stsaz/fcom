@@ -184,6 +184,7 @@ typedef struct fcom_cmd {
 	uint err :1
 		, skip_err :1
 		, in_seek :1
+		, out_seek :1
 		, in_last :1 //the last input data block
 		, out_overwrite :1
 		, out_notrunc :1
@@ -275,6 +276,9 @@ typedef struct fcom_command {
 
 #define fcom_cmd_seek(cmd, off) \
 	(cmd)->input.offset = off,  (cmd)->in_seek = 1
+
+#define fcom_cmd_outseek(cmd, off) \
+	(cmd)->output.offset = off,  (cmd)->out_seek = 1
 
 struct fcom_cmd_mon {
 	void (*onsig)(fcom_cmd *cmd, uint sig);

@@ -714,6 +714,24 @@ static int fo_adddata(void *p, fcom_cmd *cmd)
 		return (cmd->flags & FCOM_CMD_FIRST) ? FCOM_DONE : FCOM_MORE;
 	}
 
+	if (cmd->out_seek) {
+		cmd->out_seek = 0;
+
+		if (f->buf.len != 0) {
+			if (0 != fo_write(f, cmd, (void*)&f->buf))
+				return FCOM_SYSERR;
+			f->buf.len = 0;
+		}
+
+		dbglog(0, "seeking to %xU", cmd->output.offset);
+
+		if (0 > fffile_seek(f->fd, cmd->output.offset, SEEK_SET)) {
+			syserrlog("%s: %S", fffile_seek_S, &f->name);
+			return FCOM_ERR;
+		}
+		f->off = cmd->output.offset;
+	}
+
 	for (;;) {
 
 		size_t r = ffbuf_add(&f->buf, cmd->in.ptr, cmd->in.len, &s);
