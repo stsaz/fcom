@@ -15,6 +15,8 @@ include $(FFOS)/makeconf
 ifeq ($(OS),win)
 INSTDIR := ./$(PROJ)
 BIN := fcom.exe
+CFLAGS += -DFF_WIN=0x0502
+
 else
 INSTDIR := ./$(PROJ)-0
 BIN := fcom

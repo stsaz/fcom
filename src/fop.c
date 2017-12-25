@@ -139,7 +139,7 @@ static int f_touch_process(void *p, fcom_cmd *cmd)
 	if (0 != com->fcom_cmd_filtadd(cmd, FCOM_CMD_FILT_OUT(cmd)))
 		return FCOM_ERR;
 
-	if (cmd->mtime.s != 0 && cmd->date_as_fn != NULL)
+	if (fftime_sec(&cmd->mtime) != 0 && cmd->date_as_fn != NULL)
 		return FCOM_ERR;
 
 	if (cmd->date_as_fn != NULL) {
@@ -148,7 +148,7 @@ static int f_touch_process(void *p, fcom_cmd *cmd)
 			return FCOM_SYSERR;
 		cmd->output.mtime = fffile_infomtime(&fi);
 
-	} else if (cmd->mtime.s != 0)
+	} else if (fftime_sec(&cmd->mtime) != 0)
 		cmd->output.mtime = cmd->mtime;
 	else
 		fftime_now(&cmd->output.mtime);

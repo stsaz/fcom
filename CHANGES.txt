@@ -8,6 +8,17 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.3 - Dec 23, 2017
+
+ + fcom pic-convert: convert pictures (.bmp, .jpg, .png)
+
+ + .tar read/write: support large values for size, uid
+ + untar: create hard/sym links
+ - zip,tar: couldn't add directory to archive
+ * unpack: enable --skip-errors by default
+ + --preserve-date
+
+
 fcom v0.2 - Nov 13, 2017
 
  + fcom zip - pack files into .zip

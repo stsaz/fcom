@@ -28,7 +28,7 @@ BIN_O += $(OBJ_DIR)/sys-win.o \
 endif
 
 $(BIN): $(BIN_O)
-	$(LD)  $(BIN_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LWS2_32) $(LD_LDL) -o$@
+	$(LD)  $(BIN_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LDL) -o$@
 
 
 ARC_O := $(OBJ_DIR)/arc.o \
@@ -42,7 +42,7 @@ ARC_O := $(OBJ_DIR)/arc.o \
 	$(FF_OBJ_DIR)/ffparse.o \
 	$(FF_O)
 arc.$(SO): $(ARC_O)
-	$(LD) -shared $(ARC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LWS2_32) $(LD_LPTHREAD) -lz-ff -llzma-ff -o$@
+	$(LD) -shared $(ARC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) -lz-ff -llzma-ff -o$@
 
 
 PIC_O := $(OBJ_DIR)/pic.o \

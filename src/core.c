@@ -409,7 +409,7 @@ fail:
 static int mod_add(const ffstr *name, ffpars_ctx *ctx)
 {
 	ffstr soname, iface;
-	char fn[FF_MAXFN];
+	char fn[128];
 	struct mod *m;
 	struct iface *pif = NULL;
 
@@ -424,7 +424,7 @@ static int mod_add(const ffstr *name, ffpars_ctx *ctx)
 			goto fail;
 	}
 
-	if (0 == ffs_fmt(fn, fn + sizeof(fn), "%S%Z", &iface, FFDL_EXT))
+	if (0 == ffs_fmt(fn, fn + sizeof(fn), "%S%Z", &iface))
 		goto fail;
 
 	if (ctx != NULL) {

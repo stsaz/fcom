@@ -51,6 +51,14 @@ FEATURES
 		Search "sometext" in HKEY_CURRENT_USER
 			fcom wregfind sometext --member=HKCU
 
+	fcom pic-convert - convert pictures
+		Convert BMP to JPEG
+			fcom pic-convert pic.bmp -o pic.jpg
+		Convert files to JPEG, create new files along the original files
+			fcom pic-convert -R pictures/ -o .jpg
+		Convert files to JPEG, create new files in "new/" directory (file tree is preserved)
+			fcom pic-convert -R pictures/ -o new/.jpg
+
 
 ---------------
 LICENSE

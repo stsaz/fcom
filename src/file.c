@@ -477,7 +477,7 @@ static int fi_read(file *f)
 	r = (int)ffaio_fread(&f->aio, b->ptr, inconf->bufsize, b->offset, &fi_read_a);
 	if (r < 0) {
 		if (fferr_again(fferr_last())) {
-			dbglog(f->trk, "buf#%u: async read, offset:%Uk", f->wbuf, b->offset / 1024);
+			dbglog(0, "buf#%u: async read, offset:%Uk", f->wbuf, b->offset / 1024);
 			f->state = FI_IASYNC;
 			f->stat.nasync++;
 			return FCOM_ASYNC;
@@ -653,12 +653,15 @@ static void fo_close(void *p, fcom_cmd *cmd)
 #ifdef FF_UNIX
 			if (f->attr != 0 && !cmd->out_attr_win)
 				fffile_attrset(f->fd, f->attr);
-#else
+#elif FF_WIN >= 0x0600
 			if (f->attr != 0 && cmd->out_attr_win)
 				fffile_attrset(f->fd, f->attr);
+#elif FF_WIN < 0x0600
+			if (f->attr != 0 && cmd->out_attr_win)
+				fffile_attrsetfn(f->name.ptr, f->attr);
 #endif
 
-			if (f->mtime.s != 0)
+			if (fftime_sec(&f->mtime) != 0)
 				fffile_settime(f->fd, &f->mtime);
 
 			if (0 != fffile_close(f->fd))
@@ -702,7 +705,7 @@ static int fo_write(fout *f, fcom_cmd *cmd, const ffstr *s)
 
 	dbglog(0, "written %L bytes at offset %Uk (%L pending)", s->len, f->off / 1024, cmd->in.len);
 	f->off += s->len;
-	f->size = ffmax(f->size, f->off);
+	ffint_setmax(f->size, f->off);
 	return 0;
 }
 
@@ -795,7 +798,7 @@ static void* diro_open(fcom_cmd *cmd)
 		fffile_attrsetfn(fn, cmd->output.attr);
 #endif
 
-	if (cmd->output.mtime.s != 0)
+	if (fftime_sec(&cmd->output.mtime) != 0)
 		fffile_settimefn(fn, &cmd->output.mtime);
 
 	fcom_verblog(FILT_NAME, "created directory %s"
@@ -870,7 +873,7 @@ static int fistd_read(void *ctx, fcom_cmd *cmd)
 		return FCOM_ERR;
 	}
 
-	dbglog(cmd->trk, "read %L bytes from stdin"
+	dbglog(0, "read %L bytes from stdin"
 		, r);
 	ffstr_set(&cmd->out, f->buf.ptr, r);
 	return FCOM_DATA;

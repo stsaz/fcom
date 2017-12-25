@@ -169,7 +169,7 @@ static void com_close(void *p)
 		ffclk_get(&t);
 		ffclk_diff(&c->tm_start, &t);
 		inflog("'%s' processing time: %u.%06u sec"
-			, c->cmd.name, t.s, t.mcs);
+			, c->cmd.name, (int)fftime_sec(&t), (int)fftime_usec(&t));
 	}
 
 	filter *f;
