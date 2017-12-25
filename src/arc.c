@@ -1612,6 +1612,7 @@ static void uniso_showinfo(struct uniso *o, const ffiso_file *f, uint show)
 
 static void* unpack_open(fcom_cmd *cmd)
 {
+	cmd->skip_err = 1;
 	return FCOM_OPEN_DUMMY;
 }
 
