@@ -1,6 +1,6 @@
 
 OBJ_DIR := .
-BINS := $(BIN) arc.$(SO)
+BINS := $(BIN) arc.$(SO) pic.$(SO)
 
 all: ff $(BINS)
 
@@ -43,6 +43,15 @@ ARC_O := $(OBJ_DIR)/arc.o \
 	$(FF_O)
 arc.$(SO): $(ARC_O)
 	$(LD) -shared $(ARC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LWS2_32) $(LD_LPTHREAD) -lz-ff -llzma-ff -o$@
+
+
+PIC_O := $(OBJ_DIR)/pic.o \
+	$(FF_OBJ_DIR)/ffpic.o \
+	$(FF_OBJ_DIR)/ffbmp.o \
+	$(FF_OBJ_DIR)/ffparse.o \
+	$(FF_O)
+pic.$(SO): $(PIC_O)
+	$(LD) -shared $(PIC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) -o$@
 
 
 clean:

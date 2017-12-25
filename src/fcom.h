@@ -176,6 +176,13 @@ typedef struct fcom_cmd {
 
 	ffarr2 members; //char*[]
 
+	struct {
+		uint width;
+		uint height;
+		uint format; //enum FFPIC_FMT
+		uint out_format; //enum FFPIC_FMT
+	} pic;
+
 	const char *outdir;
 	const char *date_as_fn;
 	fftime mtime;
