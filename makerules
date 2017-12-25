@@ -1,6 +1,6 @@
 
 OBJ_DIR := .
-BINS := $(BIN) core.$(SO) arc.$(SO) pic.$(SO)
+BINS := $(BIN) core.$(SO) file.$(SO) arc.$(SO) pic.$(SO)
 
 all: ff $(BINS)
 
@@ -37,6 +37,14 @@ endif
 
 core.$(SO): $(CORE_O)
 	$(LD) -shared $(CORE_O) $(LDFLAGS) $(LD_LDL) -o$@
+
+
+F_O := $(OBJ_DIR)/fsync.o \
+	$(FF_OBJ_DIR)/crc.o \
+	$(FF_OBJ_DIR)/ffparse.o \
+	$(FF_O)
+file.$(SO): $(F_O)
+	$(LD) -shared $(F_O) $(LDFLAGS) $(LD_LPTHREAD) -o$@
 
 
 ARC_O := $(OBJ_DIR)/arc.o \

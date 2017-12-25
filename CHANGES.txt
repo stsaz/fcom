@@ -11,6 +11,7 @@ HISTORY OF FCOM
 fcom v0.3 - Dec 23, 2017
 
  + fcom pic-convert: convert pictures (.bmp, .jpg, .png)
+ + fcom sync - show the difference of 2 file trees
 
  + .tar read/write: support large values for size, uid
  + untar: create hard/sym links
