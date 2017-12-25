@@ -187,6 +187,7 @@ typedef struct fcom_cmd {
 		, out_seek :1
 		, in_last :1 //the last input data block
 		, out_overwrite :1
+		, out_preserve_date :1
 		, out_notrunc :1
 		, out_attr_win :1
 		, out_std :1

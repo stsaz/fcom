@@ -287,6 +287,8 @@ static void* fi_open(fcom_cmd *cmd)
 	cmd->input.offset = 0;
 	cmd->input.attr = fffile_infoattr(&fi);
 	cmd->input.mtime = fffile_infomtime(&fi);
+	if (cmd->out_preserve_date)
+		cmd->output.mtime = cmd->input.mtime;
 	cmd->in_last = 0;
 
 	dbglog(0, "opened file %s, %UKB, directio:%u"

@@ -28,6 +28,7 @@ struct cmdconf {
 	byte show;
 	byte skip_errors;
 	byte deflate_level;
+	byte preserve_date;
 
 	byte debug;
 	byte verbose;
@@ -139,6 +140,7 @@ static const ffpars_arg cmdline_args[] = {
 	{ "test",	FFPARS_SETVAL('t') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(test) },
 	{ "date",	FFPARS_TSTR, FFPARS_DST(&arg_date) },
 	{ "date-as",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY, OFF(date_as_fn) },
+	{ "preserve-date",	FFPARS_TBOOL8 | FFPARS_FALONE, OFF(preserve_date) },
 
 	{ "verbose",	FFPARS_SETVAL('v') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(verbose) },
 	{ "debug",	FFPARS_SETVAL('D') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(debug) },
@@ -436,6 +438,7 @@ static void cmd_add(void *param)
 	cmd.mtime = c->conf.mtime;
 	cmd.date_as_fn = c->conf.date_as_fn;
 	cmd.show = c->conf.show;
+	cmd.out_preserve_date = c->conf.preserve_date;
 	com = core->iface("core.com");
 	if (NULL == (m = com->create(&cmd)))
 		goto done;
