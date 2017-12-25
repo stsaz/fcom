@@ -14,6 +14,9 @@ Copyright (c) 2017 Simon Zolin */
 #define errlog(fmt, ...)  fcom_errlog("core", fmt, __VA_ARGS__)
 #define syserrlog(fmt, ...)  fcom_syserrlog("core", fmt, __VA_ARGS__)
 
+FF_EXP const fcom_core* core_create(fcom_log log, char **argv, char **env);
+FF_EXP void core_free(void);
+
 extern const fcom_command core_com_iface;
 extern int core_comm_sig(uint signo);
 extern const fcom_mod file_mod;
@@ -129,6 +132,8 @@ static int set_rootdir(char **argv)
 
 const fcom_core* core_create(fcom_log log, char **argv, char **env)
 {
+	ffmem_init();
+	fflk_setup();
 	if (NULL == (g = ffmem_new(struct fcom)))
 		return NULL;
 	g->kq = FF_BADFD;
@@ -162,6 +167,18 @@ const fcom_core* core_create(fcom_log log, char **argv, char **env)
 	fftask_init(&g->tskmgr);
 
 	fftmrq_init(&g->tmrq);
+
+#ifdef FF_WIN
+	{
+	ffarr path = {0};
+	if (0 == ffstr_catfmt(&path, "%Smod%Z", &g->rootdir)) {
+		ffarr_free(&path);
+		goto err;
+	}
+	ffdl_init(path.ptr);
+	ffarr_free(&path);
+	}
+#endif
 
 	ffstr nm;
 	ffstr_setcz(&nm, "core.com");
@@ -366,9 +383,9 @@ static struct mod* mod_find(const ffstr *soname)
 static struct mod* mod_load(const ffstr *soname)
 {
 	ffdl dl = NULL;
-	char fn[FF_MAXFN];
 	fcom_getmod_t getmod;
-	struct mod *m;
+	struct mod *m, *rc = NULL;
+	char *fn = NULL;
 
 	if (NULL == (m = ffarr_pushgrowT(&g->mods, 16, struct mod)))
 		goto fail;
@@ -380,15 +397,16 @@ static struct mod* mod_load(const ffstr *soname)
 		getmod = &coremod_getmod;
 
 	} else {
-		if (0 == ffs_fmt(fn, fn + sizeof(fn), "%S.%s%Z", soname, FFDL_EXT))
+		if (NULL == (fn = ffsz_alfmt("%Smod%c%S." FFDL_EXT, &g->rootdir, FFPATH_SLASH, soname)))
 			goto fail;
+
 		dbglog(0, "loading module %s", fn);
-		if (NULL == (dl = ffdl_open(fn, 0))) {
+		if (NULL == (dl = ffdl_open(fn, FFDL_SELFDIR))) {
 			errlog("loading %s: %s", fn, ffdl_errstr());
 			goto fail;
 		}
-		if (NULL == (getmod = (void*)ffdl_addr(dl, "fcom_getmod"))) {
-			errlog("resolving 'fcom_getmod' from %s: %s", fn, ffdl_errstr());
+		if (NULL == (getmod = (void*)ffdl_addr(dl, FCOM_MODFUNCNAME))) {
+			errlog("resolving '%s' from %s: %s", FCOM_MODFUNCNAME, fn, ffdl_errstr());
 			goto fail;
 		}
 	}
@@ -399,11 +417,16 @@ static struct mod* mod_load(const ffstr *soname)
 	if (0 != m->mod->sig(FCOM_SIGINIT))
 		goto fail;
 	m->dl = dl;
-	return m;
+	rc = m;
 
 fail:
-	FF_SAFECLOSE(dl, NULL, ffdl_close);
-	return NULL;
+	if (rc == NULL) {
+		mod_destroy(m);
+		g->mods.len--;
+		FF_SAFECLOSE(dl, NULL, ffdl_close);
+	}
+	ffmem_safefree(fn);
+	return rc;
 }
 
 static int mod_add(const ffstr *name, ffpars_ctx *ctx)

@@ -1,6 +1,6 @@
 
 OBJ_DIR := .
-BINS := $(BIN) arc.$(SO) pic.$(SO)
+BINS := $(BIN) core.$(SO) arc.$(SO) pic.$(SO)
 
 all: ff $(BINS)
 
@@ -13,6 +13,14 @@ $(OBJ_DIR)/%.o: $(SRCDIR)/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 
 
 BIN_O := $(OBJ_DIR)/main.o \
+	$(FF_O) \
+	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffpsarg.o
+
+$(BIN): $(BIN_O)
+	$(LD)  $(BIN_O) $(LDFLAGS) $(LD_LDL) -o$@
+
+
+CORE_O := \
 	$(OBJ_DIR)/core.o \
 	$(OBJ_DIR)/com.o \
 	$(OBJ_DIR)/file.o \
@@ -23,12 +31,12 @@ BIN_O := $(OBJ_DIR)/main.o \
 	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffpsarg.o $(FF_OBJ_DIR)/ffconf.o
 
 ifeq ($(OS),win)
-BIN_O += $(OBJ_DIR)/sys-win.o \
+CORE_O += $(OBJ_DIR)/sys-win.o \
 	$(FF_OBJ_DIR)/ffwreg.o $(FF_OBJ_DIR)/ffwreg2.o
 endif
 
-$(BIN): $(BIN_O)
-	$(LD)  $(BIN_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LDL) -o$@
+core.$(SO): $(CORE_O)
+	$(LD) -shared $(CORE_O) $(LDFLAGS) $(LD_LDL) -o$@
 
 
 ARC_O := $(OBJ_DIR)/arc.o \
@@ -69,24 +77,26 @@ strip: $(BINS:.$(SO)=.$(SO).debug) $(BIN).debug $(BINS:.exe=.exe.debug)
 installd: all
 
 	mkdir -vp $(INSTDIR)
-	$(CP) $(BINS) \
-		$(FF3PTLIB)/libz-ff.$(SO) $(FF3PTLIB)/liblzma-ff.$(SO) \
-		$(FF3PTLIB)/libjpeg-ff.$(SO) $(FF3PTLIB)/libpng-ff.$(SO) \
+	$(CP) $(BIN) \
 		$(PROJDIR)/fcom.conf \
 		$(PROJDIR)/help.txt $(PROJDIR)/README.txt $(PROJDIR)/CHANGES.txt \
 		$(INSTDIR)/
 
-ifneq ($(OS),win)
-	chmod 644 $(INSTDIR)/*
-	chmod 755 $(INSTDIR)/fcom
-
-else
-
+ifeq ($(OS),win)
 	unix2dos $(INSTDIR)/*.txt $(INSTDIR)/*.conf
-	chmod 644 $(INSTDIR)/*
 endif
 
-	chmod 755 $(INSTDIR)/$(BIN) $(INSTDIR)/*.$(SO)
+	chmod 644 $(INSTDIR)/*
+	chmod 755 $(INSTDIR)/$(BIN)
+
+	mkdir -vp $(INSTDIR)/mod
+	chmod 755 $(INSTDIR)/mod
+	$(CP) \
+		*.$(SO) \
+		$(FF3PTLIB)/libz-ff.$(SO) $(FF3PTLIB)/liblzma-ff.$(SO) \
+		$(FF3PTLIB)/libjpeg-ff.$(SO) $(FF3PTLIB)/libpng-ff.$(SO) \
+		$(INSTDIR)/mod
+	chmod 644 $(INSTDIR)/mod/*
 
 
 install: all strip installd

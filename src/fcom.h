@@ -107,6 +107,7 @@ struct fcom_mod {
 	const char *desc;
 };
 
+#define FCOM_MODFUNCNAME  "fcom_getmod" //name of the function which is exported by a module
 /** When adding a new module, the core gets "fcom_getmod" function address from module and calls it.
 Return NULL on error. */
 typedef const fcom_mod* (*fcom_getmod_t)(const fcom_core *core);
@@ -135,8 +136,8 @@ do { \
 
 
 /** Initialize/destroy core.  These functions are called from the application executable. */
-FF_EXTN const fcom_core* core_create(fcom_log log, char **argv, char **env);
-FF_EXTN void core_free(void);
+typedef const fcom_core* (*core_create_t)(fcom_log log, char **argv, char **env);
+typedef void (*core_free_t)(void);
 
 
 /** COMMAND - manage the chain of modules (filters).

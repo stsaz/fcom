@@ -6,6 +6,8 @@ Copyright (c) 2017 Simon Zolin */
 #include <FF/data/psarg.h>
 #include <FF/sys/dir.h>
 #include <FF/time.h>
+#include <FF/path.h>
+#include <FFOS/process.h>
 #include <FFOS/file.h>
 #include <FFOS/sig.h>
 
@@ -47,6 +49,10 @@ struct job {
 
 	ffchain in_list;
 	ffchain_item *in_next;
+
+	ffdl core_dl;
+	core_create_t core_create;
+	core_free_t core_free;
 };
 
 struct in_ent {
@@ -392,9 +398,6 @@ static const int sigs_block[] = { SIGINT };
 
 static void cmds_free(void)
 {
-	if (core != NULL)
-		ffsig_ctl(&g->sigs_task, core->kq, sigs, FFCNT(sigs), NULL);
-
 	ffchain_item *it;
 	FFCHAIN_FOR(&g->in_list, it) {
 		struct in_ent *ent = FF_GETPTR(struct in_ent, sib, it);
@@ -484,6 +487,45 @@ static void onsig(void *udata)
 	core->cmd(FCOM_STOP);
 }
 
+/** Load core.so and import its functions. */
+static int loadcore(char *argv0)
+{
+	int rc = -1;
+	char buf[FF_MAXPATH];
+	const char *path;
+	ffdl dl = NULL;
+	ffarr a = {0};
+
+	if (NULL == (path = ffps_filename(buf, sizeof(buf), argv0)))
+		goto end;
+	if (0 == ffstr_catfmt(&a, "%s/../mod/core.%s%Z", path, FFDL_EXT))
+		goto end;
+	a.len = ffpath_norm(a.ptr, a.cap, a.ptr, a.len - 1, 0);
+	a.ptr[a.len] = '\0';
+
+	if (NULL == (dl = ffdl_open(a.ptr, 0))) {
+		fffile_fmt(ffstderr, NULL, "can't load %s: %s\n", a.ptr, ffdl_errstr());
+		goto end;
+	}
+
+	g->core_create = (void*)ffdl_addr(dl, "core_create");
+	g->core_free = (void*)ffdl_addr(dl, "core_free");
+	if (g->core_create == NULL || g->core_free == NULL) {
+		fffile_fmt(ffstderr, NULL, "can't resolve functions from %s: %s\n"
+			, a.ptr, ffdl_errstr());
+		goto end;
+	}
+
+	g->core_dl = dl;
+	dl = NULL;
+	rc = 0;
+
+end:
+	FF_SAFECLOSE(dl, NULL, ffdl_close);
+	ffarr_free(&a);
+	return rc;
+}
+
 int main(int argc, char **argv, char **env)
 {
 	int r = 1;
@@ -503,12 +545,15 @@ int main(int argc, char **argv, char **env)
 	g->conf.jpeg_quality = 255;
 	g->conf.png_comp = 255;
 
-	if (NULL == (core = core_create(&std_log, argv, env)))
-		return 1;
+	if (0 != loadcore(argv[0]))
+		goto done;
+
+	if (NULL == (core = g->core_create(&std_log, argv, env)))
+		goto done;
 
 	if (argc == 1) {
 		arg_help(NULL, NULL);
-		return 1;
+		goto done;
 	}
 
 	if (0 != cmdline(argc, argv))
@@ -541,7 +586,11 @@ int main(int argc, char **argv, char **env)
 	r = g->retcode;
 
 done:
-	core_free();
+	if (core != NULL) {
+		ffsig_ctl(&g->sigs_task, core->kq, sigs, FFCNT(sigs), NULL);
+		g->core_free();
+	}
+	FF_SAFECLOSE(g->core_dl, NULL, ffdl_close);
 	cmds_free();
 	return r;
 }
