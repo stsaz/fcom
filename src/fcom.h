@@ -150,6 +150,8 @@ enum FCOM_CMD_F {
 	FCOM_CMD_FIRST = 1, //filter is the first in chain
 	FCOM_CMD_LAST = 2, //filter is the last in chain
 	FCOM_CMD_FWD = 4, //moved forward through chain from the previous filter
+
+	FCOM_CMD_EMPTY = 0x10000, //don't auto-create filter from "fcom_cmd.name"
 };
 
 enum FCOM_CMD_SORT {
@@ -240,6 +242,9 @@ typedef struct fcom_filter {
 
 enum FCOM_CMD_CTL {
 	FCOM_CMD_MONITOR,
+	FCOM_CMD_UDATA,
+	FCOM_CMD_SETUDATA,
+	FCOM_CMD_RUNASYNC, //call run() asynchronously within the main thread
 
 	/** Add a filter to the chain.
 	Return a pointer that can later be passed as a parameter to FCOM_CMD_FILTADD_AFTER. */

@@ -49,6 +49,9 @@ typedef struct {
 
 	ffchain in_list; //struct in_ent[]
 	ffchain_item *in_next;
+
+	void *udata;
+	fftask tsk;
 } comm;
 
 struct in_ent {
@@ -72,6 +75,7 @@ const fcom_command core_com_iface = {
 };
 
 static const char* getmod_bycmd(const char *cmdname);
+static filter* filt_add(comm *c, uint cmd, const char *name, filter *neigh);
 static int filt_call(comm *c, filter *f);
 static void filt_close(comm *c, filter *f);
 static int dir_scan(comm *c, char *name);
@@ -117,6 +121,7 @@ static void* com_create(fcom_cmd *cmd)
 	ffchain_init(&c->chain);
 	ffchain_init(&c->in_list);
 	c->in_next = ffchain_first(&c->in_list);
+	c->cur = ffchain_first(&c->chain);
 
 	if (c->cmd.benchmark)
 		ffclk_get(&c->tm_start);
@@ -124,32 +129,17 @@ static void* com_create(fcom_cmd *cmd)
 	if (NULL == ffarr_allocT(&c->filters, 8, filter))
 		goto err;
 
-	filter *f;
-	f = ffarr_push(&c->filters, filter);
-	ffmem_tzero(f);
-	if (NULL == (f->name = getmod_bycmd(cmd->name))) {
-		errlog("unknown operation: %s", cmd->name);
-		goto err;
-	}
-	if (NULL == (f->filter = core->iface(f->name))) {
-		errlog("unknown filter: %s", f->name);
-		goto err;
-	}
-	ffchain_add(&c->chain, &f->sib);
+	if (!(cmd->flags & FCOM_CMD_EMPTY)) {
+		const char *name;
+		if (NULL == (name = getmod_bycmd(cmd->name))) {
+			errlog("unknown operation: %s", cmd->name);
+			goto err;
+		}
+		if (NULL == filt_add(c, FCOM_CMD_FILTADD_LAST, name, NULL))
+			goto err;
+	} else
+		c->cmd.flags &= ~FCOM_CMD_EMPTY;
 
-	c->cur = ffchain_first(&c->chain);
-
-	f = FF_GETPTR(filter, sib, c->cur);
-	dbglog(0, "creating context for %s", f->name);
-	if (NULL == (f->ptr = f->filter->open(&c->cmd)))
-		goto err;
-	else if (f->ptr == FCOM_SKIP) {
-		errlog("the first filter %s can't be skipped", f->name);
-		goto err;
-	} else if (f->ptr == FCOM_OPEN_SYSERR) {
-		syserrlog("%s", f->name);
-		goto err;
-	}
 	c->cmd.flags |= FCOM_CMD_FWD;
 
 	return &c->cmd;
@@ -163,6 +153,8 @@ err:
 static void com_close(void *p)
 {
 	comm *c = FF_GETPTR(comm, cmd, p);
+
+	core->task(FCOM_TASK_DEL, &c->tsk);
 
 	if (c->cmd.benchmark) {
 		fftime t;
@@ -190,7 +182,7 @@ static void com_close(void *p)
 	}
 
 	if (c->mon != NULL)
-		c->mon->onsig(NULL, 0);
+		c->mon->onsig(&c->cmd, 0);
 
 	dbglog(0, "'%s' finished", c->cmd.name);
 	ffmem_free(c);
@@ -239,6 +231,7 @@ static int com_run(void *p)
 
 	for (;;) {
 
+		FF_ASSERT(c->cur != ffchain_sentl(&c->chain));
 		f = FF_GETPTR(filter, sib, c->cur);
 
 		c->cmd.flags &= ~(FCOM_CMD_FIRST | FCOM_CMD_LAST);
@@ -554,6 +547,9 @@ static filter* filt_add(comm *c, uint cmd, const char *name, filter *neigh)
 		break;
 	}
 
+	if (c->cur == ffchain_sentl(&c->chain))
+		c->cur = ffchain_first(&c->chain);
+
 	char buf[255];
 	dbglog(0, "added %s to chain [%s]"
 		, f->name, chain_print(c, &f->sib, buf, sizeof(buf)));
@@ -574,6 +570,19 @@ static size_t com_ctrl(fcom_cmd *_c, uint cmd, ...)
 		c->mon = va_arg(va, void*);
 		dbglog(0, "set monitor iface: %p", c->mon);
 		r = 0;
+		break;
+
+	case FCOM_CMD_UDATA:
+		r = (size_t)c->udata;
+		break;
+	case FCOM_CMD_SETUDATA:
+		c->udata = va_arg(va, void*);
+		break;
+
+	case FCOM_CMD_RUNASYNC:
+		c->tsk.handler = (void*)&com_run;
+		c->tsk.param = c;
+		core->task(FCOM_TASK_ADD, &c->tsk);
 		break;
 
 	case FCOM_CMD_FILTADD:
