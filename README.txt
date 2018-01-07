@@ -51,6 +51,8 @@ FEATURES
 		Search "sometext" in HKEY_CURRENT_USER
 			fcom wregfind sometext --member=HKCU
 
+	fcom screenshots - show GUI to save screenshots to disk (Windows)
+
 	fcom pic-convert - convert pictures
 		Convert BMP to JPEG
 			fcom pic-convert pic.bmp -o pic.jpg

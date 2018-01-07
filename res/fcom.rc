@@ -1,0 +1,23 @@
+#include <fcom.h>
+
+1 RT_MANIFEST "fcom.exe.manifest"
+
+1 VERSIONINFO
+	FILEVERSION FCOM_VER_MAJ,FCOM_VER_MIN,0,0
+BEGIN
+	BLOCK "StringFileInfo"
+	BEGIN
+		BLOCK "040904b0"
+		BEGIN
+			VALUE "FileDescription", "fcom: file commander"
+			VALUE "CompanyName", "Simon Zolin"
+			VALUE "ProductName", "fcom"
+		END
+	END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
+2 ICON "fcom.ico"

@@ -8,6 +8,11 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.4 - Jan 7, 2018
+
+ + fcom screenshots
+
+
 fcom v0.3 - Dec 23, 2017
 
  + fcom pic-convert: convert pictures (.bmp, .jpg, .png)

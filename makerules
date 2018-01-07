@@ -2,6 +2,11 @@
 OBJ_DIR := .
 BINS := $(BIN) core.$(SO) file.$(SO) arc.$(SO) pic.$(SO)
 
+ifeq ($(OS),win)
+RES := $(OBJ_DIR)/fcom.coff
+BINS += gui.$(SO) $(RES)
+endif
+
 all: ff $(BINS)
 
 include $(FF)/makerules
@@ -10,11 +15,20 @@ FF_O := $(FFOS_OBJ) $(FF_OBJ) $(FF_OBJ_DIR)/ffutf8.o $(FF_OBJ_DIR)/ffdbg.o
 
 $(OBJ_DIR)/%.o: $(SRCDIR)/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
+$(OBJ_DIR)/%.o: $(SRCDIR)/gui/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
+
+$(RES): $(PROJDIR)/res/fcom.rc $(PROJDIR)/res/fcom.exe.manifest $(PROJDIR)/res/fcom.ico
+	$(WINDRES) -I$(SRCDIR) -I$(FF) -I$(FFOS) $(PROJDIR)/res/fcom.rc $@
 
 
 BIN_O := $(OBJ_DIR)/main.o \
 	$(FF_O) \
 	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffpsarg.o
+
+ifeq ($(OS),win)
+BIN_O += $(RES)
+endif
 
 $(BIN): $(BIN_O)
 	$(LD)  $(BIN_O) $(LDFLAGS) $(LD_LDL) -o$@
@@ -72,6 +86,18 @@ pic.$(SO): $(PIC_O)
 	$(LD) -shared $(PIC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) -ljpeg-ff -lpng-ff -o$@
 
 
+GUI_O := $(OBJ_DIR)/gui.o \
+	$(OBJ_DIR)/scrshots.o \
+	$(FF_OBJ_DIR)/ffgui-winapi.o \
+	$(FF_OBJ_DIR)/ffgui-loader.o \
+	$(FF_OBJ_DIR)/ffpic.o \
+	$(FF_OBJ_DIR)/ffconf.o \
+	$(FF_OBJ_DIR)/ffparse.o \
+	$(FF_O)
+gui.$(SO): $(GUI_O)
+	$(LD) -shared $(GUI_O) $(LDFLAGS) $(LD_LPTHREAD) -lshell32 -luxtheme -lcomctl32 -lcomdlg32 -lgdi32 -lole32 -luuid -o$@
+
+
 clean:
 	rm -vf $(BINS) *.debug *.o $(RES)
 
@@ -91,7 +117,8 @@ installd: all
 		$(INSTDIR)/
 
 ifeq ($(OS),win)
-	unix2dos $(INSTDIR)/*.txt $(INSTDIR)/*.conf
+	$(CP) $(PROJDIR)/src/gui/scrshots.gui $(PROJDIR)/src/gui/screenshots.ico $(INSTDIR)
+	unix2dos $(INSTDIR)/*.txt $(INSTDIR)/*.conf $(INSTDIR)/*.gui
 endif
 
 	chmod 644 $(INSTDIR)/*

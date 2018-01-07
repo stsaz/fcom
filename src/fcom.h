@@ -15,9 +15,9 @@ Copyright (c) 2017 Simon Zolin */
 #define FCOM_VER_MK(maj, minor) \
 	(((maj) << 8) | (minor))
 #define FCOM_VER_MAJ  0
-#define FCOM_VER_MIN  3
+#define FCOM_VER_MIN  4
 #define FCOM_VER  FCOM_VER_MK(FCOM_VER_MAJ, FCOM_VER_MIN)
-#define FCOM_VER_STR  "0.3"
+#define FCOM_VER_STR  "0.4"
 #define FCOM_CONF_FN  "fcom.conf"
 
 enum FCOM_LOGLEV {
@@ -211,6 +211,7 @@ typedef struct fcom_cmd {
 } fcom_cmd;
 
 // enum FCOM_FILT_OPEN
+#define FCOM_OPEN_ERR  NULL //filter has failed to initialize
 #define FCOM_SKIP  ((void*)-1) //filter refuses to be added to the chain
 #define FCOM_OPEN_DUMMY ((void*)1) //filter doesn't have a context
 #define FCOM_OPEN_SYSERR ((void*)2) //print system error message
@@ -232,7 +233,7 @@ enum FCOM_FILT_R {
 
 /** A module implements this interface to act as a filter in command's chain. */
 typedef struct fcom_filter {
-	/** Return object or enum FCOM_FILT_OPEN; NULL on error. */
+	/** Return object or enum FCOM_FILT_OPEN. */
 	void* (*open)(fcom_cmd *cmd);
 	void (*close)(void *p, fcom_cmd *cmd);
 

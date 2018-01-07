@@ -1,0 +1,53 @@
+# fcom v0.4 GUI
+
+menu mtray {
+	item "fcom screenshot saver" {
+		style default
+		action A_WND_SHOW
+	}
+	item "Exit" {
+		action A_QUIT
+	}
+}
+
+window wscrshot {
+	title "fcom screenshot saver"
+	position 100 100 500 300
+	borderstick 7
+	style visible
+	font {
+		name Arial
+		height 10
+	}
+	icon {
+		filename "screenshots.ico"
+	}
+
+	listview vopts {
+		position 0 0 400 200
+		style explorer_theme edit_labels visible
+		lclick A_OPTS_CLICK
+		column "Setting" {
+		}
+		column "Value" {
+		}
+		column "Description" {
+		}
+	}
+
+	paned pnopts {
+		child vopts {
+			resize cx cy
+		}
+	}
+
+	statusbar stbar {
+		style visible
+		parts 100 -1
+	}
+
+	trayicon tray {
+		popupmenu mtray
+		lclick A_WND_SHOW
+	}
+}
