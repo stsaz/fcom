@@ -136,6 +136,8 @@ static int gui_process(void *p, fcom_cmd *cmd)
 
 static void gui_destroy(void)
 {
+	if (gg == NULL)
+		return;
 	core->task(FCOM_TASK_DEL, &gg->tsk);
 	ffmem_safefree0(gg);
 }
