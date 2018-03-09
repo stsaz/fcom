@@ -55,7 +55,7 @@ core.$(SO): $(CORE_O)
 
 F_O := $(OBJ_DIR)/fsync.o \
 	$(FF_OBJ_DIR)/crc.o \
-	$(FF_OBJ_DIR)/ffparse.o \
+	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffconf.o \
 	$(FF_O)
 file.$(SO): $(F_O)
 	$(LD) -shared $(F_O) $(LDFLAGS) $(LD_LPTHREAD) -o$@

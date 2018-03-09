@@ -8,6 +8,7 @@ Copyright (c) 2017 Simon Zolin
 #include <FF/time.h>
 #include <FF/rbtree.h>
 #include <FF/crc.h>
+#include <FF/data/conf.h>
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, __VA_ARGS__)
@@ -33,13 +34,19 @@ static void fsync_close(void *p, fcom_cmd *cmd);
 static int fsync_process(void *p, fcom_cmd *cmd);
 static const fcom_filter fsync_filt = { &fsync_open, &fsync_close, &fsync_process };
 
+// SYNC-SNAPSHOT
+static void* fsyncss_open(fcom_cmd *cmd);
+static void fsyncss_close(void *p, fcom_cmd *cmd);
+static int fsyncss_process(void *p, fcom_cmd *cmd);
+static const fcom_filter fsyncss_filt = { &fsyncss_open, &fsyncss_close, &fsyncss_process };
+
 struct fsync_ctx;
 struct cursor;
 struct dir;
 struct cmp;
 struct mv;
 static void cur_init(struct cursor *c, struct dir *d);
-static struct dir* scan_tree(struct fsync_ctx *c, const char *fn);
+static struct dir* scan_tree(const char *fn);
 static int cmp_trees(struct fsync_ctx *c, struct cmp *cmp);
 static void cmp_show(struct fsync_ctx *c, struct cmp *cmp);
 static int mv_index(struct fsync_ctx *c);
@@ -53,15 +60,29 @@ FF_EXP const fcom_mod* fcom_getmod(const fcom_core *_core)
 	return &fsync_mod;
 }
 
+struct cmd {
+	const char *name;
+	const char *mod;
+	const fcom_filter *iface;
+};
+static const struct cmd cmds[] = {
+	{ "sync", "file.sync", &fsync_filt },
+	{ "sync-snapshot", "file.syncss", &fsyncss_filt },
+};
+
 static int fsync_sig(uint signo)
 {
 	switch (signo) {
-	case FCOM_SIGINIT:
+	case FCOM_SIGINIT: {
 		ffmem_init();
 		com = core->iface("core.com");
-		if (0 != com->reg("sync", "file.sync"))
-			return -1;
+		const struct cmd *c;
+		FFARR_WALKNT(cmds, FFCNT(cmds), c, struct cmd) {
+			if (0 != com->reg(c->name, c->mod))
+				return -1;
+		}
 		break;
+	}
 	case FCOM_SIGFREE:
 		break;
 	}
@@ -70,8 +91,11 @@ static int fsync_sig(uint signo)
 
 static const void* fsync_iface(const char *name)
 {
-	if (ffsz_eq(name, "sync"))
-		return &fsync_filt;
+	const struct cmd *cmd;
+	FFARRS_FOREACH(cmds, cmd) {
+		if (ffsz_eq(name, cmd->mod + FFSLEN("file.")))
+			return cmd->iface;
+	}
 	return NULL;
 }
 
@@ -137,7 +161,7 @@ struct cur_ctx {
 };
 
 struct cursor {
-	struct file *f;
+	struct file *f, *cur;
 	struct cur_ctx ctx[50];
 	uint ictx;
 };
@@ -211,10 +235,10 @@ static int fsync_process(void *p, fcom_cmd *cmd)
 		return FCOM_ERR;
 	}
 
-	if (NULL == (f->src = scan_tree(f, fn)))
+	if (NULL == (f->src = scan_tree(fn)))
 		return FCOM_ERR;
 
-	if (NULL == (f->dst = scan_tree(f, cmd->output.fn)))
+	if (NULL == (f->dst = scan_tree(cmd->output.fn)))
 		return FCOM_ERR;
 
 	cur_init(&f->curL, f->src);
@@ -287,7 +311,7 @@ done:
 }
 
 /** Get contents of a file tree. */
-static struct dir* scan_tree(fsync_ctx *f, const char *name)
+static struct dir* scan_tree(const char *name)
 {
 	ffchain_item *it, *last, tmp;
 	struct dir *d, *first = NULL;
@@ -327,44 +351,103 @@ end:
 }
 
 
+static struct file* cur_nextfile(struct cursor *c);
+
 static void cur_init(struct cursor *c, struct dir *d)
 {
+	c->ictx = 0;
 	c->ctx[0].d = d;
+	c->ctx[0].next = NULL;
 	c->f = (void*)d->files.ptr;
+	c->cur = cur_nextfile(c);
 }
 
-#define cur_get(c)  ((c)->f)
+#define cur_get(c)  ((c)->cur)
 
 #define cur_dir(c)  (c)->ctx[(c)->ictx].d
 
+/** Get the next file at this level. */
+static struct file* cur_nextfile(struct cursor *c)
+{
+	const struct cur_ctx *cx = &c->ctx[c->ictx];
+	if (c->f == ffarr_endT(&cx->d->files, struct file)) {
+		c->cur = NULL;
+		return NULL;
+	}
+	c->cur = c->f++;
+	return c->cur;
+}
+
+/** Get the next directory. */
+static struct file* cur_nextdir(struct cursor *c)
+{
+	struct file *f;
+	for (;;) {
+		f = cur_nextfile(c);
+		if (f == NULL)
+			return NULL;
+		if (fffile_isdir(f->attr))
+			break;
+	}
+	return f;
+}
+
 static void cur_push(struct cursor *c, struct dir *d)
 {
-	c->ctx[c->ictx].next = c->f + 1;
 	c->ictx++;
 	FF_ASSERT(c->ictx != FFCNT(c->ctx));
-	struct cur_ctx *cx = &c->ctx[c->ictx];
-	cx->d = d;
+	c->ctx[c->ictx].d = d;
+	c->ctx[c->ictx].next = NULL;
 	c->f = (void*)d->files.ptr;
 }
 
-static void* cur_next(struct cursor *c)
+static void* cur_pop(struct cursor *c)
 {
-	const struct cur_ctx *cx;
-	c->f++;
+	if (c->ictx == 0)
+		return NULL;
+	c->ctx[c->ictx].next = NULL;
+	c->ictx--;
+	return &c->ctx[c->ictx];
+}
+
+/** Get next entry (post-increment algorithm).
+Phase 1: Return all entries at this level
+Phase 2: Recursively return all entries from sub-directories
+Return NULL if no more entries. */
+static struct file* cur_next(struct cursor *c)
+{
+	struct file *f;
+	struct cur_ctx *cx;
+
 	for (;;) {
 		cx = &c->ctx[c->ictx];
-		if (c->f != ffarr_endT(&cx->d->files, struct file))
-			break;
-		if (c->ictx == 0) {
-			c->f = NULL;
-			return NULL;
-		}
-		c->ictx--;
-		cx = &c->ctx[c->ictx];
-		c->f = cx->next;
-	}
 
-	return c->f;
+		if (cx->next == NULL) {
+			f = cur_nextfile(c);
+			if (f != NULL)
+				return f;
+
+			c->f = (void*)cx->d->files.ptr;
+			if (c->f == NULL) {
+				// empty dir
+				if (NULL == cur_pop(c))
+					return NULL;
+				continue;
+			}
+			cx->next = c->f;
+			continue;
+		}
+
+		c->f = cx->next;
+		f = cur_nextdir(c);
+		if (f == NULL) {
+			if (NULL == cur_pop(c))
+				return NULL;
+			continue;
+		}
+		cx->next = c->f;
+		cur_push(c, f->dir);
+	}
 }
 
 
@@ -401,10 +484,7 @@ static int path_cmp(fsync_ctx *c, const struct file *f1, const struct file *f2)
 	ffstr n1, n2;
 	ffstr_setz(&n1, cur_dir(&c->curL)->path + ffsz_len(c->src->path));
 	ffstr_setz(&n2, cur_dir(&c->curR)->path + ffsz_len(c->dst->path));
-	if ((n1.len & n2.len) == 0)
-		rcmp = (ssize_t)n2.len - n1.len;
-	else
-		rcmp = ffpath_cmp(&n1, &n2, 0);
+	rcmp = ffpath_cmp(&n1, &n2, 0);
 	if (rcmp == 0) {
 		ffstr_setz(&n1, f1->name);
 		ffstr_setz(&n2, f2->name);
@@ -414,7 +494,7 @@ static int path_cmp(fsync_ctx *c, const struct file *f1, const struct file *f2)
 }
 
 /** Get next change from comparing 2 directory trees.
-Enter a subdirectory before processing next files at the same level (e.g. /d1/f1 before /d2). */
+Return -1 if finished. */
 static int cmp_trees(fsync_ctx *c, struct cmp *cmp)
 {
 	int rcmp;
@@ -455,16 +535,10 @@ static int cmp_trees(fsync_ctx *c, struct cmp *cmp)
 	cmp->status = st2;
 
 	if (st != FSYNC_ST_DEST) {
-		if (l->dir != NULL)
-			cur_push(&c->curL, l->dir);
-		else
-			cur_next(&c->curL);
+		cur_next(&c->curL);
 	}
 	if (st != FSYNC_ST_SRC) {
-		if (r->dir != NULL)
-			cur_push(&c->curR, r->dir);
-		else
-			cur_next(&c->curR);
+		cur_next(&c->curR);
 	}
 
 	return 0;
@@ -570,16 +644,10 @@ static int mv_index1(fsync_ctx *c)
 	}
 
 	if (st != FSYNC_ST_DEST) {
-		if (l->dir != NULL)
-			cur_push(&c->curL, l->dir);
-		else
-			cur_next(&c->curL);
+		cur_next(&c->curL);
 	}
 	if (st != FSYNC_ST_SRC) {
-		if (r->dir != NULL)
-			cur_push(&c->curR, r->dir);
-		else
-			cur_next(&c->curR);
+		cur_next(&c->curR);
 	}
 
 	return 0;
@@ -634,6 +702,142 @@ static void mv_add(struct mv *mv, struct file *f)
 {
 	f->nod.key = crc32((void*)f->name, ffsz_len(f->name), 0);
 	ffrbtl_insert(&mv->rbt, &f->nod);
+}
+
+#undef FILT_NAME
+
+
+#define FILT_NAME  "file.syncss"
+
+struct fsyncss {
+	uint state;
+	struct dir *tree;
+	struct cursor cur;
+	ffconfw cw;
+	void *curdir;
+};
+
+static void* fsyncss_open(fcom_cmd *cmd)
+{
+	struct fsyncss *f;
+	if (NULL == (f = ffmem_new(struct fsyncss)))
+		return FCOM_OPEN_SYSERR;
+	ffconf_winit(&f->cw, NULL, 0);
+	ffarr_alloc(&f->cw.buf, 4096);
+	return f;
+}
+
+static void fsyncss_close(void *p, fcom_cmd *cmd)
+{
+	struct fsyncss *f = p;
+	FF_SAFECLOSE(f->tree, NULL, tree_free);
+	ffconf_wdestroy(&f->cw);
+	ffmem_free(f);
+}
+
+/** Write dir info into snapshot. */
+static void fsyncss_writedir(struct fsyncss *f, struct dir *d, ffbool close)
+{
+	if (close)
+		ffconf_write(&f->cw, NULL, FFCONF_CLOSE, FFCONF_TOBJ);
+	f->curdir = d;
+	ffconf_write(&f->cw, "d", FFCONF_STRZ, FFCONF_TKEY);
+	ffconf_write(&f->cw, d->path, FFCONF_STRZ, FFCONF_TVAL);
+	ffconf_write(&f->cw, NULL, FFCONF_OPEN, FFCONF_TOBJ);
+	ffconf_write(&f->cw, "v", FFCONF_STRZ, FFCONF_TKEY);
+	ffconf_write(&f->cw, "0", FFCONF_STRZ, FFCONF_TVAL);
+}
+
+/** Write file info into snapshot. */
+static void fsyncss_write(struct fsyncss *f, const struct file *fl)
+{
+	ffconf_write(&f->cw, "f", FFCONF_STRZ, FFCONF_TKEY);
+	ffconf_write(&f->cw, fl->name, FFCONF_STRZ, FFCONF_TVAL);
+	ffconf_writeint(&f->cw, fl->size, FFINT_HEXLOW, FFCONF_TVAL);
+	ffconf_writeint(&f->cw, fl->attr, FFINT_HEXLOW, FFCONF_TVAL);
+	ffconf_writeint(&f->cw, 0, FFINT_HEXLOW, FFCONF_TVAL);
+	ffconf_writeint(&f->cw, 0, FFINT_HEXLOW, FFCONF_TVAL);
+	ffconf_writeint(&f->cw, fl->mtime.sec, FFINT_HEXLOW, FFCONF_TVAL);
+	ffconf_write(&f->cw, "0", FFCONF_STRZ, FFCONF_TVAL);
+}
+
+/* ver.0 format:
+# fcom file tree snapshot
+d "/d" {
+v 0 // version
+// name size attr uid gid mtime crc
+f "1" 0 0 0 0 0 0
+}
+d "/d/1" {
+v 0
+f "2" 0 0 0 0 0 0
+}
+*/
+static int fsyncss_process(void *p, fcom_cmd *cmd)
+{
+	struct fsyncss *f = p;
+
+	for (;;) {
+	switch (f->state) {
+	case 0: {
+		char *fn;
+		if (NULL == (fn = com->arg_next(cmd, 0)))
+			return FCOM_ERR;
+
+		if (cmd->output.fn == NULL) {
+			errlog("output file isn't specified", 0);
+			return FCOM_ERR;
+		}
+
+		com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(cmd));
+
+		if (NULL == (f->tree = scan_tree(fn)))
+			return FCOM_ERR;
+
+		cur_init(&f->cur, f->tree);
+
+		ffconf_write(&f->cw, "fcom file tree snapshot", FFCONF_STRZ, FFCONF_TCOMMENTSHARP);
+		f->curdir = NULL;
+	}
+	// fall through
+
+	case 1:
+		for (;;) {
+			const struct file *fl = cur_next(&f->cur);
+			if (fl == NULL)
+				break;
+
+			if (fl->parent != f->curdir) {
+				// got a file from another directory
+				fsyncss_writedir(f, fl->parent, (f->curdir != NULL));
+			}
+
+			fsyncss_write(f, fl);
+
+			ffstr s;
+			ffconf_output(&f->cw, &s);
+			if (cmd->out.len >= 64 * 1024) {
+				cmd->out = s;
+				f->state = 2;
+				return FCOM_DATA;
+			}
+		}
+		break;
+
+	case 2:
+		ffconf_clear(&f->cw);
+		f->state = 1;
+		continue;
+	}
+
+	break;
+	}
+
+	ffconf_write(&f->cw, NULL, FFCONF_CLOSE, FFCONF_TOBJ);
+	if (0 == ffconf_write(&f->cw, NULL, 0, FFCONF_FIN))
+		errlog("ffconf_write", 0);
+	ffconf_output(&f->cw, &cmd->out);
+	return FCOM_DONE;
 }
 
 #undef FILT_NAME
