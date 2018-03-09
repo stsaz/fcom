@@ -88,6 +88,7 @@ pic.$(SO): $(PIC_O)
 
 GUI_O := $(OBJ_DIR)/gui.o \
 	$(OBJ_DIR)/scrshots.o \
+	$(OBJ_DIR)/gsync.o \
 	$(FF_OBJ_DIR)/ffgui-winapi.o \
 	$(FF_OBJ_DIR)/ffgui-loader.o \
 	$(FF_OBJ_DIR)/ffpic.o \
@@ -117,7 +118,7 @@ installd: all
 		$(INSTDIR)/
 
 ifeq ($(OS),win)
-	$(CP) $(PROJDIR)/src/gui/scrshots.gui $(PROJDIR)/src/gui/screenshots.ico $(INSTDIR)
+	$(CP) $(PROJDIR)/src/gui/*.gui $(PROJDIR)/src/gui/screenshots.ico $(INSTDIR)
 	unix2dos $(INSTDIR)/*.txt $(INSTDIR)/*.conf $(INSTDIR)/*.gui
 endif
 

@@ -46,11 +46,13 @@ struct cmd {
 
 /** This function is called after GUI initializes. */
 typedef int (*gui_func)(void);
-extern void scrshots_create(void);
+extern int scrshots_create(void);
+extern int gsync_create(void);
 extern const fcom_filter dcbmp_filt;
 static const struct cmd cmds[] = {
 	{ "gui", NULL, &gui_filt },
 	{ "screenshots", "gui.gui", (void*)&scrshots_create },
+	{ "gsync", "gui.gui", (void*)&gsync_create },
 	{ "dcbmp", NULL, &dcbmp_filt },
 };
 

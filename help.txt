@@ -9,6 +9,7 @@ OPERATION
  crc FILE...
  wregfind STR... [--member=KEY]...
  screenshots
+ gsync
 
 Pack files (.gz, .tar, .zip):
  gz FILE... [--out=FILE]
