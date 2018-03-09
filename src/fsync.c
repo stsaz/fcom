@@ -43,15 +43,23 @@ static const fcom_filter fsyncss_filt = { &fsyncss_open, &fsyncss_close, &fsyncs
 struct fsync_ctx;
 struct cursor;
 struct dir;
-struct cmp;
 struct mv;
 static void cur_init(struct cursor *c, struct dir *d);
 static struct dir* scan_tree(const char *fn);
-static int cmp_trees(struct fsync_ctx *c, struct cmp *cmp);
-static void cmp_show(struct fsync_ctx *c, struct cmp *cmp);
+static void* cmp_init(fsync_dir *left, fsync_dir *right, uint flags);
+static int cmp_trees(struct fsync_ctx *c, struct fsync_cmp *cmp);
+static void cmp_show(struct fsync_ctx *c, struct fsync_cmp *cmp);
 static int mv_index(struct fsync_ctx *c);
 static struct file* mv_find(struct mv *mv, struct file *f);
 static void mv_add(struct mv *mv, struct file *f);
+static void tree_free(struct dir *d);
+static void* getprop(uint cmd, ...);
+#define isdir(a) !!((a) & FFUNIX_FILE_DIR)
+
+// FSYNC IFACE
+static const fcom_fsync fsync_if = {
+	&scan_tree, &cmp_init, (void*)&cmp_trees, &tree_free, &getprop
+};
 
 
 FF_EXP const fcom_mod* fcom_getmod(const fcom_core *_core)
@@ -63,11 +71,12 @@ FF_EXP const fcom_mod* fcom_getmod(const fcom_core *_core)
 struct cmd {
 	const char *name;
 	const char *mod;
-	const fcom_filter *iface;
+	const void *iface;
 };
 static const struct cmd cmds[] = {
 	{ "sync", "file.sync", &fsync_filt },
 	{ "sync-snapshot", "file.syncss", &fsyncss_filt },
+	{ NULL, "file.fsync", &fsync_if },
 };
 
 static int fsync_sig(uint signo)
@@ -78,7 +87,8 @@ static int fsync_sig(uint signo)
 		com = core->iface("core.com");
 		const struct cmd *c;
 		FFARR_WALKNT(cmds, FFCNT(cmds), c, struct cmd) {
-			if (0 != com->reg(c->name, c->mod))
+			if (c->name != NULL
+				&& 0 != com->reg(c->name, c->mod))
 				return -1;
 		}
 		break;
@@ -108,10 +118,12 @@ static int fsync_conf(const char *name, ffpars_ctx *ctx)
 #define FILT_NAME  "file.sync"
 
 struct file {
+	// struct fsync_file
 	char *name;
 	uint64 size;
 	fftime mtime;
 	uint attr;
+
 	struct dir *parent;
 	struct dir *dir;
 	ffchain_item sib;
@@ -122,37 +134,6 @@ struct dir {
 	char *path;
 	ffarr files; //struct file[]
 	ffchain_item sib;
-};
-
-enum FSYNC_CMP_F {
-	// FSYNC_CMP_NAME = 1,
-	FSYNC_CMP_SIZE = 2,
-	FSYNC_CMP_MTIME = 4,
-	FSYNC_CMP_ATTR = 8,
-	FSYNC_CMP_MOVE = 0x10,
-};
-
-enum FSYNC_ST {
-	FSYNC_ST_EQ,
-	FSYNC_ST_SRC,
-	FSYNC_ST_DEST,
-	FSYNC_ST_MOVED,
-	FSYNC_ST_NEQ,
-	_FSYNC_ST_MASK = 0x0f,
-	_FSYNC_ST_NMASK = 0xff0,
-	FSYNC_ST_NSIZE = 0x10,
-	FSYNC_ST_NSIZE_SMALLER = 0x100,
-	FSYNC_ST_NSIZE_LARGER = 0x200,
-	FSYNC_ST_NDATE = 0x20,
-	FSYNC_ST_NDATE_OLDER = 0x400,
-	FSYNC_ST_NDATE_NEWER = 0x800,
-	FSYNC_ST_NATTR = 0x40,
-};
-
-struct cmp {
-	struct file *left;
-	struct file *right;
-	uint status; //enum FSYNC_ST
 };
 
 struct cur_ctx {
@@ -176,6 +157,7 @@ typedef struct fsync_ctx {
 	ffarr fn;
 	struct cursor curL, curR;
 	struct mv mvL, mvR;
+	uint flags;
 } fsync_ctx;
 
 static void* fsync_open(fcom_cmd *cmd)
@@ -183,6 +165,7 @@ static void* fsync_open(fcom_cmd *cmd)
 	fsync_ctx *f;
 	if (NULL == (f = ffmem_new(fsync_ctx)))
 		return FCOM_OPEN_SYSERR;
+	f->flags = FSYNC_CMP_SIZE | FSYNC_CMP_MTIME /*| FSYNC_CMP_ATTR*/ | FSYNC_CMP_MOVE;
 	ffrbt_init(&f->mvL.rbt);
 	ffrbt_init(&f->mvR.rbt);
 	return f;
@@ -201,6 +184,8 @@ static void dir_free(struct dir *d)
 
 static void tree_free(struct dir *d)
 {
+	if (d == NULL)
+		return;
 	ffchain_item *it;
 	it = d->sib.next;
 	dir_free(d);
@@ -220,6 +205,29 @@ static void fsync_close(void *p, fcom_cmd *cmd)
 
 	ffarr_free(&c->fn);
 	ffmem_free(c);
+}
+
+static void* getprop(uint cmd, ...)
+{
+	void *rc = NULL;
+	va_list va;
+	va_start(va, cmd);
+
+	switch ((enum FSYNC_CMD)cmd) {
+	case FSYNC_FULLNAME: {
+		const struct file *f = va_arg(va, struct file*);
+		rc = ffsz_alfmt("%s/%s", f->parent->path, f->name);
+		break;
+	}
+	case FSYNC_DIRNAME: {
+		const struct file *f = va_arg(va, struct file*);
+		rc = (f->parent != NULL) ? f->parent->path : "";
+		break;
+	}
+	}
+
+	va_end(va);
+	return rc;
 }
 
 static int fsync_process(void *p, fcom_cmd *cmd)
@@ -249,7 +257,7 @@ static int fsync_process(void *p, fcom_cmd *cmd)
 	cur_init(&f->curL, f->src);
 	cur_init(&f->curR, f->dst);
 
-	struct cmp cmp;
+	struct fsync_cmp cmp;
 	for (;;) {
 		if (0 != cmp_trees(f, &cmp))
 			break;
@@ -291,10 +299,15 @@ static int scan1(struct dir *d, char *name, ffchain_item **dirs)
 		e->parent = d;
 
 		if (0 == fffile_infofn(fn, &fi)) {
+#ifdef FF_UNIX
 			e->attr = fffile_infoattr(&fi);
+#else
+			e->attr = fffile_isdir(fffile_infoattr(&fi)) ? FFUNIX_FILE_DIR : FFUNIX_FILE_REG;
+			e->attr |= 0755;
+#endif
 			e->size = fffile_infosize(&fi);
 			e->mtime = fffile_infomtime(&fi);
-			if (fffile_isdir(fffile_infoattr(&fi))) {
+			if (isdir(e->attr)) {
 				e->sib.next = last->next;
 				last->next = &e->sib;
 				last = &e->sib;
@@ -386,7 +399,7 @@ static struct file* cur_nextdir(struct cursor *c)
 		f = cur_nextfile(c);
 		if (f == NULL)
 			return NULL;
-		if (fffile_isdir(f->attr))
+		if (isdir(f->attr))
 			break;
 	}
 	return f;
@@ -455,25 +468,23 @@ static struct file* cur_next(struct cursor *c)
 Return enum FSYNC_ST. */
 static int cmp_file(const struct file *f1, const struct file *f2, uint flags)
 {
-	if (fffile_isdir(f1->attr) != fffile_isdir(f2->attr))
+	if (isdir(f1->attr) != isdir(f2->attr))
 		return FSYNC_ST_NEQ;
 
 	int r;
 	uint m = 0;
 	if ((flags & FSYNC_CMP_SIZE)
-		&& !(fffile_isdir(f1->attr) | fffile_isdir(f2->attr))
+		&& !(isdir(f1->attr) | isdir(f2->attr))
 		&& f1->size != f2->size) {
-		m |= FSYNC_ST_NSIZE;
-		m |= (f1->size < f2->size) ? FSYNC_ST_NSIZE_SMALLER : FSYNC_ST_NSIZE_LARGER;
+		m |= (f1->size < f2->size) ? FSYNC_ST_SMALLER : FSYNC_ST_LARGER;
 	}
 
 	if ((flags & FSYNC_CMP_MTIME) && 0 != (r = fftime_cmp(&f1->mtime, &f2->mtime))) {
-		m |= FSYNC_ST_NDATE;
-		m |= (r < 0) ? FSYNC_ST_NDATE_OLDER : FSYNC_ST_NDATE_NEWER;
+		m |= (r < 0) ? FSYNC_ST_OLDER : FSYNC_ST_NEWER;
 	}
 
 	if ((flags & FSYNC_CMP_ATTR) && f1->attr != f2->attr)
-		m |= FSYNC_ST_NATTR;
+		m |= FSYNC_ST_ATTR;
 
 	return (m != 0) ? FSYNC_ST_NEQ | m : FSYNC_ST_EQ;
 }
@@ -493,13 +504,42 @@ static int path_cmp(fsync_ctx *c, const struct file *f1, const struct file *f2)
 	return rcmp;
 }
 
+static void* cmp_init(fsync_dir *left, fsync_dir *right, uint flags)
+{
+	fsync_ctx *c;
+	c = ffmem_new(fsync_ctx);
+	c->flags = (flags != 0) ? flags : FSYNC_CMP_SIZE | FSYNC_CMP_MTIME | FSYNC_CMP_MOVE;
+	ffrbt_init(&c->mvL.rbt);
+	ffrbt_init(&c->mvR.rbt);
+	c->src = left;
+	c->dst = right;
+
+	if (c->flags & FSYNC_CMP_MOVE) {
+		cur_init(&c->curL, left);
+		cur_init(&c->curR, right);
+		if (0 != mv_index(c)) {
+			ffmem_free(c);
+			return NULL;
+		}
+	}
+
+	cur_init(&c->curL, left);
+	cur_init(&c->curR, right);
+	return c;
+}
+
 /** Get next change from comparing 2 directory trees.
 Return -1 if finished. */
-static int cmp_trees(fsync_ctx *c, struct cmp *cmp)
+static int cmp_trees(fsync_ctx *c, struct fsync_cmp *cmp)
 {
 	int rcmp;
-	uint st, st2, flags = FSYNC_CMP_SIZE | FSYNC_CMP_MTIME | FSYNC_CMP_ATTR;
+	uint st, st2;
 	struct file *l, *r;
+
+	if (cmp == NULL) {
+		ffmem_free(c);
+		return 0;
+	}
 
 	l = cur_get(&c->curL);
 	r = cur_get(&c->curR);
@@ -528,7 +568,7 @@ static int cmp_trees(fsync_ctx *c, struct cmp *cmp)
 		if (NULL != (l = mv_find(&c->mvL, r)))
 			st2 = FSYNC_ST_MOVED;
 	} else
-		st = st2 = cmp_file(l, r, flags);
+		st = st2 = cmp_file(l, r, c->flags);
 
 	cmp->left = l;
 	cmp->right = r;
@@ -555,16 +595,16 @@ static const char* const cmp_sstatus_sz[] = {
 };
 
 /** Get file comparison status. */
-static const char* cmp_status_str(char *buf, size_t cap, struct cmp *cmp)
+static const char* cmp_status_str(char *buf, size_t cap, struct fsync_cmp *cmp)
 {
 	uint st = cmp->status;
 
 	if ((st & _FSYNC_ST_MASK) == FSYNC_ST_NEQ) {
 		uint itm = 0, isz = 0;
-		if (st & FSYNC_ST_NDATE)
-			itm = (st & FSYNC_ST_NDATE_OLDER) ? 1 : 2;
-		if (st & FSYNC_ST_NSIZE)
-			isz = (st & FSYNC_ST_NSIZE_SMALLER) ? 1 : 2;
+		if (st & (FSYNC_ST_OLDER | FSYNC_ST_NEWER))
+			itm = (st & FSYNC_ST_OLDER) ? 1 : 2;
+		if (st & (FSYNC_ST_SMALLER | FSYNC_ST_LARGER))
+			isz = (st & FSYNC_ST_SMALLER) ? 1 : 2;
 		ffs_fmt(buf, buf + cap, "%s (%s,%s)%Z"
 			, cmp_sstatus[st & _FSYNC_ST_MASK], cmp_sstatus_tm[itm], cmp_sstatus_sz[isz]);
 		return buf;
@@ -575,7 +615,7 @@ static const char* cmp_status_str(char *buf, size_t cap, struct cmp *cmp)
 
 /** Print the result of file comparison.
 "status name size date name size date" */
-static void cmp_show(fsync_ctx *c, struct cmp *cmp)
+static void cmp_show(fsync_ctx *c, struct fsync_cmp *cmp)
 {
 	uint st = cmp->status & _FSYNC_ST_MASK;
 	char buf[64], stime[128];
@@ -668,7 +708,7 @@ static struct file* mv_find(struct mv *mv, struct file *f)
 {
 	ffstr name;
 	ffrbtl_node *nod;
-	uint flags = FSYNC_CMP_SIZE | FSYNC_CMP_MTIME | FSYNC_CMP_ATTR;
+	uint flags = FSYNC_CMP_SIZE | FSYNC_CMP_MTIME;
 	struct file *nf;
 	fflist_item *it;
 

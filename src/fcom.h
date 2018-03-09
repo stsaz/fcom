@@ -9,6 +9,12 @@ Copyright (c) 2017 Simon Zolin */
 #include <FF/sys/timer-queue.h>
 #include <FFOS/file.h>
 
+/*
+CORE
+LOG
+COMMAND
+FSYNC
+*/
 
 /** THE CORE - manage modules, provide runtime helper functions. */
 
@@ -302,3 +308,81 @@ struct fcom_cmd_mon {
 };
 /** Associate monitor interface with a command. */
 #define fcom_cmd_monitor(cmd, mon)  ctrl(cmd, FCOM_CMD_MONITOR, mon)
+
+
+/** FSYNC - synchronize files */
+
+struct dir;
+struct file;
+typedef struct dir fsync_dir;
+
+struct fsync_file {
+	char *name;
+	uint64 size;
+	fftime mtime;
+	uint attr;
+};
+
+enum FSYNC_CMP {
+	// FSYNC_CMP_NAME = 1,
+	FSYNC_CMP_SIZE = 2,
+	FSYNC_CMP_MTIME = 4,
+	FSYNC_CMP_ATTR = 8,
+	FSYNC_CMP_MOVE = 0x10,
+};
+
+enum FSYNC_ST {
+	FSYNC_ST_EQ, // left == right
+	FSYNC_ST_SRC, // left -- <empty>
+	FSYNC_ST_DEST, // <empty> -- right
+	FSYNC_ST_MOVED, // newpath/left == oldpath/right
+	FSYNC_ST_NEQ, // left != right
+	_FSYNC_ST_MASK = 0x0f,
+
+	_FSYNC_ST_NMASK = 0x0ff0,
+	FSYNC_ST_SMALLER = 0x0100,
+	FSYNC_ST_LARGER = 0x0200,
+	FSYNC_ST_OLDER = 0x0400,
+	FSYNC_ST_NEWER = 0x0800,
+	FSYNC_ST_ATTR = 0x1000,
+};
+
+struct fsync_cmp {
+	struct file *left;
+	struct file *right;
+	uint status; //enum FSYNC_ST
+};
+
+enum FSYNC_CMD {
+	/** Full file name.
+	@param: struct file*
+	Return char* (newly allocated) */
+	FSYNC_FULLNAME,
+
+	/** Full directory name.
+	@param: struct file*
+	Return char* (static) */
+	FSYNC_DIRNAME,
+};
+
+typedef struct fcom_fsync {
+	/** Scan directories and create a file tree. */
+	fsync_dir* (*scan_tree)(const char *fn);
+
+	/** Initialize file tree compare context.
+	Destroy with cmp_trees(cmp, NULL).
+	@flags: enum FSYNC_CMP */
+	void* (*cmp_init)(fsync_dir *left, fsync_dir *right, uint flags);
+
+	/** Get next change from comparing 2 directory trees.
+	@result: if NULL, destroy file tree compare context.
+	Return -1 if finished. */
+	int (*cmp_trees)(void *cmp, struct fsync_cmp *result);
+
+	/** Free the memory allocated for a file tree. */
+	void (*tree_free)(fsync_dir *d);
+
+	/** Get property.
+	@cmd: enum FSYNC_CMD */
+	void* (*get)(uint cmd, ...);
+} fcom_fsync;
