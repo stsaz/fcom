@@ -442,6 +442,11 @@ static int mod_add(const ffstr *name, ffpars_ctx *ctx)
 		goto fail;
 	}
 
+#ifdef FF_UNIX
+	if (ffstr_eqz(&soname, "gui"))
+		return 0;
+#endif
+
 	if (NULL == (m = mod_find(&soname))) {
 		if (NULL == (m = mod_load(&soname)))
 			goto fail;
