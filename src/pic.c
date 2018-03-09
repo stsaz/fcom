@@ -810,6 +810,29 @@ static const char* next_file(fcom_cmd *cmd)
 	}
 }
 
+/** Make filename:  [out_dir/] [in_dir/] in_name .out_ext */
+static int fn_make(ffarr *fn, ffstr *idir, const ffstr *iname, ffstr *odir, const ffstr *oext)
+{
+	if (odir->len != 0)
+		odir->len++;
+	if (NULL == ffarr_append(fn, odir->ptr, odir->len))
+		return FCOM_SYSERR;
+
+	if (idir->len != 0) {
+		idir->len++;
+		uint f = 0;
+		f |= (odir->len != 0) ? FFPATH_TOREL : 0; // idir="../d" -> "d"
+		if (NULL == ffarr_grow(fn, idir->len, 0))
+			return FCOM_SYSERR;
+		fn->len += ffpath_norm(ffarr_end(fn), ffarr_unused(fn), idir->ptr, idir->len, f | FFPATH_MERGEDOTS);
+	}
+
+	if (0 == ffstr_catfmt(fn, "%S.%S%Z", iname, oext))
+		return FCOM_SYSERR;
+
+	return 0;
+}
+
 /** Create filters chain for picture conversion.
 chain: f.in -> p.in -> p.out -> f.out */
 static int piconv_process(void *p, fcom_cmd *cmd)
@@ -852,15 +875,11 @@ static int piconv_process(void *p, fcom_cmd *cmd)
 	}
 
 	if (oname.len == 0) {
-		// out_dir/in_dir/in_name.out_ext
-		if (0 == ffstr_catfmt(&c->fn, "%S/%S/%S.%S%Z"
-			, &odir, &idir, &iname, &oext))
+		if (0 != fn_make(&c->fn, &idir, &iname, &odir, &oext))
 			return FCOM_SYSERR;
 		c->fn.len = 0;
 		c->output = cmd->output.fn;
 		cmd->output.fn = c->fn.ptr;
-		if (odir.len == 0)
-			cmd->output.fn += FFSLEN("/");
 	}
 
 	prev = com->ctrl(cmd, FCOM_CMD_FILTADD_AFTER, ofilters[r], prev);
