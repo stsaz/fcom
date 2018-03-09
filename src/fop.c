@@ -136,8 +136,7 @@ static int f_touch_process(void *p, fcom_cmd *cmd)
 	if (NULL == (cmd->output.fn = com->arg_next(cmd, 0)))
 		return FCOM_DONE;
 
-	if (0 != com->fcom_cmd_filtadd(cmd, FCOM_CMD_FILT_OUT(cmd)))
-		return FCOM_ERR;
+	com->fcom_cmd_filtadd(cmd, FCOM_CMD_FILT_OUT(cmd));
 
 	if (fftime_sec(&cmd->mtime) != 0 && cmd->date_as_fn != NULL)
 		return FCOM_ERR;
