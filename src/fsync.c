@@ -281,7 +281,7 @@ static int scan1(struct dir *d, char *name, ffchain_item **dirs)
 
 	if (0 != ffdir_expopen(&dr, name, 0)) {
 		if (fferr_last() != ENOMOREFILES) {
-			fcom_syserrlog(FILT_NAME, "%s", ffdir_open_S);
+			syserrlog("%s: %s", ffdir_open_S, name);
 			return -1;
 		}
 		return 0;

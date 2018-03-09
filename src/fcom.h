@@ -21,9 +21,9 @@ FSYNC
 #define FCOM_VER_MK(maj, minor) \
 	(((maj) << 8) | (minor))
 #define FCOM_VER_MAJ  0
-#define FCOM_VER_MIN  4
+#define FCOM_VER_MIN  5
 #define FCOM_VER  FCOM_VER_MK(FCOM_VER_MAJ, FCOM_VER_MIN)
-#define FCOM_VER_STR  "0.4"
+#define FCOM_VER_STR  "0.5"
 #define FCOM_CONF_FN  "fcom.conf"
 
 enum FCOM_LOGLEV {

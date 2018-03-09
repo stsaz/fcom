@@ -10,7 +10,6 @@ Copyright (c) 2017 Simon Zolin
 #include <FF/data/conf.h>
 #include <FF/time.h>
 #include <FF/path.h>
-#include <FFOS/thread.h>
 
 
 extern const fcom_core *core;
@@ -461,22 +460,22 @@ static int opts_load(struct opts *c)
 static void opts_save(struct opts *c)
 {
 	char buf[64];
-	ffconfw conf = {0};
+	ffconfw conf;
 	ffui_loaderw ldr = {0};
 	const ffpars_arg *a;
 	ffstr s;
+	ffconf_winit(&conf, NULL, 0);
 	FFARRS_FOREACH(opts_args, a) {
 		ffconf_write(&conf, a->name, ffsz_len(a->name), FFCONF_TKEY);
 		ffpars_scheme_write(buf, a, c, &s);
 		ffconf_write(&conf, s.ptr, s.len, FFCONF_TVAL);
 	}
-	ffconf_write(&conf, NULL, 0, FFCONF_WRITE_FIN);
+	ffconf_write(&conf, NULL, 0, FFCONF_FIN);
 	ffarr_acq(&ldr.buf, &conf.buf);
 	ffui_ldr_write(&ldr, c->fn);
 	ffui_ldrw_fin(&ldr);
 	ffconf_wdestroy(&conf);
 	dbglog(0, "saved settings to %s", c->fn);
-
 }
 
 /* struct opts -> GUI */
@@ -607,7 +606,7 @@ static void wscrshot_destroy(ffui_wnd *wnd)
 	ffui_icon_destroy(&gg->wscrshot.trayico);
 	ffui_tray_show(&gg->wscrshot.tray, 0);
 	ffui_wnd_ghotkey_unreg(wnd);
-	ffmem_safefree(gg);
+	ffmem_free0(gg);
 }
 
 int scrshots_create(void)

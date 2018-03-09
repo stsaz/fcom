@@ -15,7 +15,7 @@ include $(FFOS)/makeconf
 ifeq ($(OS),win)
 INSTDIR := ./$(PROJ)
 BIN := fcom.exe
-CFLAGS += -DFF_WIN=0x0502
+CFLAGS += -DFF_WIN=0x0501
 
 else
 INSTDIR := ./$(PROJ)-0
@@ -37,7 +37,7 @@ LDFLAGS += -L$(FF3PTLIB)
 include $(PROJDIR)/makerules
 
 
-package: install
+package:
 	rm -f $(PROJ)-$(VER)-$(OS)-$(ARCH).$(PACK_EXT) \
 		&&  $(PACK) $(PROJ)-$(VER)-$(OS)-$(ARCH).$(PACK_EXT) $(INSTDIR)
 	$(PACK) $(PROJ)-$(VER)-$(OS)-$(ARCH)-debug.$(PACK_EXT) ./*.debug

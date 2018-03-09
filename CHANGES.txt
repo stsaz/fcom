@@ -8,6 +8,17 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.5 - Mar 9, 2018
+
+ + sync-snapshot, gsync
+ - unix: don't load gui module
+ - fix segfault on exit
+ - pic-convert: fix multiple files naming
+ - touch: fix
+ - .7z: couldn't open archives with empty files
+ * .zip, .tar write: convert absolute paths to relative
+
+
 fcom v0.4 - Jan 7, 2018
 
  + fcom screenshots

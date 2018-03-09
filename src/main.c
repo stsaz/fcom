@@ -342,7 +342,7 @@ static int arg_date(ffparser_schem *p, void *obj, const ffstr *val)
 static int cmdline(int argc, char **argv)
 {
 	ffparser_schem ps;
-	ffparser p;
+	ffpsarg_parser p;
 	ffpars_ctx ctx = {0};
 	int r = 0;
 	int ret = 1;
@@ -389,7 +389,7 @@ static int cmdline(int argc, char **argv)
 fail:
 	ffpsarg_destroy(&a);
 	ffpars_schemfree(&ps);
-	ffpars_free(&p);
+	ffpsarg_parseclose(&p);
 	return ret;
 }
 

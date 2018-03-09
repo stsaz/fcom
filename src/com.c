@@ -6,7 +6,7 @@ Copyright (c) 2017 Simon Zolin
 
 #include <FF/sys/dir.h>
 #include <FF/list.h>
-#include <FF/path.h>
+#include <FFOS/process.h>
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, "com", fmt, __VA_ARGS__)
@@ -39,7 +39,7 @@ typedef struct {
 
 typedef struct {
 	fcom_cmd cmd;
-	fftime tm_start;
+	struct ffps_perf psperf;
 
 	ffarr filters; //filter[]
 	ffchain chain;
@@ -124,7 +124,7 @@ static void* com_create(fcom_cmd *cmd)
 	c->cur = ffchain_first(&c->chain);
 
 	if (c->cmd.benchmark)
-		ffclk_get(&c->tm_start);
+		ffps_perf(&c->psperf, FFPS_PERF_REALTIME | FFPS_PERF_CPUTIME | FFPS_PERF_RUSAGE);
 
 	if (NULL == ffarr_allocT(&c->filters, 8, filter))
 		goto err;
@@ -157,11 +157,17 @@ static void com_close(void *p)
 	core->task(FCOM_TASK_DEL, &c->tsk);
 
 	if (c->cmd.benchmark) {
-		fftime t;
-		ffclk_get(&t);
-		ffclk_diff(&c->tm_start, &t);
-		inflog("'%s' processing time: %u.%06u sec"
-			, c->cmd.name, (int)fftime_sec(&t), (int)fftime_usec(&t));
+		struct ffps_perf p2 = {};
+		ffps_perf(&p2, FFPS_PERF_REALTIME | FFPS_PERF_CPUTIME | FFPS_PERF_RUSAGE);
+		ffps_perf_diff(&c->psperf, &p2);
+		inflog("'%s' processing time: real:%u.%06u  cpu:%u.%06u (user:%u.%06u system:%u.%06u)"
+			"  resources: pagefaults:%u  maxrss:%u  I/O:%u  ctxsw:%u"
+			, (int)fftime_sec(&p2.realtime), (int)fftime_usec(&p2.realtime)
+			, (int)fftime_sec(&p2.cputime), (int)fftime_usec(&p2.cputime)
+			, (int)fftime_sec(&p2.usertime), (int)fftime_usec(&p2.usertime)
+			, (int)fftime_sec(&p2.systime), (int)fftime_usec(&p2.systime)
+			, p2.pagefaults, p2.maxrss, p2.inblock + p2.outblock, p2.vctxsw + p2.ivctxsw
+			);
 	}
 
 	filter *f;

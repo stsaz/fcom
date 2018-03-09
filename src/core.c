@@ -233,7 +233,7 @@ static void core_log(uint flags, const char *fmt, ...)
 
 static int readconf(const char *fn)
 {
-	ffparser pconf;
+	ffconf pconf;
 	ffparser_schem ps;
 	ffpars_ctx ctx = {0};
 	int r = FFPARS_ESYS;
@@ -284,8 +284,8 @@ err:
 		const char *ser = ffpars_schemerrstr(&ps, r, NULL, 0);
 		errlog("parse config: %s: %u:%u: near \"%S\": \"%s\": %s"
 			, fn
-			, ps.p->line, ps.p->ch
-			, &ps.p->val, (ps.curarg != NULL) ? ps.curarg->name : ""
+			, pconf.line, pconf.ch
+			, &pconf.val, (ps.curarg != NULL) ? ps.curarg->name : ""
 			, (r == FFPARS_ESYS) ? fferr_strp(fferr_last()) : ser);
 		goto fail;
 	}
@@ -293,7 +293,7 @@ err:
 	r = 0;
 
 fail:
-	ffpars_free(&pconf);
+	ffconf_parseclose(&pconf);
 	ffpars_schemfree(&ps);
 	ffmem_safefree(buf);
 	if (f != FF_BADFD)
