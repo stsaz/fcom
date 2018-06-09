@@ -579,7 +579,7 @@ static void* fo_open(fcom_cmd *cmd)
 		goto err;
 
 	const char *filename = cmd->output.fn;
-	uint flags = (cmd->out_overwrite) ? O_CREAT : FFO_CREATENEW;
+	uint flags = (cmd->out_overwrite || cmd->out_resume) ? O_CREAT : FFO_CREATENEW;
 	flags |= O_WRONLY;
 	mask = 0;
 	canskip = 1;
@@ -611,6 +611,15 @@ static void* fo_open(fcom_cmd *cmd)
 			f->prealloc = cmd->output.size;
 			f->stat.nprealloc++;
 		}
+	}
+
+	if (cmd->out_resume) {
+		fffileinfo fi;
+		if (0 != fffile_info(f->fd, &fi)) {
+			syserrlog("%s: %s", fffile_info_S, filename);
+			goto err;
+		}
+		cmd->out_seek = fffile_infosize(&fi);
 	}
 
 	f->mtime = cmd->output.mtime;
