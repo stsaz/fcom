@@ -1,6 +1,6 @@
 
 OBJ_DIR := .
-BINS := $(BIN) core.$(SO) fsync.$(SO) arc.$(SO) pic.$(SO)
+BINS := $(BIN) core.$(SO) file.$(SO) fsync.$(SO) arc.$(SO) pic.$(SO)
 
 ifeq ($(OS),win)
 RES := $(OBJ_DIR)/fcom.coff
@@ -38,19 +38,27 @@ CORE_O := \
 	$(OBJ_DIR)/core.o \
 	$(OBJ_DIR)/com.o \
 	$(OBJ_DIR)/file.o \
-	$(OBJ_DIR)/fop.o \
 	$(FF_OBJ_DIR)/crc.o \
 	$(FF_O) \
 	$(FF_OBJ_DIR)/fftmr.o \
 	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffpsarg.o $(FF_OBJ_DIR)/ffconf.o
 
+core.$(SO): $(CORE_O)
+	$(LD) -shared $(CORE_O) $(LDFLAGS) $(LD_LDL) -o$@
+
+
+FILE_O := $(OBJ_DIR)/fop.o \
+	$(FF_OBJ_DIR)/crc.o \
+	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffconf.o \
+	$(FF_O)
+
 ifeq ($(OS),win)
-CORE_O += $(OBJ_DIR)/sys-win.o \
+FILE_O += $(OBJ_DIR)/sys-win.o \
 	$(FF_OBJ_DIR)/ffwreg.o $(FF_OBJ_DIR)/ffwreg2.o
 endif
 
-core.$(SO): $(CORE_O)
-	$(LD) -shared $(CORE_O) $(LDFLAGS) $(LD_LDL) -o$@
+file.$(SO): $(FILE_O)
+	$(LD) -shared $(FILE_O) $(LDFLAGS) -o$@
 
 
 FSYNC_O := $(OBJ_DIR)/fsync.o \

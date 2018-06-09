@@ -9,14 +9,14 @@ Copyright (c) 2017 Simon Zolin
 #include <FFOS/file.h>
 
 
-extern const fcom_core *core;
+const fcom_core *core;
 static const fcom_command *com;
 
 // MODULE
 static int f_sig(uint signo);
 static const void* f_iface(const char *name);
 static int f_conf(const char *name, ffpars_ctx *ctx);
-const fcom_mod f_mod = {
+static const fcom_mod f_mod = {
 	.sig = &f_sig, .iface = &f_iface, .conf = &f_conf,
 };
 
@@ -51,26 +51,40 @@ static int f_crc_process(void *p, fcom_cmd *cmd);
 static const fcom_filter f_crc_filt = { &f_crc_open, &f_crc_close, &f_crc_process };
 
 
+FF_EXP const fcom_mod* fcom_getmod(const fcom_core *_core)
+{
+	core = _core;
+	return &f_mod;
+}
+
 struct oper {
 	const char *name;
 	const char *mod;
 	const fcom_filter *iface;
 };
 
-const fcom_filter wregfind_filt;
+#ifdef FF_WIN
+extern const fcom_filter wregfind_filt;
+#else
+static const fcom_filter wregfind_filt;
+#endif
 
 static const struct oper cmds[] = {
-	{ "touch", "core.f-touch", &f_touch_filt },
-	{ "textcount", "core.f-textcount", &f_tcnt_filt },
-	{ "crc", "core.f-crc", &f_crc_filt },
-	{ "wregfind", "core.wregfind", &wregfind_filt },
+	{ "touch", "file.touch", &f_touch_filt },
+	{ "textcount", "file.textcount", &f_tcnt_filt },
+	{ "crc", "file.crc", &f_crc_filt },
+#ifdef FF_WIN
+	{ "wregfind", "file.wregfind", &wregfind_filt },
+#else
+	{ NULL, "file.wregfind", &wregfind_filt },
+#endif
 };
 
 static const void* f_iface(const char *name)
 {
 	const struct oper *op;
 	FFARR_WALKNT(cmds, FFCNT(cmds), op, struct oper) {
-		if (ffsz_eq(name, op->mod + FFSLEN("core.")))
+		if (ffsz_eq(name, op->mod + FFSLEN("file.")))
 			return op->iface;
 	}
 	return NULL;
@@ -85,6 +99,7 @@ static int f_sig(uint signo)
 {
 	switch (signo) {
 	case FCOM_SIGINIT: {
+		ffmem_init();
 		com = core->iface("core.com");
 
 		const struct oper *op;
