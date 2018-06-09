@@ -74,9 +74,9 @@ struct cmd {
 	const void *iface;
 };
 static const struct cmd cmds[] = {
-	{ "sync", "file.sync", &fsync_filt },
-	{ "sync-snapshot", "file.syncss", &fsyncss_filt },
-	{ NULL, "file.fsync", &fsync_if },
+	{ "sync", "fsync.sync", &fsync_filt },
+	{ "sync-snapshot", "fsync.syncss", &fsyncss_filt },
+	{ NULL, "fsync.fsync", &fsync_if },
 };
 
 static int fsync_sig(uint signo)
@@ -103,7 +103,7 @@ static const void* fsync_iface(const char *name)
 {
 	const struct cmd *cmd;
 	FFARRS_FOREACH(cmds, cmd) {
-		if (ffsz_eq(name, cmd->mod + FFSLEN("file.")))
+		if (ffsz_eq(name, cmd->mod + FFSLEN("fsync.")))
 			return cmd->iface;
 	}
 	return NULL;
@@ -115,7 +115,7 @@ static int fsync_conf(const char *name, ffpars_ctx *ctx)
 }
 
 
-#define FILT_NAME  "file.sync"
+#define FILT_NAME  "sync"
 
 struct file {
 	// struct fsync_file
@@ -747,7 +747,7 @@ static void mv_add(struct mv *mv, struct file *f)
 #undef FILT_NAME
 
 
-#define FILT_NAME  "file.syncss"
+#define FILT_NAME  "syncss"
 
 struct fsyncss {
 	uint state;

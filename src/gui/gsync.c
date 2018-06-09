@@ -163,7 +163,7 @@ int gsync_create(void)
 {
 	int rc = -1;
 
-	if (NULL == (fsync = core->iface("file.fsync")))
+	if (NULL == (fsync = core->iface("fsync.fsync")))
 		return -1;
 
 	if (NULL == (gg = ffmem_new(struct ggui)))
