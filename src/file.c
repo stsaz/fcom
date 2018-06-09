@@ -492,7 +492,7 @@ static int fi_read(file *f)
 	b->len = r;
 	f->stat.nread++;
 	dbglog(0, "buf#%u: read %L bytes at offset %Uk (%u%%)"
-		, f->wbuf, b->len, b->offset / 1024, (int)(b->offset * 100 / f->size));
+		, f->wbuf, b->len, b->offset / 1024, (int)FFINT_DIVSAFE(b->offset * 100, f->size));
 
 	f->wbuf = ffint_cycleinc(f->wbuf, inconf->nbufs);
 
