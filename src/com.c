@@ -78,6 +78,7 @@ static const char* getmod_bycmd(const char *cmdname);
 static filter* filt_add(comm *c, uint cmd, const char *name, filter *neigh);
 static int filt_call(comm *c, filter *f);
 static void filt_close(comm *c, filter *f);
+static ffbool file_matches(comm *c, const char *fn, ffbool dir);
 static int dir_scan(comm *c, char *name);
 static char* chain_print(comm *c, const ffchain_item *mark, char *buf, size_t cap);
 
@@ -431,22 +432,51 @@ static char* com_arg_next(fcom_cmd *_c, uint flags)
 	comm *c = FF_GETPTR(comm, cmd, _c);
 	struct in_ent *e;
 
-	if (c->in_next == ffchain_sentl(&c->in_list))
-		return NULL;
+	for (;;) {
+		if (c->in_next == ffchain_sentl(&c->in_list))
+			return NULL;
 
-	e = FF_GETPTR(struct in_ent, sib, c->in_next);
+		e = FF_GETPTR(struct in_ent, sib, c->in_next);
 
-	if (c->cmd.recurse) {
-		fffileinfo fi;
-		if (0 == fffile_infofn(e->fn, &fi)
-			&& fffile_isdir(fffile_infoattr(&fi))) {
-			dir_scan(c, e->fn);
+		if (c->cmd.recurse) {
+			fffileinfo fi;
+			if (0 == fffile_infofn(e->fn, &fi)
+				&& fffile_isdir(fffile_infoattr(&fi))) {
+				dir_scan(c, e->fn);
+
+				if (!file_matches(c, e->fn, 0)) {
+					FF_ASSERT(!(flags & FCOM_CMD_ARG_PEEK));
+					c->in_next = e->sib.next;
+					continue;
+				}
+			}
 		}
+		break;
 	}
 
 	if (!(flags & FCOM_CMD_ARG_PEEK))
 		c->in_next = e->sib.next;
 	return e->fn;
+}
+
+/**
+Return TRUE if filename matches user's filename wildcards. */
+static ffbool file_matches(comm *c, const char *fn, ffbool dir)
+{
+	size_t fnlen = ffsz_len(fn);
+	const ffstr *wc;
+	ffbool ok = 1;
+
+	if (!dir) {
+		ok = (c->cmd.include_files.len == 0);
+		FFARR_WALKT(&c->cmd.include_files, wc, ffstr) {
+			if (0 == ffs_wildcard(wc->ptr, wc->len, fn, fnlen, FFS_WC_ICASE)) {
+				ok = 1;
+				break;
+			}
+		}
+	}
+	return ok;
 }
 
 /** List directory contents and add its filenames to the arguments list. */
@@ -477,6 +507,12 @@ static int dir_scan(comm *c, char *name)
 		ffstr_setz(&s, fn);
 		struct in_ent *e;
 
+		if (0 != fffile_infofn(fn, &fi))
+			ffmem_tzero(&fi);
+		uint isdir = fffile_isdir(fffile_infoattr(&fi));
+		if (!file_matches(c, ffdir_expname(&dr, fn), isdir))
+			continue;
+
 		if (NULL == (e = ffmem_alloc(sizeof(struct in_ent) + s.len + 1)))
 			goto done;
 
@@ -484,8 +520,7 @@ static int dir_scan(comm *c, char *name)
 			ffchain_append(&e->sib, last);
 			last = &e->sib;
 		} else {
-			if (0 == fffile_infofn(fn, &fi)
-				&& fffile_isdir(fffile_infoattr(&fi))) {
+			if (isdir) {
 				ffchain_add(&dirs, &e->sib);
 			} else {
 				ffchain_add(&files, &e->sib);

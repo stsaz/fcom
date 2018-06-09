@@ -25,6 +25,7 @@ struct cmdconf {
 	fftime mtime;
 
 	ffarr members; //char*[]
+	ffarr2 include_files; //ffstr[]
 
 	byte recurse;
 	byte show;
@@ -125,6 +126,7 @@ static int std_log(uint flags, const char *fmt, va_list va)
 
 static int arg_infile(ffparser_schem *p, void *obj, const ffstr *val);
 static int arg_flist(ffparser_schem *p, void *obj, const char *fn);
+static int arg_finclude(ffparser_schem *p, void *obj, const ffstr *val);
 static int arg_member(ffparser_schem *p, void *obj, const char *fn);
 static int arg_help(ffparser_schem *p, void *obj);
 static int arg_date(ffparser_schem *p, void *obj, const ffstr *val);
@@ -135,6 +137,7 @@ static const ffpars_arg cmdline_args[] = {
 	// INPUT
 	{ "",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_infile) },
 	{ "flist",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_flist) },
+	{ "include",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_finclude) },
 	{ "recurse",	FFPARS_SETVAL('R') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(recurse) },
 	{ "member",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_member) },
 	{ "show",	FFPARS_TBOOL8 | FFPARS_FALONE, OFF(show) },
@@ -286,6 +289,29 @@ done:
 	return r;
 }
 
+// "WILDCARD[;WILDCARD]"
+static int arg_finclude(ffparser_schem *p, void *obj, const ffstr *val)
+{
+	int rc = FFPARS_ESYS;
+	struct cmdconf *c = obj;
+	ffstr *dst, s = *val, wc;
+	ffarr a = {};
+	while (s.len != 0) {
+		ffstr_nextval3(&s, &wc, ';');
+		if (NULL == (dst = ffarr_pushgrowT(&a, 4, ffstr)))
+			goto end;
+		*dst = wc;
+	}
+
+	ffarr_set(&c->include_files, a.ptr, a.len);
+	ffarr_null(&a);
+	rc = 0;
+
+end:
+	ffarr_free(&a);
+	return rc;
+}
+
 static int arg_member(ffparser_schem *p, void *obj, const char *fn)
 {
 	char **ps;
@@ -409,6 +435,7 @@ static void cmds_free(void)
 	ffmem_safefree(g->conf.out);
 	ffmem_safefree(g->conf.outdir);
 	ffmem_safefree(g->conf.date_as_fn);
+	ffarr2_free(&g->conf.include_files);
 
 	char **ps;
 	FFARR_WALKT(&g->conf.members, ps, char*)
@@ -436,6 +463,7 @@ static void cmd_add(void *param)
 	fcom_cmd cmd = {0};
 	cmd.name = op;
 	ffarr_set(&cmd.members, c->conf.members.ptr, c->conf.members.len);
+	cmd.include_files = c->conf.include_files;
 	cmd.recurse = c->conf.recurse;
 	cmd.output.fn = c->conf.out;
 	g->stdout_busy = cmd.out_std = (c->conf.out != NULL && ffsz_eq(c->conf.out, "@stdout"));

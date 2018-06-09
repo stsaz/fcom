@@ -36,6 +36,8 @@ INPUT
  "FILE"             Input file path
                      @stdin - read from standard input
  --flist=FILE       Read filenames from FILE
+ --include='WILDCARD[;WILDCARD]'
+                    Only include files matching a wildcard (case-insensitive)
  --recurse, -R      Recurse into sub-directories
  --member=FILE      Process just this archive member
  --show             Show contents

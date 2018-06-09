@@ -185,6 +185,7 @@ typedef struct fcom_cmd {
 	} input, output;
 
 	ffarr2 members; //char*[]
+	ffarr2 include_files; //ffstr[]
 
 	struct {
 		uint width;
