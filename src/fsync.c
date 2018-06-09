@@ -261,6 +261,9 @@ static int fsync_process(void *p, fcom_cmd *cmd)
 	for (;;) {
 		if (0 != cmp_trees(f, &cmp))
 			break;
+		if ((cmp.status & _FSYNC_ST_MASK) == FSYNC_ST_MOVED
+			&& cmp.status & FSYNC_ST_MOVED_DST)
+			continue;
 		cmp_show(f, &cmp);
 	}
 
@@ -566,7 +569,7 @@ static int cmp_trees(fsync_ctx *c, struct fsync_cmp *cmp)
 	} else if (rcmp > 0) {
 		st = st2 = FSYNC_ST_DEST;
 		if (NULL != (l = mv_find(&c->mvL, r)))
-			st2 = FSYNC_ST_MOVED;
+			st2 = FSYNC_ST_MOVED | FSYNC_ST_MOVED_DST;
 	} else
 		st = st2 = cmp_file(l, r, c->flags);
 

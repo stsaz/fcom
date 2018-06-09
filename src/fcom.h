@@ -372,6 +372,10 @@ enum FSYNC_ST {
 	FSYNC_ST_OLDER = 0x0400,
 	FSYNC_ST_NEWER = 0x0800,
 	FSYNC_ST_ATTR = 0x1000,
+
+	/** 2 file pairs with FSYNC_ST_MOVED are returned.
+	File pair for a moved "oldpath/right" is redundant. */
+	FSYNC_ST_MOVED_DST = 0x2000,
 };
 
 struct fsync_cmp {

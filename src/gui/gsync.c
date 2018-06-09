@@ -430,6 +430,9 @@ static void gsync_scancmp(void *udata)
 	for (;;) {
 		if (0 != fsync->cmp_trees(cmpctx, &cmp))
 			break;
+		if ((cmp.status & _FSYNC_ST_MASK) == FSYNC_ST_MOVED
+			&& cmp.status & FSYNC_ST_MOVED_DST)
+			continue;
 		if (NULL == (c = ffarr_pushgrowT(&gg->cmptbl, 256, struct fsync_cmp)))
 			goto end;
 		*c = cmp;
