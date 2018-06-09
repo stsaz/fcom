@@ -101,6 +101,12 @@ static const fcom_filter un7z_filt = { &un7z_open, &un7z_close, &un7z_process };
 struct un7z;
 static void un7z_showinfo(struct un7z *z, const ff7zfile *f);
 
+// ISO
+static void* iso_open(fcom_cmd *cmd);
+static void iso_close(void *p, fcom_cmd *cmd);
+static int iso_process(void *p, fcom_cmd *cmd);
+static const fcom_filter iso_filt = { &iso_open, &iso_close, &iso_process };
+
 // UNISO
 static void* uniso_open(fcom_cmd *cmd);
 static void uniso_close(void *p, fcom_cmd *cmd);
@@ -140,6 +146,7 @@ static const struct cmd cmds[] = {
 	{ "zip", "arc.zip", &zip_filt },
 	{ "unzip", "arc.unzip", &unzip_filt },
 	{ "un7z", "arc.un7z", &un7z_filt },
+	{ "iso", "arc.iso", &iso_filt },
 	{ "uniso", "arc.uniso", &uniso_filt },
 	{ "unpack", "arc.unpack", &unpack_filt },
 };
@@ -1474,6 +1481,157 @@ static void un7z_showinfo(un7z *z, const ff7zfile *f)
 	p = ffs_copyz(p, end, f->name);
 
 	fcom_verblog(FILT_NAME, "%*s", p - z->fn.ptr, z->fn.ptr);
+}
+
+#undef FILT_NAME
+
+
+#define FILT_NAME  "arc.iso"
+
+struct iso {
+	uint state;
+	ffiso_cook iso;
+	ffarr fnames; //char*[]
+	size_t cur_fname;
+	char *volname;
+};
+
+static void* iso_open(fcom_cmd *cmd)
+{
+	struct iso *iso;
+	if (NULL == (iso = ffmem_new(struct iso)))
+		return FCOM_OPEN_SYSERR;
+	if (0 != ffiso_wcreate(&iso->iso, 0)) {
+		ffmem_free(iso);
+		return FCOM_OPEN_SYSERR;
+	}
+	return iso;
+}
+
+static void iso_close(void *p, fcom_cmd *cmd)
+{
+	struct iso *iso = p;
+	ffarr_free(&iso->fnames);
+	ffmem_free(iso->volname);
+	ffmem_free(iso);
+}
+
+static int iso_process(void *p, fcom_cmd *cmd)
+{
+	struct iso *iso = p;
+	int r;
+	const char *fn;
+	enum E { W_NEXT, W_NEWFILE, W_HDR, W_DATA, W_EOF };
+
+again:
+	switch ((enum E)iso->state) {
+
+	case W_NEXT: {
+		if (NULL == (fn = com->arg_next(cmd, 0))) {
+			const char *filt = FCOM_CMD_FILT_OUT(cmd);
+			com->ctrl(cmd, FCOM_CMD_FILTADD, filt);
+			iso->state = W_HDR;
+
+			ffstr fn, name;
+			ffstr_setz(&fn, cmd->output.fn);
+			ffpath_split3(fn.ptr, fn.len, NULL, &name, NULL);
+			if (NULL == (iso->volname = ffsz_alcopystr(&name)))
+				return FCOM_SYSERR;
+			iso->iso.name = iso->volname;
+			goto again;
+		}
+		const char **p = (void*)ffarr_pushgrowT(&iso->fnames, 64, char*);
+		*p = fn;
+
+		fffileinfo fi;
+		if (0 != fffile_infofn(fn, &fi))
+			return FCOM_SYSERR;
+
+		ffiso_file f = {};
+		ffstr_setz(&f.name, fn);
+		f.size = fffile_infosize(&fi);
+		f.mtime = fffile_infomtime(&fi);
+		uint a = fffile_infoattr(&fi);
+		if (fffile_isdir(a))
+			f.attr = FFUNIX_FILE_DIR;
+		ffiso_wfile(&iso->iso, &f);
+		goto again;
+	}
+
+	case W_EOF:
+		FF_ASSERT(cmd->in.len == 0);
+		iso->state = W_NEWFILE;
+		//fall through
+
+	case W_NEWFILE: {
+		if (iso->cur_fname == iso->fnames.len) {
+			ffiso_wfinish(&iso->iso);
+			iso->state = W_DATA;
+			goto again;
+		}
+		fn = *ffarr_itemT(&iso->fnames, iso->cur_fname++, char*);
+
+		fffileinfo fi;
+		if (0 != fffile_infofn(fn, &fi))
+			return FCOM_SYSERR;
+		uint a = fffile_infoattr(&fi);
+		if (fffile_isdir(a))
+			goto again;
+
+		cmd->input.fn = fn;
+		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
+		ffiso_wfilenext(&iso->iso);
+		iso->state = W_DATA;
+		return FCOM_MORE;
+	}
+
+	case W_HDR:
+	case W_DATA:
+		break;
+	}
+
+	if (cmd->flags & FCOM_CMD_FWD)
+		ffiso_input(&iso->iso, cmd->in.ptr, cmd->in.len);
+
+	for (;;) {
+
+	r = ffiso_write(&iso->iso);
+	switch (r) {
+
+	case FFISO_DATA:
+		cmd->out = ffiso_output(&iso->iso);
+		return FCOM_DATA;
+
+	case FFISO_MORE:
+		if (cmd->flags & FCOM_CMD_FIRST) {
+			// 'file-in' filter has already returned the last block of data
+			iso->state = W_EOF;
+			goto again;
+		}
+		if (cmd->flags & FCOM_CMD_FWD) {
+			if (cmd->in_last) {
+				iso->state = W_EOF;
+				return FCOM_MORE;
+			}
+		}
+		if (iso->state == W_HDR) {
+			iso->state = W_NEWFILE;
+			goto again;
+		}
+		return FCOM_MORE;
+
+	case FFISO_SEEK:
+		fcom_cmd_outseek(cmd, ffiso_woffset(&iso->iso));
+		break;
+
+	case FFISO_DONE:
+		return FCOM_DONE;
+
+	case FFISO_ERR:
+		fcom_errlog(FILT_NAME, "%s", ffiso_werrstr(&iso->iso));
+		return FCOM_ERR;
+	}
+	}
 }
 
 #undef FILT_NAME
