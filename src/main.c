@@ -265,9 +265,10 @@ static int arg_flist(ffparser_schem *p, void *obj, const char *fn)
 		d = ffs_skipof(d, lf - d, " \t", 2);
 		ln_end = ffs_rskipof(d, lf - d, " \t\r", 3);
 		ffstr_set(&line, d, ln_end - d);
-		if (lf == end)
-			break;
-		d = lf + 1;
+		if (lf != end)
+			d = lf + 1;
+		else
+			d = lf;
 		if (line.len == 0)
 			continue;
 		if (0 != in_add(g, &line, 0))
