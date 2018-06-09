@@ -19,6 +19,7 @@ Copyright (c) 2018 Simon Zolin
 extern const fcom_core *core;
 extern const fcom_command *com;
 static const fcom_fsync *fsync;
+static const fcom_fops *fops;
 
 static void wsync_action(ffui_wnd *wnd, int id);
 static void wsync_destroy(ffui_wnd *wnd);
@@ -27,6 +28,7 @@ static void update_status();
 static void gsync_status(const char *s);
 static void gsync_scancmp(void *udata);
 static void gsync_showresults(uint flags);
+static void gsync_sync(void *udata);
 static void gsync_check(void);
 static void gsync_fnop(uint id);
 #define isdir(a) !!((a) & FFUNIX_FILE_DIR)
@@ -169,6 +171,9 @@ int gsync_create(void)
 	if (NULL == (fsync = core->iface("fsync.fsync")))
 		return -1;
 
+	if (NULL == (fops = core->iface("file.ops")))
+		return -1;
+
 	if (NULL == (gg = ffmem_new(struct ggui)))
 		return -1;
 
@@ -224,6 +229,7 @@ static void wsync_action(ffui_wnd *wnd, int id)
 		task_add(&gsync_scancmp);
 		break;
 	case A_SYNC:
+		task_add(&gsync_sync);
 		break;
 	case A_ONCHECK:
 		gsync_check();
@@ -648,6 +654,219 @@ end:
 	ffarr_free(&buf);
 	ffmem_safefree(fullname);
 	ffmem_safefree(showdir);
+}
+
+
+struct sync_ctx {
+	struct fsync_cmp *cmp;
+	char *fnL, *fnR;
+	uint row_index;
+};
+
+static void sync_cmdmon_onsig(fcom_cmd *cmd, uint sig);
+static const struct fcom_cmd_mon sync_cmdmon = { &sync_cmdmon_onsig };
+static void sync(struct sync_ctx *sc);
+
+/** Start synchronization. */
+static void gsync_sync(void *udata)
+{
+	struct sync_ctx *sc = ffmem_new(struct sync_ctx);
+	if (sc == NULL)
+		return;
+	sc->row_index = -1;
+	sync(sc);
+}
+
+static void sync_reset(struct sync_ctx *sc)
+{
+	ffmem_free0(sc->fnL);
+	ffmem_free0(sc->fnR);
+	sc->cmp = NULL;
+}
+
+static void sync_free(struct sync_ctx *sc)
+{
+	sync_reset(sc);
+	ffmem_free(sc);
+}
+
+/** Operation on a file is pending. */
+static void sync_pending(struct sync_ctx *sc)
+{
+	ffui_viewitem it = {0};
+	ffui_view_setindex(&it, sc->row_index);
+	ffui_view_settextz(&it, "...");
+	ffui_view_set(&gg->wsync.vlist, L_ACTN, &it);
+}
+
+/** Operation on a file is complete. */
+static void sync_result(struct sync_ctx *sc, int r)
+{
+	ffui_viewitem it = {0};
+	ffui_view_setindex(&it, sc->row_index);
+	if (r != 0) {
+		ffui_view_settextz(&it, "Error");
+	} else {
+		ffui_view_check(&it, 0);
+		gg->nchecked--;
+		ffui_view_settextz(&it, "Done");
+	}
+	ffui_view_set(&gg->wsync.vlist, 0, &it);
+
+	update_status();
+}
+
+static void sync_cmdmon_onsig(fcom_cmd *cmd, uint sig)
+{
+	struct sync_ctx *sc = (void*)com->ctrl(cmd, FCOM_CMD_UDATA);
+	int r = (!cmd->err) ? 0 : -1;
+	sync_result(sc, r);
+	sync_reset(sc);
+	sync(sc);
+}
+
+/** Start file copy task. */
+static int sync_copy(struct sync_ctx *sc, const char *src, const char *dst, uint flags)
+{
+	fcom_cmd cmd = {};
+	cmd.name = "fcopy";
+	cmd.flags = FCOM_CMD_EMPTY;
+	cmd.input.fn = src;
+	cmd.output.fn = dst;
+	if (flags & FOP_KEEPDATE)
+		cmd.out_preserve_date = 1;
+	if (flags & FOP_OVWR)
+		cmd.out_overwrite = 1;
+	void *c;
+	if (NULL == (c = com->create(&cmd)))
+		return FCOM_ERR;
+	com->ctrl(c, FCOM_CMD_FILTADD_LAST, "core.file-in");
+	com->ctrl(c, FCOM_CMD_FILTADD_LAST, "core.file-out");
+	com->fcom_cmd_monitor(c, &sync_cmdmon);
+	com->ctrl(c, FCOM_CMD_SETUDATA, sc);
+	com->ctrl(c, FCOM_CMD_RUNASYNC);
+	return FCOM_ASYNC;
+}
+
+// "src/path/file" -> "dst/path/file"
+static char* dst_fn(const char *fnL)
+{
+	if (!ffsz_matchz(fnL, gg->opts.srcfn)) {
+		errlog("filename %s doesn't match path %s", fnL, gg->opts.srcfn);
+		return NULL;
+	}
+	return ffsz_alfmt("%s/%s", gg->opts.dstfn, fnL + ffsz_len(gg->opts.srcfn));
+}
+
+/** Synchronize checked files (src => dst).
+FSYNC_ST_NEQ: if file size has changed or contents don't match, copy file;
+  otherwise just set attributes.
+Suspend processing while file copy task is running asynchronously.
+*/
+static void sync(struct sync_ctx *sc)
+{
+	ffui_viewitem it = {0};
+	struct fsync_cmp *cmp;
+	struct fsync_file *f;
+	int r;
+
+	for (uint i = sc->row_index + 1;  ;  i++) {
+
+		ffui_view_setindex(&it, i);
+		ffui_view_setparam(&it, NULL);
+		ffui_view_check(&it, 0);
+		if (0 != ffui_view_get(&gg->wsync.vlist, 0, &it))
+			break;
+
+		if (!ffui_view_checked(&it))
+			continue;
+
+		sc->row_index = i;
+
+		sc->cmp = cmp = (void*)ffui_view_param(&it);
+		ffui_view_itemreset(&it);
+
+		if ((cmp->status & _FSYNC_ST_MASK) == FSYNC_ST_EQ)
+			continue;
+
+		sync_pending(sc);
+
+		switch (cmp->status & _FSYNC_ST_MASK) {
+
+		case FSYNC_ST_SRC:
+			sc->fnL = fsync->get(FSYNC_FULLNAME, cmp->left);
+			f = fsfile(cmp->left);
+			sc->fnR = dst_fn(sc->fnL);
+			if (sc->fnL == NULL || sc->fnR == NULL)
+				goto end;
+
+			if (isdir(f->attr))
+				r = fops->mkdir(sc->fnR, 0);
+			else
+				r = sync_copy(sc, sc->fnL, sc->fnR, FOP_KEEPDATE);
+			break;
+
+		case FSYNC_ST_NEQ:
+			sc->fnL = fsync->get(FSYNC_FULLNAME, cmp->left);
+			sc->fnR = fsync->get(FSYNC_FULLNAME, cmp->right);
+			if (sc->fnL == NULL || sc->fnR == NULL)
+				goto end;
+
+			if (cmp->status & (FSYNC_ST_SMALLER | FSYNC_ST_LARGER)
+				|| !!fffile_cmp(sc->fnL, sc->fnR, 0)) {
+
+				r = sync_copy(sc, sc->fnL, sc->fnR, FOP_OVWR | FOP_KEEPDATE);
+
+			} else {
+				fffileinfo fi;
+				if (0 == (r = fffile_infofn(sc->fnL, &fi))) {
+
+					if (cmp->status & (FSYNC_ST_OLDER | FSYNC_ST_NEWER)) {
+						fftime t = fffile_infomtime(&fi);
+						r = fops->time(sc->fnR, &t, 0);
+					}
+
+					if (cmp->status & FSYNC_ST_ATTR) {
+						uint attr = fffile_infoattr(&fi);
+						fffile_attrsetfn(sc->fnR, attr);
+					}
+				}
+			}
+			break;
+
+		case FSYNC_ST_MOVED: {
+			sc->fnL = fsync->get(FSYNC_FULLNAME, cmp->right);
+			char *L = fsync->get(FSYNC_FULLNAME, cmp->left);
+			if (L == NULL)
+				goto end;
+			sc->fnR = dst_fn(L);
+			ffmem_free(L);
+			if (sc->fnL == NULL || sc->fnR == NULL)
+				goto end;
+			r = fops->move(sc->fnL, sc->fnR, FOP_OVWR | FOP_RECURS);
+			break;
+		}
+
+		case FSYNC_ST_DEST:
+			sc->fnR = fsync->get(FSYNC_FULLNAME, cmp->right);
+			if (sc->fnR == NULL)
+				goto end;
+			r = fops->del(sc->fnR, FOP_DIR);
+			break;
+
+		default:
+			r = -1;
+		}
+
+		if (r == FCOM_ASYNC)
+			return;
+
+		sync_result(sc, r);
+		sync_reset(sc);
+	}
+
+end:
+	sync_free(sc);
 }
 
 /** Check/uncheck all selected items */
