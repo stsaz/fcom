@@ -26,6 +26,7 @@ struct cmdconf {
 
 	ffarr members; //char*[]
 	ffarr2 include_files; //ffstr[]
+	ffarr2 exclude_files; //ffstr[]
 
 	byte recurse;
 	byte show;
@@ -138,6 +139,7 @@ static const ffpars_arg cmdline_args[] = {
 	{ "",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_infile) },
 	{ "flist",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_flist) },
 	{ "include",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_finclude) },
+	{ "exclude",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_finclude) },
 	{ "recurse",	FFPARS_SETVAL('R') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(recurse) },
 	{ "member",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_member) },
 	{ "show",	FFPARS_TBOOL8 | FFPARS_FALONE, OFF(show) },
@@ -303,7 +305,10 @@ static int arg_finclude(ffparser_schem *p, void *obj, const ffstr *val)
 		*dst = wc;
 	}
 
-	ffarr_set(&c->include_files, a.ptr, a.len);
+	if (ffsz_eq(p->curarg->name, "include"))
+		ffarr_set(&c->include_files, a.ptr, a.len);
+	else
+		ffarr_set(&c->exclude_files, a.ptr, a.len);
 	ffarr_null(&a);
 	rc = 0;
 
@@ -436,6 +441,7 @@ static void cmds_free(void)
 	ffmem_safefree(g->conf.outdir);
 	ffmem_safefree(g->conf.date_as_fn);
 	ffarr2_free(&g->conf.include_files);
+	ffarr2_free(&g->conf.exclude_files);
 
 	char **ps;
 	FFARR_WALKT(&g->conf.members, ps, char*)
@@ -464,6 +470,7 @@ static void cmd_add(void *param)
 	cmd.name = op;
 	ffarr_set(&cmd.members, c->conf.members.ptr, c->conf.members.len);
 	cmd.include_files = c->conf.include_files;
+	cmd.exclude_files = c->conf.exclude_files;
 	cmd.recurse = c->conf.recurse;
 	cmd.output.fn = c->conf.out;
 	g->stdout_busy = cmd.out_std = (c->conf.out != NULL && ffsz_eq(c->conf.out, "@stdout"));
