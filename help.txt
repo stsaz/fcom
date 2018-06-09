@@ -2,6 +2,7 @@ fcom OPERATION [OPTIONS] ...
 
 OPERATION
 
+ copy SOURCE -o TARGET [--resume]
  touch FILE... [--date=DATE] [--date-as=FILE]
  sync FILE -o FILE
  sync-snapshot FILE -o FILE.txt
@@ -44,6 +45,7 @@ OUTPUT
                      @stdout - write to standard output
  --outdir=DIR, -C   Set output directory
  --force, -f        Overwrite output files
+ --resume           Resume copy from the target file size
  --test, -t         Read-only mode
  --date=DATE        Set modification date
                     DATE: [YYYY-MM-DD] [hh:mm:ss]

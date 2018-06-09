@@ -6,8 +6,13 @@ Copyright (c) 2017 Simon Zolin
 
 #include <FF/number.h>
 #include <FF/crc.h>
+#include <FFOS/dir.h>
 #include <FFOS/file.h>
 
+
+#define verblog(fmt, ...)  fcom_verblog(FILT_NAME, fmt, __VA_ARGS__)
+#define errlog(fmt, ...)  fcom_errlog(FILT_NAME, fmt, __VA_ARGS__)
+#define syserrlog(fmt, ...)  fcom_syserrlog(FILT_NAME, fmt, __VA_ARGS__)
 
 const fcom_core *core;
 static const fcom_command *com;
@@ -21,6 +26,24 @@ static const fcom_mod f_mod = {
 };
 
 static const char* next_file(fcom_cmd *cmd);
+
+// QUICK FILE OPS
+extern int fffile_makepath(char *fn, size_t off);
+static int fop_mkdir(const char *fn, uint flags);
+static int fop_del(const char *fn, uint flags);
+static int fop_move(const char *src, const char *dst, uint flags);
+static int fop_time(const char *fn, const fftime *t, uint flags);
+static const fcom_fops f_ops_iface = {
+	&fop_mkdir, &fop_del, &fop_move, &fop_time,
+};
+
+// COPY
+static void* f_copy_open(fcom_cmd *cmd);
+static void f_copy_close(void *p, fcom_cmd *cmd);
+static int f_copy_process(void *p, fcom_cmd *cmd);
+static const fcom_filter f_copy_filt = {
+	&f_copy_open, &f_copy_close, &f_copy_process,
+};
 
 // TOUCH
 static void* f_touch_open(fcom_cmd *cmd);
@@ -60,7 +83,7 @@ FF_EXP const fcom_mod* fcom_getmod(const fcom_core *_core)
 struct oper {
 	const char *name;
 	const char *mod;
-	const fcom_filter *iface;
+	const void *iface;
 };
 
 #ifdef FF_WIN
@@ -70,6 +93,7 @@ static const fcom_filter wregfind_filt;
 #endif
 
 static const struct oper cmds[] = {
+	{ "copy", "file.copy", &f_copy_filt },
 	{ "touch", "file.touch", &f_touch_filt },
 	{ "textcount", "file.textcount", &f_tcnt_filt },
 	{ "crc", "file.crc", &f_crc_filt },
@@ -78,6 +102,7 @@ static const struct oper cmds[] = {
 #else
 	{ NULL, "file.wregfind", &wregfind_filt },
 #endif
+	{ NULL, "file.ops", &f_ops_iface },
 };
 
 static const void* f_iface(const char *name)
@@ -104,7 +129,8 @@ static int f_sig(uint signo)
 
 		const struct oper *op;
 		FFARR_WALKNT(cmds, FFCNT(cmds), op, struct oper) {
-			if (0 != com->reg(op->name, op->mod))
+			if (op->name != NULL
+				&& 0 != com->reg(op->name, op->mod))
 				return -1;
 		}
 		break;
@@ -135,6 +161,156 @@ static const char* next_file(fcom_cmd *cmd)
 		return fn;
 	}
 }
+
+
+#define FILT_NAME  "makedir"
+static int fop_mkdir(const char *fn, uint flags)
+{
+	if (flags & FOP_TEST)
+		goto done;
+
+	if (flags & FOP_RECURS) {
+		if (0 != ffdir_rmake(fn, 0))
+			goto err;
+	} else {
+		if (0 != ffdir_make(fn))
+			goto err;
+	}
+
+done:
+	verblog("%s", fn);
+	return 0;
+
+err:
+	syserrlog("%s", fn);
+	return -1;
+}
+#undef FILT_NAME
+
+#define FILT_NAME  "remove"
+static int fop_del(const char *fn, uint flags)
+{
+	const char *serr = NULL;
+
+	if (flags & FOP_TEST)
+		goto done;
+
+	if (flags & FOP_DIR) {
+		fffileinfo fi;
+		if (0 != fffile_infofn(fn, &fi)) {
+			serr = fffile_info_S;
+			goto err;
+		}
+		if (fffile_isdir(fffile_infoattr(&fi)))
+			flags |= FOP_DIRONLY;
+	}
+
+	if (flags & FOP_DIRONLY) {
+		if (0 != ffdir_rm(fn)) {
+			serr = ffdir_rm_S;
+			goto err;
+		}
+	} else {
+		if (0 != fffile_rm(fn)) {
+			serr = fffile_rm_S;
+			goto err;
+		}
+	}
+
+done:
+	verblog("%s", fn);
+	return 0;
+
+err:
+	syserrlog("%s: %s", serr, fn);
+	return -1;
+}
+#undef FILT_NAME
+
+#define FILT_NAME  "move"
+static int fop_move(const char *src, const char *dst, uint flags)
+{
+	fffileinfo fi;
+	if (!(flags & FOP_OVWR) && 0 == fffile_infofn(dst, &fi)) {
+		errlog("%s => %s: target file exists", src, dst);
+		goto err;
+	}
+
+	if (flags & FOP_TEST)
+		goto done;
+
+	if (0 != fffile_rename(src, dst)) {
+
+		if ((flags & FOP_RECURS) && fferr_nofile(fferr_last())) {
+			if (0 != fffile_makepath((char*)dst, 0))
+				goto err;
+			if (0 != fffile_rename(src, dst))
+				goto err;
+			goto done;
+		}
+	}
+
+done:
+	verblog("'%s' => '%s'", src, dst);
+	return 0;
+
+err:
+	syserrlog("'%s' => '%s'", src, dst);
+	return -1;
+}
+#undef FILT_NAME
+
+#define FILT_NAME  "ftime"
+static int fop_time(const char *fn, const fftime *t, uint flags)
+{
+	int r = -1;
+	fffd f = FF_BADFD;
+	const char *serr = NULL;
+
+	if (flags & FOP_TEST)
+		goto done;
+
+	if (FF_BADFD == (f = fffile_open(fn, O_WRONLY))) {
+		serr = fffile_open_S;
+		goto err;
+	}
+	if (0 != fffile_settime(f, t)) {
+		serr = fffile_settime_S;
+		goto err;
+	}
+
+done:
+	verblog("%s", fn);
+	r = 0;
+
+err:
+	if (r != 0)
+		syserrlog("%s: %S", serr, fn);
+	fffile_safeclose(f);
+	return r;
+}
+#undef FILT_NAME
+
+
+#define FILT_NAME  "copy"
+static void* f_copy_open(fcom_cmd *cmd)
+{
+	return FCOM_OPEN_DUMMY;
+}
+static void f_copy_close(void *p, fcom_cmd *cmd)
+{
+}
+static int f_copy_process(void *p, fcom_cmd *cmd)
+{
+	if (NULL == (cmd->input.fn = com->arg_next(cmd, 0)))
+		return FCOM_DONE;
+	if (cmd->output.fn == NULL)
+		return FCOM_ERR;
+	com->fcom_cmd_filtadd(cmd, FCOM_CMD_FILT_IN(cmd));
+	com->fcom_cmd_filtadd(cmd, FCOM_CMD_FILT_OUT(cmd));
+	return FCOM_MORE;
+}
+#undef FILT_NAME
 
 
 static void* f_touch_open(fcom_cmd *cmd)

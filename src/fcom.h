@@ -13,6 +13,7 @@ Copyright (c) 2017 Simon Zolin */
 CORE
 LOG
 COMMAND
+FOPS
 FSYNC
 */
 
@@ -309,6 +310,29 @@ struct fcom_cmd_mon {
 };
 /** Associate monitor interface with a command. */
 #define fcom_cmd_monitor(cmd, mon)  ctrl(cmd, FCOM_CMD_MONITOR, mon)
+
+
+/** FOPS - operations with files */
+
+enum FOP_F {
+	FOP_TEST = 1,
+	FOP_OVWR = 2,
+	// FOP_RESUME = 4,
+	FOP_KEEPDATE = 8,
+	FOP_RECURS = 0x10,
+	FOP_DIRONLY = 0x20,
+	FOP_DIR = 0x40,
+};
+
+typedef struct fcom_fops {
+	/** File operations.
+	@flags: enum FOP_F
+	Return 0 on success. */
+	int (*mkdir)(const char *fn, uint flags);
+	int (*del)(const char *fn, uint flags);
+	int (*move)(const char *src, const char *dst, uint flags);
+	int (*time)(const char *fn, const fftime *t, uint flags);
+} fcom_fops;
 
 
 /** FSYNC - synchronize files */
