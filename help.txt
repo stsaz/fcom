@@ -12,10 +12,11 @@ OPERATION
  screenshots
  gsync
 
-Pack files (.gz, .tar, .zip):
+Pack files (.gz, .tar, .zip, .iso):
  gz FILE... [--out=FILE]
  tar FILE... --out=FILE
  zip FILE... --out=FILE
+ iso DIR --out=FILE
 
 Unpack archives (.gz, .xz, .tar, .zip, .7z, .iso):
  unpack FILE... [--out=FILE] [--member=FILE]... [--show]

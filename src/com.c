@@ -35,6 +35,7 @@ typedef struct {
 	const char *name;
 	uint done :1;
 	uint done_prev :1;
+	uint data_empty :1;
 } filter;
 
 typedef struct {
@@ -163,6 +164,7 @@ static void com_close(void *p)
 		ffps_perf_diff(&c->psperf, &p2);
 		inflog("'%s' processing time: real:%u.%06u  cpu:%u.%06u (user:%u.%06u system:%u.%06u)"
 			"  resources: pagefaults:%u  maxrss:%u  I/O:%u  ctxsw:%u"
+			, c->cmd.name
 			, (int)fftime_sec(&p2.realtime), (int)fftime_usec(&p2.realtime)
 			, (int)fftime_sec(&p2.cputime), (int)fftime_usec(&p2.cputime)
 			, (int)fftime_sec(&p2.usertime), (int)fftime_usec(&p2.usertime)
@@ -252,6 +254,11 @@ static int com_run(void *p)
 		switch ((enum FCOM_FILT_R)r) {
 		case FCOM_DATA:
 			op = FFLIST_CUR_NEXT;
+			if (f->data_empty && c->cmd.out.len == 0) {
+				errlog("filter %s: keeps returning empty data", f->name);
+				goto err;
+			}
+			f->data_empty = (c->cmd.out.len == 0);
 			break;
 
 		case FCOM_DONE:
@@ -338,7 +345,15 @@ shift:
 			break;
 
 		case FFLIST_CUR_SAME:
+			if (f->sib.next == ffchain_sentl(&c->chain)
+				&& r == FCOM_DATA) {
+				errlog("filter %s, the last in chain, outputs more data", f->name);
+				goto err;
+			}
+			//fallthrough
+
 		case FFLIST_CUR_PREV:
+			f->data_empty = 0;
 			f = FF_GETPTR(filter, sib, c->cur);
 			if (f->done_prev) {
 				f->done_prev = 0;
@@ -498,7 +513,7 @@ static int dir_scan(comm *c, char *name)
 	const char *fn;
 	int r = -1;
 	ffchain files, dirs;
-	ffchain_item *last = c->in_next;
+	ffchain_item *last = ffchain_last(&c->in_list);
 
 	ffchain_init(&files);
 	ffchain_init(&dirs);

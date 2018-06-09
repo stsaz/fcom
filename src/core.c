@@ -339,6 +339,7 @@ static const void* core_iface(const char *nm)
 		if (ffsz_eq(pif->name, nm))
 			return pif->iface;
 	}
+	errlog("no such interface: %s", nm);
 	return NULL;
 }
 

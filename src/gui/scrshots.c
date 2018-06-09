@@ -471,10 +471,9 @@ static void opts_save(struct opts *c)
 		ffconf_write(&conf, s.ptr, s.len, FFCONF_TVAL);
 	}
 	ffconf_write(&conf, NULL, 0, FFCONF_FIN);
-	ffarr_acq(&ldr.buf, &conf.buf);
+	ldr.confw = conf;
 	ffui_ldr_write(&ldr, c->fn);
 	ffui_ldrw_fin(&ldr);
-	ffconf_wdestroy(&conf);
 	dbglog(0, "saved settings to %s", c->fn);
 }
 

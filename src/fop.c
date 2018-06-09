@@ -170,7 +170,7 @@ static int fop_mkdir(const char *fn, uint flags)
 		goto done;
 
 	if (flags & FOP_RECURS) {
-		if (0 != ffdir_rmake(fn, 0))
+		if (0 != ffdir_rmake((char*)fn, 0))
 			goto err;
 	} else {
 		if (0 != ffdir_make(fn))

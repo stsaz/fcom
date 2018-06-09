@@ -1739,7 +1739,7 @@ again:
 	for (;;) {
 
 	r = ffiso_read(&o->iso);
-	switch ((enum FFISO_R)r) {
+	switch (r) {
 
 	case FFISO_HDR:
 		break;
@@ -1794,6 +1794,10 @@ again:
 
 	case FFISO_ERR:
 		fcom_errlog(FILT_NAME, "%s  offset:0x%xU", ffiso_errstr(&o->iso), cmd->input.offset);
+		return FCOM_ERR;
+
+	default:
+		FF_ASSERT(0);
 		return FCOM_ERR;
 	}
 	}

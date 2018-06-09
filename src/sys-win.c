@@ -28,7 +28,7 @@ static struct key_ent* wrf_addkey(struct wregfind *c);
 static int wrf_find(struct wregfind *c, const ffstr *where);
 
 
-#define FILT_NAME  "core.wregfind"
+#define FILT_NAME  "wregfind"
 
 struct wregfind {
 	ffarr find; //ffstr[]

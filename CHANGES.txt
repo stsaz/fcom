@@ -8,6 +8,16 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.6 - Jun 8, 2018
+
+ + .iso image creator
+ + gsync: synchronize files (Command -> Synchronize)
+
+ + --include='WILDCARD[;WILDCARD]' - Only include files matching a wildcard (case-insensitive)
+ + --exclude='WILDCARD[;WILDCARD]' - Exclude files & directories matching a wildcard (case-insensitive)
+ - "--flist": fix
+
+
 fcom v0.5 - Mar 9, 2018
 
  + sync-snapshot, gsync

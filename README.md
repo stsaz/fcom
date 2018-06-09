@@ -57,6 +57,10 @@ fcom zip - pack files to .zip
 
 	fcom zip /file1.txt /file2.txt -o arc.zip
 
+fcom iso - create .iso image
+
+	fcom iso ./mydir -o myimage.iso
+
 fcom untar - unpack .tar files
 fcom unzip - unpack .zip files
 fcom un7z - unpack .7z files
@@ -80,6 +84,11 @@ fcom screenshots - show GUI to save screenshots to disk (Windows).
 Save screenshots of your whole desktop or a top-level window by pressing a global hotkey.  Supports BMP, PNG, JPEG output formats.
 
 fcom gsync - show GUI to synchronize files
+Howto use:
+1. Select directory for "Source path" and "Target path"
+2. Command -> Compare
+3. Select checkboxes near the files you wish to synchronize
+4. Command -> Synchronize
 
 ### PICTURES
 
