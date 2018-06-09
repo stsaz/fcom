@@ -23,6 +23,8 @@ static const fcom_fsync *fsync;
 static void wsync_action(ffui_wnd *wnd, int id);
 static void wsync_destroy(ffui_wnd *wnd);
 static void task_add(fftask_handler func);
+static void update_status();
+static void gsync_status(const char *s);
 static void gsync_scancmp(void *udata);
 static void gsync_showresults(uint flags);
 static void gsync_check(void);
@@ -87,6 +89,7 @@ struct ggui {
 	fsync_dir *dst;
 	ffarr cmptbl;
 	struct opts opts;
+	uint nchecked;
 
 	fftask tsk;
 };
@@ -468,6 +471,16 @@ static int gsync_finfo(const struct fsync_file *e, ffarr *buf)
 	return 0;
 }
 
+static void update_status()
+{
+	ffarr buf = {};
+	ffstr_catfmt(&buf, "Results: %L/%L (%L)%Z"
+		, (size_t)gg->nchecked
+		, (size_t)ffui_view_nitems(&gg->wsync.vlist), gg->cmptbl.len);
+	gsync_status(buf.ptr);
+	ffarr_free(&buf);
+}
+
 static void gsync_status(const char *s)
 {
 	ffui_stbar_settextz(&gg->wsync.stbar, 0, s);
@@ -523,6 +536,7 @@ static void gsync_showresults(uint flags)
 	char *showdir = NULL;
 	void *troot;
 
+	gg->nchecked = 0;
 	ffarr_alloc(&buf, 64);
 
 	if (flags & SHOW_TREE_ADD) {
@@ -647,9 +661,10 @@ static void gsync_check(void)
 	ffui_view_select(&it, 0);
 	ffui_view_check(&it, 0);
 	ffui_view_get(&gg->wsync.vlist, 0, &it);
-	if (!ffui_view_selected(&it))
-		return;
 	check = ffui_view_checked(&it);
+	gg->nchecked += (check) ? 1 : -1;
+	if (!ffui_view_selected(&it))
+		goto done;
 	ffui_view_itemreset(&it);
 
 	ffui_redraw(&gg->wsync.vlist, 0);
@@ -657,11 +672,24 @@ static void gsync_check(void)
 	i = -1;
 	while (-1 != (i = ffui_view_selnext(&gg->wsync.vlist, i))) {
 		ffui_view_setindex(&it, i);
+		ffui_view_check(&it, 0);
+		ffui_view_get(&gg->wsync.vlist, 0, &it);
+		int check2 = ffui_view_checked(&it);
+		ffui_view_itemreset(&it);
+		if (check2 == check)
+			continue;
+
+		ffui_view_setindex(&it, i);
 		ffui_view_check(&it, check);
 		ffui_view_set(&gg->wsync.vlist, 0, &it);
+		gg->nchecked += (check) ? 1 : -1;
 	}
 
 	ffui_redraw(&gg->wsync.vlist, 1);
+
+done:
+	update_status();
+	ffui_view_itemreset(&it);
 }
 
 /** Do operation with file names. */
