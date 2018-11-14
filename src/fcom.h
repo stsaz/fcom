@@ -250,6 +250,7 @@ typedef struct fcom_cmd {
 		, benchmark :1
 		, show :1
 		, in_backward :1 //optimize for backward reading (from file end to the beginning)
+		, out_fn_copy :1 //output.fn is transient, store its data internally
 		;
 } fcom_cmd;
 

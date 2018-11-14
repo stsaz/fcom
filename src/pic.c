@@ -763,8 +763,10 @@ data:
 #define FILT_NAME  "pic.conv"
 
 struct piconv {
+	fcom_cmd *cmd;
 	ffarr fn;
-	const char *output;
+	ffatomic nsubtasks;
+	uint close :1;
 };
 
 static void* piconv_open(fcom_cmd *cmd)
@@ -772,12 +774,20 @@ static void* piconv_open(fcom_cmd *cmd)
 	struct piconv *c;
 	if (NULL == (c = ffmem_new(struct piconv)))
 		return FCOM_OPEN_SYSERR;
+	c->cmd = cmd;
 	return c;
 }
 
 static void piconv_close(void *p, fcom_cmd *cmd)
 {
 	struct piconv *c = p;
+
+	if (0 != ffatom_get(&c->nsubtasks)) {
+		// wait until the last subtask is finished
+		c->close = 1;
+		return;
+	}
+
 	ffarr_free(&c->fn);
 	ffmem_free(c);
 }
@@ -827,18 +837,16 @@ static const char* next_file(fcom_cmd *cmd)
 	}
 }
 
-/** Make filename:  [out_dir/] [in_dir/] in_name .out_ext */
+/** Make filename:  ([out_dir/] | [in_dir/]) in_name .out_ext */
 static int fn_make(ffarr *fn, ffstr *idir, const ffstr *iname, ffstr *odir, const ffstr *oext)
 {
-	if (odir->len != 0)
-		odir->len++;
-	if (NULL == ffarr_append(fn, odir->ptr, odir->len))
-		return FCOM_SYSERR;
-
-	if (idir->len != 0) {
+	fn->len = 0;
+	if (odir->len != 0) {
+		if (NULL == ffarr_append(fn, odir->ptr, odir->len + 1))
+			return FCOM_SYSERR;
+	} else if (idir->len != 0) {
 		idir->len++;
 		uint f = 0;
-		f |= (odir->len != 0) ? FFPATH_TOREL : 0; // idir="../d" -> "d"
 		if (NULL == ffarr_grow(fn, idir->len, 0))
 			return FCOM_SYSERR;
 		fn->len += ffpath_norm(ffarr_end(fn), ffarr_unused(fn), idir->ptr, idir->len, f | FFPATH_MERGEDOTS);
@@ -850,60 +858,118 @@ static int fn_make(ffarr *fn, ffstr *idir, const ffstr *iname, ffstr *odir, cons
 	return 0;
 }
 
-/** Create filters chain for picture conversion.
-chain: f.in -> p.in -> p.out -> f.out */
-static int piconv_process(void *p, fcom_cmd *cmd)
-{
-	struct piconv *c = p;
+static void picconv_task_done(fcom_cmd *cmd, uint sig);
+static const struct fcom_cmd_mon picconv_mon_iface = { &picconv_task_done };
 
-	if (cmd->output.fn == c->fn.ptr) {
-		cmd->output.fn = c->output;
+static void picconv_task_done(fcom_cmd *cmd, uint sig)
+{
+	struct piconv *c = (void*)com->ctrl(cmd, FCOM_CMD_UDATA);
+	if (0 == ffatom_decret(&c->nsubtasks) && c->close) {
+		piconv_close(c, NULL);
+		return;
 	}
 
-	if (NULL == (cmd->input.fn = next_file(cmd)))
-		return FCOM_DONE;
+	com->ctrl(c->cmd, FCOM_CMD_RUNASYNC);
+}
 
-	int r;
-	size_t prev;
+static void fcom_cmd_set(fcom_cmd *dst, const fcom_cmd *src)
+{
+	ffmemcpy(dst, src, sizeof(*dst));
+	ffstr_null(&dst->in);
+	ffstr_null(&dst->out);
+}
+
+/** Create a sub-command for picture conversion.
+Filter chain: f.in -> p.in -> p.out -> f.out */
+static int piconv_process1(struct piconv *c, fcom_cmd *cmd, const char *ifn)
+{
+	const char *ofn;
+	void *nc;
+	int r, ii, oi;
 	ffstr idir, iname, iext;
 	ffstr odir, oname, oext;
-	ffstr_setz(&iname, cmd->input.fn);
+	ffstr_setz(&iname, ifn);
 	ffpath_split3(iname.ptr, iname.len, &idir, &iname, &iext);
 
-	if (0 > (r = ffcharr_findsorted(exts, FFCNT(exts), sizeof(exts[0]), iext.ptr, iext.len))) {
+	if (0 > (ii = ffcharr_findsorted(exts, FFCNT(exts), sizeof(exts[0]), iext.ptr, iext.len))) {
 		fcom_errlog(FILT_NAME, "unknown picture file extension .%S", &iext);
 		return FCOM_ERR;
 	}
 
-	prev = com->ctrl(cmd, FCOM_CMD_FILTADD, FCOM_CMD_FILT_IN(cmd));
-
-	prev = com->ctrl(cmd, FCOM_CMD_FILTADD_AFTER, ifilters[r], prev);
+	fcom_cmd ncmd = {};
+	fcom_cmd_set(&ncmd, cmd);
+	ncmd.name = "pic.conv-task";
+	ncmd.flags = FCOM_CMD_EMPTY | FCOM_CMD_INTENSE;
+	ncmd.input.fn = ifn;
 
 	if (cmd->output.fn == NULL) {
 		fcom_errlog(FILT_NAME, "output file isn't set", 0);
-		return FCOM_ERR;
+		r = FCOM_ERR;
+		goto err;
 	}
 	ffstr_setz(&oname, cmd->output.fn);
 	path_split3(oname.ptr, oname.len, &odir, &oname, &oext);
 
-	if (0 > (r = ffcharr_findsorted(exts, FFCNT(exts), sizeof(exts[0]), oext.ptr, oext.len))) {
+	if (0 > (oi = ffcharr_findsorted(exts, FFCNT(exts), sizeof(exts[0]), oext.ptr, oext.len))) {
 		fcom_errlog(FILT_NAME, "unknown picture file extension .%S", &oext);
-		return FCOM_ERR;
+		r = FCOM_ERR;
+		goto err;
 	}
 
+	ofn = cmd->output.fn;
 	if (oname.len == 0) {
-		if (0 != fn_make(&c->fn, &idir, &iname, &odir, &oext))
-			return FCOM_SYSERR;
-		c->fn.len = 0;
-		c->output = cmd->output.fn;
-		cmd->output.fn = c->fn.ptr;
+		if (0 != fn_make(&c->fn, &idir, &iname, &odir, &oext)) {
+			r = FCOM_SYSERR;
+			goto err;
+		}
+		ofn = c->fn.ptr;
+	}
+	ncmd.output.fn = ofn;
+	ncmd.out_fn_copy = 1;
+
+	if (NULL == (nc = com->create(&ncmd)))
+		return FCOM_ERR;
+
+	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_IN(&ncmd));
+	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, ifilters[ii]);
+	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, ofilters[oi]);
+	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(&ncmd));
+	com->fcom_cmd_monitor(nc, &picconv_mon_iface);
+	com->ctrl(nc, FCOM_CMD_SETUDATA, c);
+	ffatom_inc(&c->nsubtasks);
+	com->ctrl(nc, FCOM_CMD_RUNASYNC);
+	return FCOM_MORE;
+
+err:
+	return r;
+}
+
+/**
+Note: on error core.com module won't wait for the tasks already running -
+ they will be forced to stop. */
+static int piconv_process(void *p, fcom_cmd *cmd)
+{
+	struct piconv *c = p;
+	const char *ifn;
+	int r;
+
+	for (;;) {
+
+		if (NULL == (ifn = next_file(cmd))) {
+			if (0 != ffatom_get(&c->nsubtasks))
+				return FCOM_ASYNC;
+			return FCOM_DONE;
+		}
+
+		r = piconv_process1(c, cmd, ifn);
+		if (r != FCOM_MORE)
+			return r;
+
+		if (0 == core->cmd(FCOM_WORKER_AVAIL))
+			break;
 	}
 
-	prev = com->ctrl(cmd, FCOM_CMD_FILTADD_AFTER, ofilters[r], prev);
-
-	prev = com->ctrl(cmd, FCOM_CMD_FILTADD_AFTER, FCOM_CMD_FILT_OUT(cmd), prev);
-
-	return FCOM_NEXTDONE;
+	return FCOM_ASYNC;
 }
 
 #undef FILT_NAME

@@ -127,6 +127,9 @@ static void* com_create(fcom_cmd *cmd)
 	c->in_next = ffchain_first(&c->in_list);
 	c->cur = ffchain_first(&c->chain);
 
+	if (cmd->out_fn_copy && NULL == (c->cmd.output.fn = ffsz_alcopyz(cmd->output.fn)))
+		goto err;
+
 	if (c->cmd.benchmark)
 		ffps_perf(&c->psperf, FFPS_PERF_REALTIME | FFPS_PERF_CPUTIME | FFPS_PERF_RUSAGE);
 
@@ -192,6 +195,9 @@ static void com_close(void *p)
 		it = it->next;
 		ffmem_free(e);
 	}
+
+	if (c->cmd.out_fn_copy)
+		ffmem_free((char*)c->cmd.output.fn);
 
 	if (c->mon != NULL)
 		c->mon->onsig(&c->cmd, 0);
