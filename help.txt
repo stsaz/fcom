@@ -4,6 +4,7 @@ OPERATION
 
  copy SOURCE -o TARGET [--resume]
  touch FILE... [--date=DATE] [--date-as=FILE]
+ rename FILE... --replace='SEARCH/REPLACE'
  sync FILE -o FILE
  sync-snapshot FILE -o FILE.txt
  textcount FILE...
@@ -59,6 +60,8 @@ OUTPUT
  --deflate-level    Set compression level for Deflate algorithm (1..9)
  --jpeg-quality     Set JPEG quality (0..100)
  --png-compression  Set PNG compression level (0..9)
+ --replace='SEARCH/REPLACE'
+                    Set search and replace text pattern
 
 MISC
  --skip-errors, -k  Print but skip errors and continue operation

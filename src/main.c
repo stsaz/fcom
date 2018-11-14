@@ -28,6 +28,9 @@ struct cmdconf {
 	ffarr2 include_files; //ffstr[]
 	ffarr2 exclude_files; //ffstr[]
 
+	ffstr search;
+	ffstr replace;
+
 	byte recurse;
 	byte show;
 	byte skip_errors;
@@ -131,6 +134,7 @@ static int arg_finclude(ffparser_schem *p, void *obj, const ffstr *val);
 static int arg_member(ffparser_schem *p, void *obj, const char *fn);
 static int arg_help(ffparser_schem *p, void *obj);
 static int arg_date(ffparser_schem *p, void *obj, const ffstr *val);
+static int arg_replace(ffparser_schem *p, void *obj, const ffstr *val);
 
 
 #define OFF(member)  FFPARS_DSTOFF(struct cmdconf, member)
@@ -147,6 +151,7 @@ static const ffpars_arg cmdline_args[] = {
 	{ "deflate-level",	FFPARS_TINT8, OFF(deflate_level) },
 	{ "jpeg-quality",	FFPARS_TINT8, OFF(jpeg_quality) },
 	{ "png-compression",	FFPARS_TINT8, OFF(png_comp) },
+	{ "replace",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_replace) },
 
 	// OUTPUT
 	{ "out",	FFPARS_SETVAL('o') | FFPARS_TCHARPTR | FFPARS_FCOPY | FFPARS_FSTRZ, OFF(out) },
@@ -371,6 +376,21 @@ static int arg_date(ffparser_schem *p, void *obj, const ffstr *val)
 	return 0;
 }
 
+static int arg_replace(ffparser_schem *p, void *obj, const ffstr *val)
+{
+	struct cmdconf *c = obj;
+	ffstr sch, rpl;
+	const char *div = ffs_split2by(val->ptr, val->len, '/', &sch, &rpl);
+	if (div == NULL || sch.len == 0) {
+		errlog("replace: invalid data: the correct pattern is SEARCH/REPLACE: %S"
+			, val);
+		return FFPARS_EBADVAL;
+	}
+	c->search = sch;
+	c->replace = rpl;
+	return 0;
+}
+
 static int cmdline(int argc, char **argv)
 {
 	ffparser_schem ps;
@@ -442,6 +462,7 @@ static void cmds_free(void)
 	ffmem_safefree(g->conf.date_as_fn);
 	ffarr2_free(&g->conf.include_files);
 	ffarr2_free(&g->conf.exclude_files);
+	ffstr_free(&g->conf.search);
 
 	char **ps;
 	FFARR_WALKT(&g->conf.members, ps, char*)
@@ -471,6 +492,8 @@ static void cmd_add(void *param)
 	ffarr_set(&cmd.members, c->conf.members.ptr, c->conf.members.len);
 	cmd.include_files = c->conf.include_files;
 	cmd.exclude_files = c->conf.exclude_files;
+	cmd.search = c->conf.search;
+	cmd.replace = c->conf.replace;
 	cmd.recurse = c->conf.recurse;
 	cmd.output.fn = c->conf.out;
 	g->stdout_busy = cmd.out_std = (c->conf.out != NULL && ffsz_eq(c->conf.out, "@stdout"));

@@ -197,6 +197,8 @@ typedef struct fcom_cmd {
 
 	const char *outdir;
 	const char *date_as_fn;
+	ffstr search;
+	ffstr replace;
 	fftime mtime;
 	byte fsort; //enum FCOM_CMD_SORT
 	byte deflate_level; //default:-1
