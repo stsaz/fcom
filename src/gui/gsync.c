@@ -80,6 +80,7 @@ struct opts {
 	ffstr filter;
 	uint showmask; //enum FSYNC_ST
 	byte show_dirs;
+	byte time_diff_sec;
 };
 
 struct ggui {
@@ -271,6 +272,7 @@ static void wsync_action(ffui_wnd *wnd, int id)
 static const ffpars_arg opts_args[] = {
 	{ "Source path",	FFPARS_TCHARPTR | FFPARS_FRECOPY | FFPARS_FSTRZ, OFF(srcfn) },
 	{ "Target path",	FFPARS_TCHARPTR | FFPARS_FRECOPY | FFPARS_FSTRZ, OFF(dstfn) },
+	{ "Compare: Time Diff in Seconds",	FFPARS_TINT8, OFF(time_diff_sec) },
 
 	{ "Filter",	FFPARS_TSTR | FFPARS_FRECOPY, OFF(filter) },
 	{ "Show Equal",	FFPARS_TINT | FFPARS_SETBIT(FSYNC_ST_EQ), OFF(showmask) },
@@ -434,7 +436,10 @@ static void gsync_scancmp(void *udata)
 		goto end;
 
 	struct fsync_cmp cmp, *c;
-	cmpctx = fsync->cmp_init(gg->src, gg->dst, 0);
+	uint f = FSYNC_CMP_DEFAULT;
+	if (gg->opts.time_diff_sec)
+		f |= FSYNC_CMP_MTIME_SEC;
+	cmpctx = fsync->cmp_init(gg->src, gg->dst, f);
 	for (;;) {
 		if (0 != fsync->cmp_trees(cmpctx, &cmp))
 			break;

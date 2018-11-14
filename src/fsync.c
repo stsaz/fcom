@@ -6,6 +6,7 @@ Copyright (c) 2017 Simon Zolin
 #include <FF/path.h>
 #include <FF/sys/dir.h>
 #include <FF/time.h>
+#include <FF/number.h>
 #include <FF/rbtree.h>
 #include <FF/crc.h>
 #include <FF/data/conf.h>
@@ -482,9 +483,14 @@ static int cmp_file(const struct file *f1, const struct file *f2, uint flags)
 		m |= (f1->size < f2->size) ? FSYNC_ST_SMALLER : FSYNC_ST_LARGER;
 	}
 
-	if ((flags & FSYNC_CMP_MTIME) && 0 != (r = fftime_cmp(&f1->mtime, &f2->mtime))) {
-		m |= (r < 0) ? FSYNC_ST_OLDER : FSYNC_ST_NEWER;
+	r = 0;
+	if ((flags & FSYNC_CMP_MTIME_SEC) == FSYNC_CMP_MTIME_SEC)
+		r = ffint_cmp(f1->mtime.sec, f2->mtime.sec);
+	else if (flags & FSYNC_CMP_MTIME) {
+		r = fftime_cmp(&f1->mtime, &f2->mtime);
 	}
+	if (r != 0)
+		m |= (r < 0) ? FSYNC_ST_OLDER : FSYNC_ST_NEWER;
 
 	if ((flags & FSYNC_CMP_ATTR) && f1->attr != f2->attr)
 		m |= FSYNC_ST_ATTR;
