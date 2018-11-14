@@ -8,6 +8,20 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.7 - Nov 14, 2018
+
+ + fcom rename - rename files (search and replace)
+ + gsync: Compare: Time Diff in Seconds
+ + gsync: "Copy Filename To Clipboard (Target)"
+ + pic-convert: parallel conversion
+ + pic-convert: --colors=INT - Set output picture color format: 24 (24-bit)
+ + .bmp read: 10x less syscalls for 1080p images
+ + .png read: support interlaced images
+ - .png read: files with alpha channel had incorrect gamma
+ - .jpg write: couldn't encode some files
+ - .bmp write: segfault after error
+
+
 fcom v0.6 - Jun 8, 2018
 
  + .iso image creator

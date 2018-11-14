@@ -517,7 +517,7 @@ static void* cmp_init(fsync_dir *left, fsync_dir *right, uint flags)
 {
 	fsync_ctx *c;
 	c = ffmem_new(fsync_ctx);
-	c->flags = (flags != 0) ? flags : FSYNC_CMP_SIZE | FSYNC_CMP_MTIME | FSYNC_CMP_MOVE;
+	c->flags = (flags != 0) ? flags : FSYNC_CMP_DEFAULT;
 	ffrbt_init(&c->mvL.rbt);
 	ffrbt_init(&c->mvR.rbt);
 	c->src = left;

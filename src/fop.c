@@ -295,7 +295,7 @@ done:
 
 err:
 	if (r != 0)
-		syserrlog("%s: %S", serr, fn);
+		syserrlog("%s: %s", serr, fn);
 	fffile_safeclose(f);
 	return r;
 }

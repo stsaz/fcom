@@ -127,7 +127,7 @@ install-only:
 	$(CP) $(PROJDIR)/README.md $(INSTDIR)/README.txt
 
 ifeq ($(OS),win)
-	$(CP) $(PROJDIR)/src/gui/*.gui $(PROJDIR)/src/gui/screenshots.ico $(INSTDIR)
+	$(CP) $(PROJDIR)/src/gui/*.gui $(PROJDIR)/res/screenshots.ico $(INSTDIR)
 	unix2dos $(INSTDIR)/*.txt $(INSTDIR)/*.conf $(INSTDIR)/*.gui
 endif
 

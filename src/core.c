@@ -86,11 +86,11 @@ static char* core_env_expand(char *dst, size_t cap, const char *src);
 static const void* core_iface(const char *name);
 static void core_task(uint cmd, fftask *tsk);
 static int core_timer(fftmrq_entry *tmr, int interval, uint flags);
-static fcom_core _core = {
+static fcom_core gcore = {
 	.cmd = &core_cmd, .log = &core_log, .getpath = &core_getpath, .env_expand = &core_env_expand,
 	.iface = &core_iface, .task = &core_task, .timer = &core_timer,
 };
-fcom_core *core = &_core;
+fcom_core *core = &gcore;
 
 // FCOM MODULE
 static const fcom_mod* coremod_getmod(const fcom_core *_core);
@@ -177,7 +177,7 @@ const fcom_core* core_create(fcom_log log, char **argv, char **env)
 		goto err;
 
 	g->conf.loglev = FCOM_LOGINFO;
-	_core.conf = &g->conf;
+	gcore.conf = &g->conf;
 
 #if defined FF_WIN && FF_WIN < 0x0600
 	ffkqu_init();
@@ -219,7 +219,7 @@ const fcom_core* core_create(fcom_log log, char **argv, char **env)
 		goto err;
 	core->kq = w->kq;
 
-	return &_core;
+	return &gcore;
 
 err:
 	core_free();
