@@ -29,7 +29,7 @@ Unpack archives (.gz, .xz, .tar, .zip, .7z, .iso):
  uniso FILE... [--out=FILE] [--member=FILE]... [--show]
 
 Convert pictures (.bmp, .jpg, .png):
- pic-convert FILE... --out=FILE
+ pic-convert FILE... --out=FILE [--colors=INT]
 
 
 OPTIONS
@@ -62,6 +62,7 @@ OUTPUT
  --png-compression  Set PNG compression level (0..9)
  --replace='SEARCH/REPLACE'
                     Set search and replace text pattern
+ --colors=INT       Set output picture color format: 24 (24-bit)
 
 MISC
  --skip-errors, -k  Print but skip errors and continue operation

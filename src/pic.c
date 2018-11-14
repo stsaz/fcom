@@ -339,7 +339,15 @@ static int bmpo_process(void *p, fcom_cmd *cmd)
 		ffpic_info info;
 		info.width = cmd->pic.width;
 		info.height = cmd->pic.height;
+
 		info.format = cmd->pic.format;
+		if (cmd->pic_colors == 24)
+			info.format = 24 | (cmd->pic.format & _FFPIC_BGR);
+		else if (cmd->pic_colors != (byte)(char)-1) {
+			fcom_errlog(FILT_NAME, "--colors: unsupported value %u", cmd->pic_colors);
+			return FCOM_ERR;
+		}
+
 		r = ffbmp_create(&b->bmp, &info);
 		if (r == FFBMP_EFMT && b->state == W_FMT) {
 			cmd->pic.out_format = info.format;
@@ -351,7 +359,15 @@ static int bmpo_process(void *p, fcom_cmd *cmd)
 			fcom_errlog(FILT_NAME, "ffbmp_create()", 0);
 			return FCOM_ERR;
 		}
+
 		b->state = W_DATA;
+
+		if (b->state == W_FMT && cmd->pic_colors != (byte)(char)-1) {
+			cmd->pic.out_format = info.format;
+			com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, "pic.pxconv");
+			cmd->out = cmd->in;
+			return FCOM_BACK;
+		}
 		break;
 	}
 

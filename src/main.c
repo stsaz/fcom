@@ -38,6 +38,7 @@ struct cmdconf {
 	byte jpeg_quality;
 	byte png_comp;
 	byte preserve_date;
+	byte colors;
 
 	byte debug;
 	byte verbose;
@@ -152,6 +153,7 @@ static const ffpars_arg cmdline_args[] = {
 	{ "jpeg-quality",	FFPARS_TINT8, OFF(jpeg_quality) },
 	{ "png-compression",	FFPARS_TINT8, OFF(png_comp) },
 	{ "replace",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_replace) },
+	{ "colors",	FFPARS_TINT8, OFF(colors) },
 
 	// OUTPUT
 	{ "out",	FFPARS_SETVAL('o') | FFPARS_TCHARPTR | FFPARS_FCOPY | FFPARS_FSTRZ, OFF(out) },
@@ -503,6 +505,7 @@ static void cmd_add(void *param)
 	cmd.deflate_level = c->conf.deflate_level;
 	cmd.jpeg_quality = c->conf.jpeg_quality;
 	cmd.png_comp = c->conf.png_comp;
+	cmd.pic_colors = c->conf.colors;
 	cmd.read_only = c->conf.test;
 	cmd.benchmark = c->conf.benchmark;
 	cmd.mtime = c->conf.mtime;
@@ -603,6 +606,7 @@ int main(int argc, char **argv, char **env)
 	g->conf.deflate_level = 255;
 	g->conf.jpeg_quality = 255;
 	g->conf.png_comp = 255;
+	g->conf.colors = 255;
 
 	if (0 != loadcore(argv[0]))
 		goto done;
