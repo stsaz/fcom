@@ -134,6 +134,7 @@ enum CMDS {
 	A_OPENDIR,
 	A_CLIPCOPY,
 	A_CLIPFN,
+	A_CLIPFN_RIGHT,
 	A_CONF_EDIT,
 	A_SELALL,
 	A_EXIT,
@@ -151,6 +152,7 @@ static const char* const cmds[] = {
 	"A_OPENDIR",
 	"A_CLIPCOPY",
 	"A_CLIPFN",
+	"A_CLIPFN_RIGHT",
 	"A_CONF_EDIT",
 	"A_SELALL",
 	"A_EXIT",
@@ -251,6 +253,7 @@ static void wsync_action(ffui_wnd *wnd, int id)
 	case A_OPENDIR:
 	case A_CLIPCOPY:
 	case A_CLIPFN:
+	case A_CLIPFN_RIGHT:
 		gsync_fnop(id);
 		break;
 
@@ -923,6 +926,7 @@ static void gsync_fnop(uint id)
 	ffui_viewitem it = {0};
 	ffarr buf = {0}, b2 = {0};
 	char *fullname = NULL;
+	void *obj;
 
 	for (;;) {
 		if (-1 == (i = ffui_view_selnext(&gg->wsync.vlist, i)))
@@ -932,12 +936,31 @@ static void gsync_fnop(uint id)
 		ffui_view_get(&gg->wsync.vlist, 0, &it);
 		c = (void*)ffui_view_param(&it);
 
+		switch (id) {
+		case A_CLIPFN:
+		case A_OPENDIR:
+		case A_CLIPCOPY:
+			obj = c->left;
+			break;
+		case A_CLIPFN_RIGHT:
+			obj = c->right;
+			break;
+		}
+		if (obj == NULL)
+			continue;
 		ffmem_safefree(fullname);
-		fullname = fsync->get(FSYNC_FULLNAME, c->left);
-		if (id == A_CLIPFN) {
+		fullname = fsync->get(FSYNC_FULLNAME, obj);
+
+		switch (id) {
+
+		case A_CLIPFN:
+		case A_CLIPFN_RIGHT:
 			if (0 == ffstr_catfmt(&buf, "%s\n", fullname))
 				goto end;
-		} else {
+			break;
+
+		case A_OPENDIR:
+		case A_CLIPCOPY: {
 			char **s;
 			if (NULL == (s = ffarr_pushgrowT(&buf, 16, char*)))
 				goto end;
@@ -945,6 +968,8 @@ static void gsync_fnop(uint id)
 				goto end;
 			*s = b2.ptr;
 			ffarr_null(&b2);
+			break;
+		}
 		}
 	}
 
@@ -962,12 +987,13 @@ static void gsync_fnop(uint id)
 		break;
 
 	case A_CLIPFN:
+	case A_CLIPFN_RIGHT:
 		ffui_clipbd_set(buf.ptr, buf.len);
 		break;
 	}
 
 end:
-	if (id != A_CLIPFN) {
+	if (id == A_OPENDIR || id == A_CLIPCOPY) {
 		char **s;
 		FFARR_WALKT(&buf, s, char*) {
 			ffmem_free(*s);

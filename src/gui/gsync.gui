@@ -33,8 +33,11 @@ menu mfile {
 		hotkey "Ctrl+C"
 		action A_CLIPCOPY
 	}
-	item "Copy Filename To Clipboard" {
+	item "Copy Filename To Clipboard (Source)" {
 		action A_CLIPFN
+	}
+	item "Copy Filename To Clipboard (Target)" {
+		action A_CLIPFN_RIGHT
 	}
 	item "Select All" {
 		hotkey "Ctrl+A"
