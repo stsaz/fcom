@@ -220,6 +220,7 @@ typedef struct fcom_cmd {
 		, read_only :1
 		, benchmark :1
 		, show :1
+		, in_backward :1 //optimize for backward reading (from file end to the beginning)
 		;
 } fcom_cmd;
 

@@ -238,6 +238,7 @@ static void* bmpi_open(fcom_cmd *cmd)
 	if (NULL == (b = ffmem_new(struct bmpi)))
 		return FCOM_OPEN_SYSERR;
 	ffbmp_open(&b->bmp);
+	cmd->in_backward = 1;
 	return b;
 }
 

@@ -157,6 +157,7 @@ struct file {
 	ffaio_filetask aio;
 	uint state; //enum FI_ST
 	uint rdahead :1;
+	uint backward :1; //read-ahead: schedule reading of the previous block, not the next
 
 	ffarr2 bufs; //buf[]
 	uint wbuf;
@@ -337,6 +338,8 @@ static int fi_process(void *p, fcom_cmd *cmd)
 		return FCOM_DONE;
 	}
 
+	f->backward = cmd->in_backward;
+
 	if (f->uctx != NULL) {
 		f->uctx = NULL;
 		async = 1;
@@ -422,6 +425,8 @@ static int fi_getdata(file *f, buf **pb, uint64 off)
 
 done:
 	next = b->offset + b->len;
+	if (f->backward)
+		next = b->offset - inconf->bufsize;
 	if (f->rdahead && next < f->size
 		&& NULL == bufs_find(f, next)) {
 		if (f->state != FI_IASYNC)
