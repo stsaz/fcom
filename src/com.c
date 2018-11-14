@@ -40,6 +40,8 @@ typedef struct {
 
 typedef struct {
 	fcom_cmd cmd;
+	uint wid; //associated worker ID
+	fffd kq; //worker's kqueue
 	struct ffps_perf psperf;
 
 	ffarr filters; //filter[]
@@ -143,7 +145,7 @@ static void* com_create(fcom_cmd *cmd)
 		c->cmd.flags &= ~FCOM_CMD_EMPTY;
 
 	c->cmd.flags |= FCOM_CMD_FWD;
-
+	c->wid = core->cmd(FCOM_WORKER_ASSIGN, &c->kq, (c->cmd.flags & FCOM_CMD_INTENSE));
 	return &c->cmd;
 
 err:
@@ -156,7 +158,8 @@ static void com_close(void *p)
 {
 	comm *c = FF_GETPTR(comm, cmd, p);
 
-	core->task(FCOM_TASK_DEL, &c->tsk);
+	core->cmd(FCOM_TASK_XDEL, &c->tsk, c->wid);
+	core->cmd(FCOM_WORKER_RELEASE, c->wid, (c->cmd.flags & FCOM_CMD_INTENSE));
 
 	if (c->cmd.benchmark) {
 		struct ffps_perf p2 = {};
@@ -649,7 +652,11 @@ static size_t com_ctrl(fcom_cmd *_c, uint cmd, ...)
 	case FCOM_CMD_RUNASYNC:
 		c->tsk.handler = (void*)&com_run;
 		c->tsk.param = c;
-		core->task(FCOM_TASK_ADD, &c->tsk);
+		core->cmd(FCOM_TASK_XPOST, &c->tsk, c->wid);
+		break;
+
+	case FCOM_CMD_KQ:
+		r = (size_t)c->kq;
 		break;
 
 	case FCOM_CMD_FILTADD:

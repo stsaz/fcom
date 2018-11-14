@@ -9,6 +9,7 @@ Copyright (c) 2017 Simon Zolin */
 #include <FF/path.h>
 #include <FFOS/process.h>
 #include <FFOS/file.h>
+#include <FFOS/thread.h>
 #include <FFOS/sig.h>
 
 
@@ -114,7 +115,8 @@ static int std_log(uint flags, const char *fmt, va_list va)
 		tm.len = fftime_tostr(&dt, stime, sizeof(stime), FFTIME_HMS_MSEC);
 		tm.ptr = stime;
 
-		s += ffs_fmt(s, end, "%S fcom: [%s] ", &tm, log_levs[lev]);
+		s += ffs_fmt(s, end, "%S fcom: #%xU [%s] "
+			, &tm, (int64)ffthd_curid(), log_levs[lev]);
 	}
 
 	s += ffs_fmtv(s, end, fmt, va);

@@ -278,7 +278,8 @@ static void* fi_open(fcom_cmd *cmd)
 	f->size = fffile_infosize(&fi);
 
 	ffaio_finit(&f->aio, f->fd, f);
-	if (0 != ffaio_fattach(&f->aio, core->kq, !!(flags & O_DIRECT))) {
+	fffd kq = (fffd)com->ctrl(cmd, FCOM_CMD_KQ);
+	if (0 != ffaio_fattach(&f->aio, kq, !!(flags & O_DIRECT))) {
 		syserrlog("%s: %s", ffkqu_attach_S, f->fn);
 		goto err;
 	}

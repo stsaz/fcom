@@ -41,6 +41,7 @@ enum FCOM_LOGLEV {
 
 typedef struct fcom_conf {
 	uint loglev;
+	byte workers;
 } fcom_conf;
 
 enum FCOM_TASK {
@@ -54,6 +55,31 @@ enum FCOM_CMD {
 	FCOM_MODADD,
 	FCOM_RUN,
 	FCOM_STOP,
+
+	/** Assign command to worker.  Must be called on main thread.
+	uint assign(fffd *kq, uint flags)
+	flags: FCOM_CMD_INTENSE
+	Return worker ID. */
+	FCOM_WORKER_ASSIGN,
+
+	/** Release command from worker.
+	void release(uint wid, uint flags)
+	flags: FCOM_CMD_INTENSE
+	*/
+	FCOM_WORKER_RELEASE,
+
+	/** Get the number of available workers.
+	Worker is considered to be busy only if it has a command with FCOM_CMD_INTENSE.
+	Return 0: workers are busy;  1: at least 1 worker is free. */
+	FCOM_WORKER_AVAIL,
+
+	/** Add a cross-worker task.
+	void task_xpost(fftask *task, uint wid) */
+	FCOM_TASK_XPOST,
+
+	/** Remove a cross-worker task.
+	void task_xdel(fftask *task, uint wid) */
+	FCOM_TASK_XDEL,
 };
 
 typedef struct fcom_core fcom_core;
@@ -78,11 +104,11 @@ struct fcom_core {
 	/** Return NULL on error. */
 	const void* (*iface)(const char *name);
 
-	/**
+	/** Add task to the main worker.
 	@cmd: enum FCOM_TASK */
 	void (*task)(uint cmd, fftask *tsk);
 
-	/**
+	/** Set timer on the main worker.
 	@interval: msec.  >0: periodic;  <0: one-shot;  0: disable.
 	Return 0 on success. */
 	int (*timer)(fftmrq_entry *tmr, int interval, uint flags);
@@ -159,6 +185,9 @@ enum FCOM_CMD_F {
 	FCOM_CMD_FWD = 4, //moved forward through chain from the previous filter
 
 	FCOM_CMD_EMPTY = 0x10000, //don't auto-create filter from "fcom_cmd.name"
+
+	/** Command is an intensive CPU user. */
+	FCOM_CMD_INTENSE = 0x20000,
 };
 
 enum FCOM_CMD_SORT {
@@ -259,7 +288,13 @@ enum FCOM_CMD_CTL {
 	FCOM_CMD_MONITOR,
 	FCOM_CMD_UDATA,
 	FCOM_CMD_SETUDATA,
-	FCOM_CMD_RUNASYNC, //call run() asynchronously within the main thread
+
+	/** Call run() asynchronously within the worker thread associated with the command. */
+	FCOM_CMD_RUNASYNC,
+
+	/** Get kqueue descriptor associated with the command.
+	fffd kq() */
+	FCOM_CMD_KQ,
 
 	/** Add a filter to the chain.
 	Return a pointer that can later be passed as a parameter to FCOM_CMD_FILTADD_AFTER. */
@@ -312,6 +347,7 @@ typedef struct fcom_command {
 	(cmd)->output.offset = off,  (cmd)->out_seek = 1
 
 struct fcom_cmd_mon {
+	/** Called within the worker thread when command object is about to be destroyed. */
 	void (*onsig)(fcom_cmd *cmd, uint sig);
 };
 /** Associate monitor interface with a command. */

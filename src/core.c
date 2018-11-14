@@ -8,6 +8,7 @@ Copyright (c) 2017 Simon Zolin */
 #include <FFOS/dir.h>
 #include <FFOS/queue.h>
 #include <FFOS/process.h>
+#include <FFOS/thread.h>
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, "core", fmt, __VA_ARGS__)
@@ -26,6 +27,28 @@ enum {
 	CONF_MBUF = 4096,
 };
 
+#define FCOM_ASSERT(expr) \
+while (!(expr)) { \
+	FF_ASSERT(0); \
+	ffps_exit(1); \
+}
+
+struct worker {
+	ffthd thd;
+	ffthd_id id;
+	fffd kq;
+	ffkevpost kqpost;
+	ffkevent evposted;
+
+	fftaskmgr tskmgr;
+
+	fftimer_queue tmrq;
+	uint64 period;
+
+	ffatomic njobs;
+	uint init :1;
+};
+
 struct fcom {
 	struct fcom_conf conf;
 	fcom_log log;
@@ -35,15 +58,10 @@ struct fcom {
 	ffenv env;
 	ffstr rootdir;
 
-	fffd kq;
-	ffkqu_time kqtime;
-	ffkevpost kqpost;
-	fftaskmgr tskmgr;
-	ffkevent evposted;
-	uint stopped;
+	ffarr workers; //struct worker[]
 
-	fftimer_queue tmrq;
-	uint64 period;
+	ffkqu_time kqtime;
+	uint stopped;
 };
 
 struct mod {
@@ -83,7 +101,14 @@ static const fcom_mod core_mod = {
 	.sig = &coremod_sig, .iface = &coremod_iface, .conf = &coremod_conf,
 };
 
-static void core_work(void);
+static int work_init(struct worker *w, uint thread);
+static void work_destroy(struct worker *w);
+static int FFTHDCALL work_loop(void *param);
+static uint work_assign(uint flags);
+static void work_release(uint wid, uint flags);
+static uint work_avail();
+static ffbool work_ismain(void);
+
 static int mods_sig(uint sig);
 static int mod_add(const ffstr *name, ffpars_ctx *ctx);
 static struct mod* mod_find(const ffstr *soname);
@@ -95,6 +120,7 @@ static int conf_modconf(ffparser_schem *p, void *obj, ffpars_ctx *ctx);
 static int conf_mod(ffparser_schem *p, void *obj, const ffstr *val);
 
 static const ffpars_arg conf_args[] = {
+	{ "workers",  FFPARS_TINT8, FFPARS_DSTOFF(struct fcom_conf, workers) },
 	{ "mod_conf",	FFPARS_TOBJ | FFPARS_FOBJ1 | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&conf_modconf) },
 	{ "mod",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&conf_mod) },
 };
@@ -135,13 +161,17 @@ const fcom_core* core_create(fcom_log log, char **argv, char **env)
 	fflk_setup();
 	if (NULL == (g = ffmem_new(struct fcom)))
 		return NULL;
-	g->kq = FF_BADFD;
 	g->log = log;
 
 	if (0 != ffenv_init(&g->env, env)) {
 		syserrlog("%s", "ffenv_init");
 		goto err;
 	}
+
+	fftime_zone tz;
+	fftime_local(&tz);
+	fftime_storelocal(&tz);
+	fftime_init();
 
 	if (0 != set_rootdir(argv))
 		goto err;
@@ -152,20 +182,7 @@ const fcom_core* core_create(fcom_log log, char **argv, char **env)
 #if defined FF_WIN && FF_WIN < 0x0600
 	ffkqu_init();
 #endif
-	if (FF_BADFD == (g->kq = ffkqu_create())) {
-		syserrlog("%s", ffkqu_create_S);
-		goto err;
-	}
-	core->kq = g->kq;
-	ffkqu_post_attach(&g->kqpost, g->kq);
-
 	ffkqu_settm(&g->kqtime, (uint)-1);
-	ffkev_init(&g->evposted);
-	g->evposted.oneshot = 0;
-	g->evposted.handler = &on_posted;
-	fftask_init(&g->tskmgr);
-
-	fftmrq_init(&g->tmrq);
 
 #ifdef FF_WIN
 	{
@@ -187,6 +204,21 @@ const fcom_core* core_create(fcom_log log, char **argv, char **env)
 	core_comm_sig(FCOM_SIGINIT);
 	file_mod.sig(FCOM_SIGINIT);
 
+	uint n = g->conf.workers;
+	if (n == 0) {
+		ffsysconf sc;
+		ffsc_init(&sc);
+		n = ffsc_get(&sc, _SC_NPROCESSORS_ONLN);
+	}
+	g->conf.workers = n;
+	if (NULL == ffarr_alloczT(&g->workers, n, struct worker))
+		goto err;
+	g->workers.len = n;
+	struct worker *w = (void*)g->workers.ptr;
+	if (0 != work_init(w, 0))
+		goto err;
+	core->kq = w->kq;
+
 	return &_core;
 
 err:
@@ -203,9 +235,13 @@ static void conf_destroy(struct fcom_conf *c)
 
 void core_free(void)
 {
-	ffkqu_post_detach(&g->kqpost, g->kq);
-	fftmrq_destroy(&g->tmrq, g->kq);
-	FF_SAFECLOSE(g->kq, FF_BADFD, ffkqu_close);
+	struct worker *w;
+	FFARR_WALKT(&g->workers, w, struct worker) {
+		if (w->init)
+			work_destroy(w);
+	}
+	ffarr_free(&g->workers);
+
 	struct iface *pif;
 	FFARR_WALKT(&g->ifaces, pif, struct iface) {
 		ffmem_safefree(pif->name);
@@ -503,13 +539,58 @@ static int core_cmd(uint cmd, ...)
 			r = 1;
 			break;
 		}
-		core_work();
+		work_loop(g->workers.ptr);
 		break;
-	case FCOM_STOP:
+	case FCOM_STOP: {
+		FCOM_ASSERT(work_ismain());
+		FF_WRITEONCE(g->stopped, 1);
+		struct worker *w;
+		FFARR_WALKT(&g->workers, w, struct worker) {
+			ffkqu_post(&w->kqpost, &w->evposted);
+		}
 		mods_sig(FCOM_SIGFREE);
-		g->stopped = 1;
-		ffkqu_post(&g->kqpost, &g->evposted);
 		break;
+	}
+
+	case FCOM_WORKER_ASSIGN: {
+		fffd *pkq = va_arg(va, fffd*);
+		uint flags = va_arg(va, uint);
+		r = work_assign(flags);
+		struct worker *w = ffarr_itemT(&g->workers, r, struct worker);
+		*pkq = w->kq;
+		break;
+	}
+
+	case FCOM_WORKER_RELEASE: {
+		uint wid = va_arg(va, uint);
+		uint flags = va_arg(va, uint);
+		work_release(wid, flags);
+		break;
+	}
+
+	case FCOM_WORKER_AVAIL:
+		r = work_avail();
+		break;
+
+	case FCOM_TASK_XPOST:
+	case FCOM_TASK_XDEL: {
+		fftask *task = va_arg(va, fftask*);
+		uint wid = va_arg(va, uint);
+		struct worker *w = (void*)g->workers.ptr;
+		FCOM_ASSERT(wid < g->workers.len);
+		w = &w[wid];
+
+		dbglog(0, "task:%p, cmd:%u, active:%u, handler:%p, param:%p"
+			, task, cmd, fftask_active(&w->taskmgr, task), task->handler, task->param);
+
+		if (cmd == FCOM_TASK_XPOST) {
+			if (1 == fftask_post(&w->tskmgr, task))
+				ffkqu_post(&w->kqpost, &w->evposted);
+		} else
+			fftask_del(&w->tskmgr, task);
+		break;
+	}
+
 	default:
 		FF_ASSERT(0);
 	}
@@ -520,17 +601,19 @@ static int core_cmd(uint cmd, ...)
 
 static void core_task(uint cmd, fftask *tsk)
 {
+	struct worker *w = (void*)g->workers.ptr;
+
 	dbglog(0, "task:%p, cmd:%u, active:%u, handler:%p, param:%p"
-		, tsk, cmd, fftask_active(&g->tskmgr, tsk), tsk->handler, tsk->param);
+		, tsk, cmd, fftask_active(&w->tskmgr, tsk), tsk->handler, tsk->param);
 
 	switch ((enum FCOM_TASK)cmd) {
 	case FCOM_TASK_ADD:
-		if (1 == fftask_post(&g->tskmgr, tsk))
-			ffkqu_post(&g->kqpost, &g->evposted);
+		if (1 == fftask_post(&w->tskmgr, tsk))
+			ffkqu_post(&w->kqpost, &w->evposted);
 		break;
 
 	case FCOM_TASK_DEL:
-		fftask_del(&g->tskmgr, tsk);
+		fftask_del(&w->tskmgr, tsk);
 		break;
 
 	default:
@@ -540,50 +623,163 @@ static void core_task(uint cmd, fftask *tsk)
 
 static int core_timer(fftmrq_entry *tmr, int interval, uint flags)
 {
+	struct worker *w = (void*)g->workers.ptr;
+
 	dbglog(0, "timer:%p  interval:%u  handler:%p  param:%p"
 		, tmr, interval, tmr->handler, tmr->param);
 
-	if (fftmrq_active(&g->tmrq, tmr))
-		fftmrq_rm(&g->tmrq, tmr);
+	if (fftmrq_active(&w->tmrq, tmr))
+		fftmrq_rm(&w->tmrq, tmr);
 
 	if (interval == 0) {
-		if (fftmrq_empty(&g->tmrq)) {
-			fftmrq_destroy(&g->tmrq, g->kq);
+		if (fftmrq_empty(&w->tmrq)) {
+			fftmrq_destroy(&w->tmrq, w->kq);
 			dbglog(0, "stopped kernel timer", 0);
 		}
 		return 0;
 	}
 
-	if (fftmrq_started(&g->tmrq) && (uint64)ffabs(interval) < g->period) {
-		fftmrq_destroy(&g->tmrq, g->kq);
+	if (fftmrq_started(&w->tmrq) && (uint64)ffabs(interval) < w->period) {
+		fftmrq_destroy(&w->tmrq, w->kq);
 		dbglog(0, "stopped kernel timer", 0);
 	}
 
-	if (!fftmrq_started(&g->tmrq)) {
-		fftmrq_init(&g->tmrq);
-		if (0 != fftmrq_start(&g->tmrq, g->kq, ffabs(interval))) {
+	if (!fftmrq_started(&w->tmrq)) {
+		fftmrq_init(&w->tmrq);
+		if (0 != fftmrq_start(&w->tmrq, w->kq, ffabs(interval))) {
 			syserrlog("fftmrq_start()", 0);
 			return -1;
 		}
-		g->period = ffabs(interval);
+		w->period = ffabs(interval);
 		dbglog(0, "started kernel timer  interval:%u", ffabs(interval));
 	}
 
-	fftmrq_add(&g->tmrq, tmr, interval);
+	fftmrq_add(&w->tmrq, tmr, interval);
 	return 0;
 }
 
-static void core_work(void)
+/** Initialize worker object. */
+static int work_init(struct worker *w, uint thread)
 {
+	fftask_init(&w->tskmgr);
+	fftmrq_init(&w->tmrq);
+
+	if (FF_BADFD == (w->kq = ffkqu_create())) {
+		syserrlog("%s", ffkqu_create_S);
+		return 1;
+	}
+	ffkqu_post_attach(&w->kqpost, w->kq);
+
+	ffkev_init(&w->evposted);
+	w->evposted.oneshot = 0;
+	w->evposted.handler = &on_posted;
+
+	if (thread) {
+		w->thd = ffthd_create(&work_loop, w, 0);
+		if (w->thd == FFTHD_INV) {
+			syserrlog("%s", ffthd_create_S);
+			work_destroy(w);
+			return 1;
+		}
+		// w->id is set inside a new thread
+	} else {
+		w->id = ffthd_curid();
+	}
+
+	w->init = 1;
+	return 0;
+}
+
+/** Destroy worker object. */
+static void work_destroy(struct worker *w)
+{
+	if (w->thd != FFTHD_INV) {
+		ffthd_join(w->thd, -1, NULL);
+		dbglog(0, "thread %xU exited", (int64)w->id);
+		w->thd = FFTHD_INV;
+	}
+	fftmrq_destroy(&w->tmrq, w->kq);
+	if (w->kq != FF_BADFD) {
+		ffkqu_post_detach(&w->kqpost, w->kq);
+		ffkqu_close(w->kq);
+		w->kq = FF_BADFD;
+	}
+}
+
+/** Find the worker with the least number of active jobs.
+Initialize data and create a thread if necessary.
+Return worker ID. */
+static uint work_assign(uint flags)
+{
+	FCOM_ASSERT(work_ismain());
+	struct worker *w, *ww = (void*)g->workers.ptr;
+	uint id = 0, j = -1;
+
+	FFARR_WALKT(&g->workers, w, struct worker) {
+		uint nj = ffatom_get(&w->njobs);
+		if (nj < j) {
+			id = w - ww;
+			j = nj;
+			if (nj == 0)
+				break;
+		}
+	}
+	w = &ww[id];
+
+	if (!w->init
+		&& 0 != work_init(w, 1)) {
+		id = 0;
+		w = &ww[0];
+		goto done;
+	}
+
+done:
+	if (flags != 0)
+		ffatom_inc(&w->njobs);
+	return id;
+}
+
+/** A job is completed. */
+static void work_release(uint wid, uint flags)
+{
+	struct worker *w = ffarr_itemT(&g->workers, wid, struct worker);
+	if (flags != 0) {
+		ssize_t n = ffatom_decret(&w->njobs);
+		FCOM_ASSERT(n >= 0);
+	}
+}
+
+/** Get the number of available workers. */
+static uint work_avail()
+{
+	struct worker *w;
+	FFARR_WALKT(&g->workers, w, struct worker) {
+		if (ffatom_get(&w->njobs) == 0)
+			return 1;
+	}
+	return 0;
+}
+
+static ffbool work_ismain(void)
+{
+	struct worker *w = ffarr_itemT(&g->workers, 0, struct worker);
+	return (w->id == ffthd_curid());
+}
+
+/** Worker's event loop. */
+static int FFTHDCALL work_loop(void *param)
+{
+	struct worker *w = param;
+	w->id = ffthd_curid();
 	ffkqu_entry *ents;
 	if (NULL == (ents = ffmem_callocT(KQ_EVS, ffkqu_entry)))
-		return;
+		return -1;
 
 	dbglog(0, "entering kqueue loop", 0);
 
-	while (!g->stopped) {
+	while (!FF_READONCE(g->stopped)) {
 
-		uint nevents = ffkqu_wait(g->kq, ents, KQ_EVS, &g->kqtime);
+		uint nevents = ffkqu_wait(w->kq, ents, KQ_EVS, &g->kqtime);
 
 		if ((int)nevents < 0) {
 			if (fferr_last() != EINTR) {
@@ -597,12 +793,13 @@ static void core_work(void)
 			ffkqu_entry *ev = &ents[i];
 			ffkev_call(ev);
 
-			fftask_run(&g->tskmgr);
+			fftask_run(&w->tskmgr);
 		}
 	}
 
 	dbglog(0, "left kqueue loop", 0);
 	ffmem_free(ents);
+	return 0;
 }
 
 
