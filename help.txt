@@ -19,7 +19,7 @@ Pack files (.gz, .tar, .zip, .iso):
  zip FILE... --out=FILE
  iso DIR --out=FILE
 
-Unpack archives (.gz, .xz, .tar, .zip, .7z, .iso):
+Unpack archives (.gz, .xz, .tar, .zip, .7z, .iso, .ico):
  unpack FILE... [--out=FILE] [--member=FILE]... [--show]
  ungz FILE... [--out=FILE]
  unxz FILE... [--out=FILE]

@@ -381,6 +381,7 @@ static int bmpo_process(void *p, fcom_cmd *cmd)
 
 	switch (r) {
 	case FFBMP_DATA:
+		b->bmp.input_reverse = cmd->bmp_input_reverse;
 		goto data;
 
 	case FFBMP_MORE:

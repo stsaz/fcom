@@ -251,6 +251,7 @@ typedef struct fcom_cmd {
 		, show :1
 		, in_backward :1 //optimize for backward reading (from file end to the beginning)
 		, out_fn_copy :1 //output.fn is transient, store its data internally
+		, bmp_input_reverse :1 //input lines order is HEIGHT..1, as in .bmp
 		;
 } fcom_cmd;
 

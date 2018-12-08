@@ -10,6 +10,8 @@ Copyright (c) 2017 Simon Zolin
 #include <FF/pack/zip.h>
 #include <FF/pack/7z.h>
 #include <FF/pack/iso.h>
+#include <FF/pic/pic.h>
+#include <FF/pic/ico.h>
 #include <FF/path.h>
 #include <FF/time.h>
 #include <FFOS/dir.h>
@@ -116,6 +118,12 @@ static const fcom_filter uniso_filt = { &uniso_open, &uniso_close, &uniso_proces
 struct uniso;
 static void uniso_showinfo(struct uniso *o, const ffiso_file *f, uint show);
 
+// ICO INPUT
+static void* icoi_open(fcom_cmd *cmd);
+static void icoi_close(void *_p, fcom_cmd *cmd);
+static int icoi_process(void *_p, fcom_cmd *cmd);
+static const fcom_filter icoi_filt = { &icoi_open, &icoi_close, &icoi_process };
+
 // UNPACK
 static void* unpack_open(fcom_cmd *cmd);
 static void unpack_close(void *p, fcom_cmd *cmd);
@@ -148,6 +156,7 @@ static const struct cmd cmds[] = {
 	{ "un7z", "arc.un7z", &un7z_filt },
 	{ "iso", "arc.iso", &iso_filt },
 	{ "uniso", "arc.uniso", &uniso_filt },
+	{ "ico-in", NULL, &icoi_filt },
 	{ "unpack", "arc.unpack", &unpack_filt },
 };
 
@@ -1830,19 +1839,185 @@ static void uniso_showinfo(struct uniso *o, const ffiso_file *f, uint show)
 #undef FILT_NAME
 
 
-static void* unpack_open(fcom_cmd *cmd)
+#define FILT_NAME  "arc.ico-in"
+
+struct icoread {
+	ffico ico;
+	uint state;
+	uint idx, num;
+	ffarr infn, outfn;
+	uint skip;
+	uint dsize;
+};
+
+static void* icoi_open(fcom_cmd *cmd)
 {
-	cmd->skip_err = 1;
-	return FCOM_OPEN_DUMMY;
+	struct icoread *c = ffmem_new(struct icoread);
+	if (c == NULL)
+		return FCOM_OPEN_SYSERR;
+	ffico_open(&c->ico);
+	return c;
 }
 
-static void unpack_close(void *p, fcom_cmd *cmd)
+static void icoi_close(void *p, fcom_cmd *cmd)
 {
+	struct icoread *c = p;
+	ffico_close(&c->ico);
+	ffarr_free(&c->infn);
+	ffarr_free(&c->outfn);
+	ffmem_free(c);
+}
+
+/** Initialize .ico data processing chain. */
+static int icoi_init_chain(struct icoread *c, fcom_cmd *cmd, uint iconfmt)
+{
+	int r;
+	const struct ffico_file *f = ffico_fileinfo(&c->ico);
+
+	if (cmd->output.fn == NULL || cmd->output.fn == c->outfn.ptr) {
+		ffstr nm;
+		ffstr_setz(&nm, cmd->input.fn);
+		ffpath_split3(nm.ptr, nm.len, NULL, &nm, NULL);
+		c->infn.len = 0;
+		ffstr_catfmt(&c->infn, "%S-%u.%s"
+			, &nm, c->idx, (iconfmt == FFICO_PNG) ? "png" : "bmp");
+		if (FCOM_DATA != (r = fn_out(cmd, (ffstr*)&c->infn, &c->outfn)))
+			return r;
+		cmd->output.fn = c->outfn.ptr;
+	}
+
+	c->dsize = (uint)-1;
+	if (iconfmt == FFICO_BMP) {
+		cmd->pic.width = f->width;
+		cmd->pic.height = f->height;
+		cmd->pic.format = f->format;
+		cmd->bmp_input_reverse = 1;
+		com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, "pic.bmp-out");
+		c->skip = ffico_bmphdr_size(&c->ico);
+		c->dsize = f->width * f->height * ffpic_bits(f->format) / 8;
+	}
+
+	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(cmd));
+	return FCOM_DONE;
+}
+
+static int icoi_process(void *p, fcom_cmd *cmd)
+{
+	enum { R_DEF, R_NEXT };
+	struct icoread *c = p;
+	int r;
+
+	if (cmd->flags & FCOM_CMD_FWD)
+		ffico_input(&c->ico, cmd->in.ptr, cmd->in.len);
+
+	for (;;) {
+
+	switch (c->state) {
+	case R_DEF:
+		break;
+	case R_NEXT:
+		if (c->idx == c->num)
+			return FCOM_FIN;
+
+		if (cmd->members.len != 0) {
+			char buf[64];
+			size_t n = ffs_fromint(c->idx, buf, sizeof(buf), 0);
+			if (0 > ffs_findarrz((void*)cmd->members.ptr, cmd->members.len, buf, n)) {
+				c->idx++;
+				continue;
+			}
+		}
+
+		ffico_readfile(&c->ico, c->idx);
+		c->idx++;
+		c->state = R_DEF;
+		break;
+	}
+
+	r = ffico_read(&c->ico);
+	switch (r) {
+
+	case FFICO_MORE:
+		return FCOM_MORE;
+
+	case FFICO_FILEINFO: {
+		c->num++;
+		const struct ffico_file *f = ffico_fileinfo(&c->ico);
+		fcom_verblog(FILT_NAME, "icon #%u: dimensions:%ux%u  bpp:%u  size:%u  offset:%xu"
+			, c->num, f->width, f->height, ffpic_bits(f->format), f->size, f->offset);
+		break;
+	}
+
+	case FFICO_HDR:
+		if (cmd->show)
+			return FCOM_FIN;
+		c->state = R_NEXT;
+		continue;
+
+	case FFICO_FILEFORMAT:
+		r = icoi_init_chain(c, cmd, ffico_fileformat(&c->ico));
+		if (r != FCOM_DONE)
+			return r;
+		break;
+
+	case FFICO_DATA:
+		if (c->dsize == 0) {
+			c->state = R_NEXT;
+			return FCOM_NEXTDONE;
+		}
+		cmd->out = ffico_data(&c->ico);
+		if (c->skip != 0) {
+			size_t n = ffmin(c->skip, cmd->out.len);
+			ffstr_shift(&cmd->out, n);
+			c->skip -= n;
+		}
+		size_t n = ffmin(c->dsize, cmd->out.len);
+		cmd->out.len = n;
+		c->dsize -= n;
+		return FCOM_DATA;
+
+	case FFICO_FILEDONE:
+		c->state = R_NEXT;
+		return FCOM_NEXTDONE;
+
+	case FFICO_SEEK:
+		fcom_cmd_seek(cmd, ffico_offset(&c->ico));
+		return FCOM_MORE;
+
+	case FFICO_ERR:
+		fcom_errlog(FILT_NAME, "ffico_read(): (%u) %s"
+			, c->ico.err, "");
+		return FCOM_ERR;
+	}
+	}
+}
+
+#undef FILT_NAME
+
+
+struct unpack {
+	uint state;
+};
+
+static void* unpack_open(fcom_cmd *cmd)
+{
+	struct unpack *p = ffmem_new(struct unpack);
+	if (p == NULL)
+		return FCOM_OPEN_SYSERR;
+	cmd->skip_err = 1;
+	return p;
+}
+
+static void unpack_close(void *_p, fcom_cmd *cmd)
+{
+	struct unpack *p = _p;
+	ffmem_free(p);
 }
 
 static const char arc_exts[][4] = {
 	"7z",
 	"gz",
+	"ico",
 	"iso",
 	"tar",
 	"tgz",
@@ -1853,6 +2028,7 @@ static const char arc_exts[][4] = {
 static const char *const arc_filts[] = {
 	"arc.un7z",
 	"arc.ungz",
+	"arc.ico-in",
 	"arc.uniso",
 	"arc.untar",
 	"arc.untar",
@@ -1861,18 +2037,54 @@ static const char *const arc_filts[] = {
 	"arc.unzip",
 };
 
-static int unpack_process(void *p, fcom_cmd *cmd)
+/*
+.tar.gz, .tar.xz are passed to .tar handler
+.ico: *we* set input for its handling module.  Other modules read input by themselves.
+Note: we can't mix archives of different types - not supported.
+*/
+static int unpack_process(void *_p, fcom_cmd *cmd)
 {
-	if (NULL == (cmd->input.fn = com->arg_next(cmd, FCOM_CMD_ARG_PEEK)))
-		return FCOM_DONE;
-
-	const char *name;
+	struct unpack *p = _p;
 	int r;
 	ffstr nm, ext;
-	ffstr_setz(&nm, cmd->input.fn);
-	ffpath_split3(nm.ptr, nm.len, NULL, &nm, &ext);
+
+again:
+	switch (p->state) {
+	case 0:
+		if (NULL == (cmd->input.fn = com->arg_next(cmd, FCOM_CMD_ARG_PEEK)))
+			return FCOM_DONE;
+		ffstr_setz(&nm, cmd->input.fn);
+		ffpath_split3(nm.ptr, nm.len, NULL, &nm, &ext);
+		if (ffstr_ieqcz(&ext, "ico")) {
+			p->state = 1;
+			goto again;
+		}
+		break;
+
+	case 1:
+		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0)))
+			return FCOM_DONE;
+
+		ffstr_setz(&nm, cmd->input.fn);
+		ffpath_split3(nm.ptr, nm.len, NULL, &nm, &ext);
+		if (0 > (r = ffcharr_findsorted(arc_exts, FFCNT(arc_exts), sizeof(arc_exts[0]), ext.ptr, ext.len))) {
+			fcom_errlog("arc.unpack", "unknown archive file extension .%S", &ext);
+			return FCOM_ERR;
+		}
+
+		if (!ffstr_ieqcz(&ext, "ico")) {
+			fcom_errlog("arc.unpack", "unsupported: can't switch to another archive type", 0);
+			return FCOM_ERR;
+		}
+
+		com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_IN(cmd));
+		com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, arc_filts[r]);
+		// Note: "unpack *.ico" isn't supported
+		return FCOM_DONE;
+	}
+
 	if ((ffstr_ieqcz(&ext, "gz") || ffstr_ieqcz(&ext, "xz"))
-		&& nm.len >= FFSLEN(".tar") && ffstr_irmatchz(&nm, ".tar"))
+		&& ffstr_irmatchz(&nm, ".tar"))
 		ffstr_setz(&ext, "tar");
 
 	if (0 > (r = ffcharr_findsorted(arc_exts, FFCNT(arc_exts), sizeof(arc_exts[0]), ext.ptr, ext.len))) {
@@ -1880,6 +2092,7 @@ static int unpack_process(void *p, fcom_cmd *cmd)
 		return FCOM_ERR;
 	}
 
+	const char *name;
 	name = arc_filts[r];
 	com->fcom_cmd_filtadd(cmd, name);
 	return FCOM_DONE;
