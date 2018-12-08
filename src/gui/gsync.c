@@ -9,6 +9,7 @@ Copyright (c) 2018 Simon Zolin
 #include <FF/data/conf.h>
 #include <FF/time.h>
 #include <FF/path.h>
+#include <FF/number.h>
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, __VA_ARGS__)
@@ -31,6 +32,7 @@ static void gsync_showresults(uint flags);
 static void gsync_sync(void *udata);
 static void gsync_check(void);
 static void gsync_fnop(uint id);
+static void list_setdata();
 #define isdir(a) !!((a) & FFUNIX_FILE_DIR)
 
 struct opts;
@@ -42,6 +44,14 @@ static void opts_set(struct opts *c, ffui_view *v, uint sub);
 
 #define FILT_NAME  "gui.gsync"
 
+
+/** Extensions to enum FSYNC_ST. */
+enum {
+	FSYNC_ST_ERROR = 1 << 28,
+	FSYNC_ST_PENDING = 1 << 29, /** Operation on a file is pending */
+	FSYNC_ST_CHECKED = 1 << 30,
+	FSYNC_ST_DONE = 1 << 31,
+};
 
 enum SHOW_F {
 	SHOW_TREE_ADD = 1, // add directories to tree
@@ -90,9 +100,11 @@ struct ggui {
 
 	fsync_dir *src;
 	fsync_dir *dst;
-	ffarr cmptbl;
+	ffarr cmptbl; // comparison results.  struct fsync_cmp[]
+	ffarr cmptbl_filter; // filtered entries only.  struct fsync_cmp*[]
 	struct opts opts;
 	uint nchecked;
+	char *filter_dirname; // full directory name to show entries in
 
 	fftask tsk;
 };
@@ -140,6 +152,7 @@ enum CMDS {
 	A_EXIT,
 
 	A_CONF_EDIT_DONE,
+	A_DISPINFO,
 };
 
 static const char* const cmds[] = {
@@ -166,6 +179,10 @@ static int gsync_getcmd(void *udata, const ffstr *name)
 	return r + 1;
 }
 
+/** Get comparison result entry by index. */
+#define list_getobj(i) \
+	*ffarr_itemT(&gg->cmptbl_filter, i, struct fsync_cmp*)
+
 
 int gsync_create(void)
 {
@@ -179,6 +196,8 @@ int gsync_create(void)
 
 	if (NULL == (gg = ffmem_new(struct ggui)))
 		return -1;
+
+	gg->wsync.vlist.dispinfo_id = A_DISPINFO;
 
 	char *path = NULL;
 	ffui_loader ldr;
@@ -266,6 +285,10 @@ static void wsync_action(ffui_wnd *wnd, int id)
 		break;
 	case A_CONF_EDIT_DONE:
 		opts_set(&gg->opts, &gg->wsync.vopts, VOPTS_VAL);
+		break;
+
+	case A_DISPINFO:
+		list_setdata();
 		break;
 	}
 }
@@ -414,11 +437,13 @@ static void opts_set(struct opts *c, ffui_view *v, uint sub)
 
 static void wsync_destroy(ffui_wnd *wnd)
 {
+	ffmem_free(gg->filter_dirname);
 	opts_save(&gg->opts);
 	opts_destroy(&gg->opts);
 	fsync->tree_free(gg->src);
 	fsync->tree_free(gg->dst);
 	ffarr_free(&gg->cmptbl);
+	ffarr_free(&gg->cmptbl_filter);
 	ffmem_free0(gg);
 }
 
@@ -449,7 +474,7 @@ static void gsync_scancmp(void *udata)
 		if ((cmp.status & _FSYNC_ST_MASK) == FSYNC_ST_MOVED
 			&& cmp.status & FSYNC_ST_MOVED_DST)
 			continue;
-		if (NULL == (c = ffarr_pushgrowT(&gg->cmptbl, 256, struct fsync_cmp)))
+		if (NULL == (c = ffarr_pushgrowT(&gg->cmptbl, 256 | FFARR_GROWQUARTER, struct fsync_cmp)))
 			goto end;
 		*c = cmp;
 	}
@@ -489,7 +514,7 @@ static void update_status()
 	ffarr buf = {};
 	ffstr_catfmt(&buf, "Results: %L/%L (%L)%Z"
 		, (size_t)gg->nchecked
-		, (size_t)ffui_view_nitems(&gg->wsync.vlist), gg->cmptbl.len);
+		, (size_t)gg->cmptbl_filter.len, gg->cmptbl.len);
 	gsync_status(buf.ptr);
 	ffarr_free(&buf);
 }
@@ -510,7 +535,7 @@ static const char* const cmp_sstatus_sz[] = {
 };
 
 /** Get file comparison status. */
-static const char* cmp_status_str(char *buf, size_t cap, struct fsync_cmp *cmp)
+static const char* cmp_status_str(char *buf, size_t cap, const struct fsync_cmp *cmp)
 {
 	uint st = cmp->status;
 
@@ -538,17 +563,140 @@ static const char* const actionstr[] = {
 	"Overwrite",
 };
 
+/** Check whether we should show the entry:
+. Show [TYPE] settings
+. Show only files inside a specific directory
+. Show only files containing a specific text */
+static ffbool cmpent_visible(const struct fsync_cmp *c)
+{
+	uint st = c->status & _FSYNC_ST_MASK;
+	struct fsync_file *e1, *e2;
+	e1 = fsfile(c->left);
+	e2 = fsfile(c->right);
+
+	if (!(ffbit_test32(&gg->opts.showmask, st)))
+		return 0;
+
+	if (!gg->opts.show_dirs && st != FSYNC_ST_DEST && isdir(e1->attr))
+		return 0;
+
+	if (gg->filter_dirname != NULL) {
+		if (st == FSYNC_ST_DEST)
+			return 0;
+		char *dirname = fsync->get(FSYNC_DIRNAME, c->left);
+		if (!ffsz_eq(dirname, gg->filter_dirname))
+			return 0;
+	}
+
+	if (gg->opts.filter.len != 0) {
+		ffstr n1 = {}, n2 = {};
+		if (st != FSYNC_ST_DEST)
+			ffstr_setz(&n1, e1->name);
+		if (st != FSYNC_ST_SRC)
+			ffstr_setz(&n2, e2->name);
+		if (-1 == ffstr_ifindstr(&n1, &gg->opts.filter)
+			&& -1 == ffstr_ifindstr(&n2, &gg->opts.filter))
+			return 0;
+	}
+
+	return 1;
+}
+
+/** Set data for a listview item. */
+static void list_setdata()
+{
+	ffarr buf = {};
+	char *fullname = NULL;
+	ffstr d = {};
+	LVITEM *it = gg->wsync.vlist.dispinfo_item;
+
+	const struct fsync_cmp *c = list_getobj(it->iItem);
+	uint st = c->status & _FSYNC_ST_MASK;
+
+	if (!cmpent_visible(c))
+		return;
+
+	if (it->mask & LVIF_STATE)
+		ffui_view_dispinfo_check(it, (c->status & FSYNC_ST_CHECKED));
+
+	if (!(it->mask & LVIF_TEXT))
+		return;
+
+	struct fsync_file *e1, *e2;
+	e1 = fsfile(c->left);
+	e2 = fsfile(c->right);
+
+	switch (it->iSubItem) {
+
+	case L_ACTN:
+		if (c->status & FSYNC_ST_DONE)
+			ffstr_setz(&d, "Done");
+		else if (c->status & FSYNC_ST_ERROR)
+			ffstr_setz(&d, "Error");
+		else if (c->status & FSYNC_ST_PENDING)
+			ffstr_setz(&d, "...");
+		else
+			ffstr_setz(&d, actionstr[st]);
+		break;
+
+	case L_SRCNAME:
+		if (st != FSYNC_ST_DEST) {
+			fullname = fsync->get(FSYNC_FULLNAME, e1);
+			ffstr_setz(&d, fullname);
+		}
+		break;
+
+	case L_SRCINFO:
+		if (st != FSYNC_ST_DEST) {
+			if (0 != gsync_finfo(e1, &buf))
+				goto end;
+			ffstr_set2(&d, &buf);
+		}
+		break;
+
+	case L_STATUS:
+		if (NULL == ffarr_alloc(&buf, 64))
+			goto end;
+		ffstr_setz(&d, cmp_status_str(buf.ptr, buf.cap, c));
+		break;
+
+	case L_DSTNAME:
+		if (st != FSYNC_ST_SRC) {
+			fullname = fsync->get(FSYNC_FULLNAME, e2);
+			ffstr_setz(&d, fullname);
+		}
+		break;
+
+	case L_DSTINFO:
+		if (st != FSYNC_ST_SRC) {
+			if (0 != gsync_finfo(e2, &buf))
+				goto end;
+			ffstr_set2(&d, &buf);
+		}
+		break;
+	}
+
+	if (d.len != 0)
+		ffui_view_dispinfo_settext(it, d.ptr, d.len);
+
+end:
+	ffarr_free(&buf);
+	ffmem_safefree(fullname);
+}
+
+/** Reset views and apply filtering settings.
+. Uncheck all entries
+. Create a list of filtered entries */
 static void gsync_showresults(uint flags)
 {
-	struct fsync_file *e1, *e2;
+	struct fsync_file *e1;
 	struct fsync_cmp *c;
-	ffui_viewitem it = {0};
 	ffarr buf = {0};
 	char *fullname = NULL;
 	size_t n = 0;
-	char *showdir = NULL;
 	void *troot;
 
+	gg->cmptbl_filter.len = 0;
 	gg->nchecked = 0;
 	ffarr_alloc(&buf, 64);
 
@@ -567,100 +715,51 @@ static void gsync_showresults(uint flags)
 			ffui_tvitem it = {0};
 			ffui_tree_setparam(&it, NULL);
 			ffui_tree_get(&gg->wsync.tdirs, tsel, &it);
+			ffmem_free0(gg->filter_dirname);
 			if (NULL != (e1 = ffui_tree_param(&it))) {
-				showdir = fsync->get(FSYNC_FULLNAME, e1);
+				gg->filter_dirname = fsync->get(FSYNC_FULLNAME, e1);
 			}
 		}
 	}
 
-	ffui_redraw(&gg->wsync.vlist, 0);
-	ffui_view_clear(&gg->wsync.vlist);
-
 	FFARR_WALKT(&gg->cmptbl, c, struct fsync_cmp) {
 
+		c->status &= ~FSYNC_ST_CHECKED;
+
 		uint st = c->status & _FSYNC_ST_MASK;
-
-		if (!(ffbit_test32(&gg->opts.showmask, st)))
-			continue;
-
 		e1 = fsfile(c->left);
-		e2 = fsfile(c->right);
-		ffstr n1 = {0}, n2 = {0};
-		if (st != FSYNC_ST_DEST)
-			ffstr_setz(&n1, e1->name);
-		if (st != FSYNC_ST_SRC)
-			ffstr_setz(&n2, e2->name);
 
-		if (!gg->opts.show_dirs && st != FSYNC_ST_DEST && isdir(e1->attr))
+		if (st != FSYNC_ST_DEST && (flags & SHOW_TREE_ADD) && isdir(e1->attr)) {
+			ffmem_free(fullname);
+			fullname = fsync->get(FSYNC_FULLNAME, c->left);
+			ffui_tvitem it = {0};
+			ffui_tree_settextz(&it, fullname);
+			ffui_tree_setparam(&it, e1);
+			ffui_tree_append(&gg->wsync.tdirs, troot, &it);
+		}
+
+		if (!cmpent_visible(c))
 			continue;
 
-		if (showdir != NULL && st != FSYNC_ST_DEST) {
-			char *dirname = fsync->get(FSYNC_DIRNAME, c->left);
-			if (!ffsz_eq(dirname, showdir))
-				continue;
-		}
-
-		if (gg->opts.filter.len != 0
-			&& -1 == ffstr_ifindstr(&n1, &gg->opts.filter)
-			&& -1 == ffstr_ifindstr(&n2, &gg->opts.filter))
-			continue;
-
-		ffui_view_setparam(&it, c);
-		ffui_view_settextz(&it, actionstr[st]);
-		ffui_view_append(&gg->wsync.vlist, &it);
-
-		ffui_view_settextz(&it, cmp_status_str(buf.ptr, buf.cap, c));
-		buf.len = 0;
-		ffui_view_set(&gg->wsync.vlist, L_STATUS, &it);
-
-		if (st != FSYNC_ST_DEST) {
-
-			if ((flags & SHOW_TREE_ADD) && isdir(e1->attr)) {
-				ffui_tvitem it = {0};
-				ffui_tree_settextz(&it, e1->name);
-				ffui_tree_setparam(&it, e1);
-				ffui_tree_append(&gg->wsync.tdirs, troot, &it);
-			}
-
-			ffmem_safefree(fullname);
-			fullname = fsync->get(FSYNC_FULLNAME, e1);
-			ffui_view_settextz(&it, fullname);
-			ffui_view_set(&gg->wsync.vlist, L_SRCNAME, &it);
-
-			if (0 != gsync_finfo(e1, &buf))
-				goto end;
-			ffui_view_settextstr(&it, &buf);
-			buf.len = 0;
-			ffui_view_set(&gg->wsync.vlist, L_SRCINFO, &it);
-		}
-
-		if (st != FSYNC_ST_SRC) {
-			ffmem_safefree(fullname);
-			fullname = fsync->get(FSYNC_FULLNAME, e2);
-			ffui_view_settextz(&it, fullname);
-			ffui_view_set(&gg->wsync.vlist, L_DSTNAME, &it);
-
-			if (0 != gsync_finfo(e2, &buf))
-				goto end;
-			ffui_view_settextstr(&it, &buf);
-			buf.len = 0;
-			ffui_view_set(&gg->wsync.vlist, L_DSTINFO, &it);
-		}
+		void **p;
+		if (NULL == (p = ffarr_pushgrowT(&gg->cmptbl_filter, 256 | FFARR_GROWQUARTER, void*)))
+			goto end;
+		*p = c;
 
 		n++;
 	}
 
-	ffui_redraw(&gg->wsync.vlist, 1);
-	ffui_redraw(&gg->wsync.tdirs, 1);
+	if (flags & SHOW_TREE_ADD)
+		ffui_redraw(&gg->wsync.tdirs, 1);
 
-	buf.len = 0;
-	ffstr_catfmt(&buf, "Results: %L (%L)%Z", n, gg->cmptbl.len);
+	ffui_view_setcount_redraw(&gg->wsync.vlist, n);
+
+	ffstr_fmt(&buf, "Results: %L (%L)%Z", n, gg->cmptbl.len);
 	gsync_status(buf.ptr);
 
 end:
 	ffarr_free(&buf);
 	ffmem_safefree(fullname);
-	ffmem_safefree(showdir);
 }
 
 
@@ -697,28 +796,17 @@ static void sync_free(struct sync_ctx *sc)
 	ffmem_free(sc);
 }
 
-/** Operation on a file is pending. */
-static void sync_pending(struct sync_ctx *sc)
-{
-	ffui_viewitem it = {0};
-	ffui_view_setindex(&it, sc->row_index);
-	ffui_view_settextz(&it, "...");
-	ffui_view_set(&gg->wsync.vlist, L_ACTN, &it);
-}
-
 /** Operation on a file is complete. */
 static void sync_result(struct sync_ctx *sc, int r)
 {
-	ffui_viewitem it = {0};
-	ffui_view_setindex(&it, sc->row_index);
 	if (r != 0) {
-		ffui_view_settextz(&it, "Error");
+		sc->cmp->status |= FSYNC_ST_ERROR;
 	} else {
-		ffui_view_check(&it, 0);
+		sc->cmp->status &= ~FSYNC_ST_CHECKED;
+		sc->cmp->status |= FSYNC_ST_DONE;
 		gg->nchecked--;
-		ffui_view_settextz(&it, "Done");
 	}
-	ffui_view_set(&gg->wsync.vlist, 0, &it);
+	ffui_view_redraw(&gg->wsync.vlist, sc->row_index, sc->row_index);
 
 	update_status();
 }
@@ -772,31 +860,22 @@ Suspend processing while file copy task is running asynchronously.
 */
 static void sync(struct sync_ctx *sc)
 {
-	ffui_viewitem it = {0};
 	struct fsync_cmp *cmp;
 	struct fsync_file *f;
 	int r;
 
-	for (uint i = sc->row_index + 1;  ;  i++) {
-
-		ffui_view_setindex(&it, i);
-		ffui_view_setparam(&it, NULL);
-		ffui_view_check(&it, 0);
-		if (0 != ffui_view_get(&gg->wsync.vlist, 0, &it))
-			break;
-
-		if (!ffui_view_checked(&it))
-			continue;
+	for (uint i = sc->row_index + 1;  i != gg->cmptbl_filter.len;  i++) {
 
 		sc->row_index = i;
-
-		sc->cmp = cmp = (void*)ffui_view_param(&it);
-		ffui_view_itemreset(&it);
+		sc->cmp = cmp = list_getobj(i);
+		if (!(cmp->status & FSYNC_ST_CHECKED))
+			continue;
 
 		if ((cmp->status & _FSYNC_ST_MASK) == FSYNC_ST_EQ)
 			continue;
 
-		sync_pending(sc);
+		cmp->status |= FSYNC_ST_PENDING;
+		ffui_view_redraw(&gg->wsync.vlist, i, i);
 
 		switch (cmp->status & _FSYNC_ST_MASK) {
 
@@ -876,44 +955,42 @@ end:
 	sync_free(sc);
 }
 
-/** Check/uncheck all selected items */
+/** Check/uncheck the focused item and all selected items */
 static void gsync_check(void)
 {
-	ffui_viewitem it = {0};
-	int i, check;
+	int i, check, first = -1;
+	struct fsync_cmp *cmp;
 
 	i = gg->wsync.vlist.idx;
+	cmp = list_getobj(i);
+	gg->nchecked += (cmp->status & FSYNC_ST_CHECKED) ? -1 : 1;
+	ffint_bitmask(&cmp->status, FSYNC_ST_CHECKED, !(cmp->status & FSYNC_ST_CHECKED));
+	check = !!(cmp->status & FSYNC_ST_CHECKED);
+	first = i;
+
+	ffui_viewitem it = {};
 	ffui_view_setindex(&it, i);
 	ffui_view_select(&it, 0);
-	ffui_view_check(&it, 0);
 	ffui_view_get(&gg->wsync.vlist, 0, &it);
-	check = ffui_view_checked(&it);
-	gg->nchecked += (check) ? 1 : -1;
 	if (!ffui_view_selected(&it))
 		goto done;
-	ffui_view_itemreset(&it);
-
-	ffui_redraw(&gg->wsync.vlist, 0);
 
 	i = -1;
 	while (-1 != (i = ffui_view_selnext(&gg->wsync.vlist, i))) {
-		ffui_view_setindex(&it, i);
-		ffui_view_check(&it, 0);
-		ffui_view_get(&gg->wsync.vlist, 0, &it);
-		int check2 = ffui_view_checked(&it);
-		ffui_view_itemreset(&it);
-		if (check2 == check)
+
+		if (i < first)
+			first = i;
+
+		cmp = list_getobj(i);
+		if (check == !!(cmp->status & FSYNC_ST_CHECKED))
 			continue;
 
-		ffui_view_setindex(&it, i);
-		ffui_view_check(&it, check);
-		ffui_view_set(&gg->wsync.vlist, 0, &it);
-		gg->nchecked += (check) ? 1 : -1;
+		gg->nchecked += (cmp->status & FSYNC_ST_CHECKED) ? -1 : 1;
+		ffint_bitmask(&cmp->status, FSYNC_ST_CHECKED, !(cmp->status & FSYNC_ST_CHECKED));
 	}
 
-	ffui_redraw(&gg->wsync.vlist, 1);
-
 done:
+	ffui_view_redraw(&gg->wsync.vlist, first, first + 100);
 	update_status();
 	ffui_view_itemreset(&it);
 }
@@ -923,7 +1000,6 @@ static void gsync_fnop(uint id)
 {
 	int i = -1;
 	struct fsync_cmp *c;
-	ffui_viewitem it = {0};
 	ffarr buf = {0}, b2 = {0};
 	char *fullname = NULL;
 	void *obj;
@@ -931,10 +1007,7 @@ static void gsync_fnop(uint id)
 	for (;;) {
 		if (-1 == (i = ffui_view_selnext(&gg->wsync.vlist, i)))
 			break;
-		ffui_view_setindex(&it, i);
-		ffui_view_setparam(&it, NULL);
-		ffui_view_get(&gg->wsync.vlist, 0, &it);
-		c = (void*)ffui_view_param(&it);
+		c = list_getobj(i);
 
 		switch (id) {
 		case A_CLIPFN:
