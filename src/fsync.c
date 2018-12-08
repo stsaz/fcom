@@ -128,7 +128,11 @@ struct file {
 	struct dir *parent;
 	struct dir *dir;
 	ffchain_item sib;
-	ffrbtl_node nod;
+	ffrbtl_node nod_name, nod_props;
+
+	/** The file is paired with another.
+	The flag prevents the same file from being used twice. */
+	uint moved :1;
 };
 
 struct dir {
@@ -148,8 +152,10 @@ struct cursor {
 	uint ictx;
 };
 
+/** Detect renamed/moved files. */
 struct mv {
-	ffrbtree rbt;
+	ffrbtree names_index; /** File name (without path) index */
+	ffrbtree props_index; /** size+mtime index */
 };
 
 typedef struct fsync_ctx {
@@ -167,8 +173,10 @@ static void* fsync_open(fcom_cmd *cmd)
 	if (NULL == (f = ffmem_new(fsync_ctx)))
 		return FCOM_OPEN_SYSERR;
 	f->flags = FSYNC_CMP_SIZE | FSYNC_CMP_MTIME /*| FSYNC_CMP_ATTR*/ | FSYNC_CMP_MOVE;
-	ffrbt_init(&f->mvL.rbt);
-	ffrbt_init(&f->mvR.rbt);
+	ffrbt_init(&f->mvL.names_index);
+	ffrbt_init(&f->mvR.names_index);
+	ffrbt_init(&f->mvL.props_index);
+	ffrbt_init(&f->mvR.props_index);
 	return f;
 }
 
@@ -518,8 +526,10 @@ static void* cmp_init(fsync_dir *left, fsync_dir *right, uint flags)
 	fsync_ctx *c;
 	c = ffmem_new(fsync_ctx);
 	c->flags = (flags != 0) ? flags : FSYNC_CMP_DEFAULT;
-	ffrbt_init(&c->mvL.rbt);
-	ffrbt_init(&c->mvR.rbt);
+	ffrbt_init(&c->mvL.names_index);
+	ffrbt_init(&c->mvR.names_index);
+	ffrbt_init(&c->mvL.props_index);
+	ffrbt_init(&c->mvR.props_index);
 	c->src = left;
 	c->dst = right;
 
@@ -712,45 +722,69 @@ static int mv_index(fsync_ctx *c)
 	return 0;
 }
 
-/** Find entry with the same name and attributes in table. */
+/** Get name hash. */
+static ffrbtkey mv_namehash(struct file *f)
+{
+	return crc32(f->name, ffsz_len(f->name), 0);
+}
+
+/** Get properties hash. */
+static ffrbtkey mv_hash(struct file *f)
+{
+	uint k = crc32(&f->size, sizeof(f->size), 0);
+	k = crc32(&f->mtime, sizeof(f->mtime), k);
+	return k;
+}
+
+/** Find an entry with the same properties in table.
+. Find candidate entries with the same properties and, possibly, names.
+. If names match, this is a moved file.
+. If names don't match, this is a renamed or moved file. */
 static struct file* mv_find(struct mv *mv, struct file *f)
 {
-	ffstr name;
-	ffrbtl_node *nod;
+	ffrbtl_node *nod_name, *nod;
 	uint flags = FSYNC_CMP_SIZE | FSYNC_CMP_MTIME;
-	struct file *nf;
-	fflist_item *it;
 
-	ffstr_setz(&name, f->name);
-
-	uint key = crc32((void*)name.ptr, name.len, 0);
-	if (NULL == (nod = (void*)ffrbt_find(&mv->rbt, key, NULL)))
+	if (NULL == (nod = (void*)ffrbt_find(&mv->props_index, mv_hash(f), NULL)))
 		return NULL;
+	nod_name = (void*)ffrbt_find(&mv->names_index, mv_namehash(f), NULL);
 
-	it = &nod->sib;
-	nf = FF_GETPTR(struct file, nod, nod);
-	if (ffstr_eqz(&name, nf->name)
-		&& FSYNC_ST_EQ == cmp_file(f, nf, flags))
-		return nf;
+	if (nod_name != NULL) {
+		ffrbtl_node *it;
+		FFRBTL_FOR_SIB(nod, it) {
 
-	for (;;) {
-		it = it->next;
-		if (it == &nod->sib)
-			break;
+			struct file *nf = FF_GETPTR(struct file, nod_props, it);
+			if (!(!nf->moved && FSYNC_ST_EQ == cmp_file(f, nf, flags)))
+				continue;
 
-		nf = FF_GETPTR(struct file, nod, ffrbtl_nodebylist(it));
-		if (ffstr_eqz(&name, nf->name)
-			&& FSYNC_ST_EQ == cmp_file(f, nf, flags))
-			return nf;
+			ffrbtl_node *it_name;
+			FFRBTL_FOR_SIB(nod_name, it_name) {
+				struct file *nf_name = FF_GETPTR(struct file, nod_name, it_name);
+				if (nf == nf_name && ffsz_eq(nf->name, nf_name->name)) {
+					nf->moved = 1;
+					return nf;
+				}
+			}
+		}
 	}
+
+	ffrbtl_node *it;
+	FFRBTL_FOR_SIB(nod, it) {
+		struct file *nf = FF_GETPTR(struct file, nod_props, it);
+		if (!nf->moved && FSYNC_ST_EQ == cmp_file(f, nf, flags)) {
+			nf->moved = 1;
+			return nf;
+		}
+	}
+
 	return NULL;
 }
 
 /** Add file to table. */
 static void mv_add(struct mv *mv, struct file *f)
 {
-	f->nod.key = crc32((void*)f->name, ffsz_len(f->name), 0);
-	ffrbtl_insert(&mv->rbt, &f->nod);
+	ffrbtl_insert_withhash(&mv->names_index, &f->nod_name, mv_namehash(f));
+	ffrbtl_insert_withhash(&mv->props_index, &f->nod_props, mv_hash(f));
 }
 
 #undef FILT_NAME
