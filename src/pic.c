@@ -361,14 +361,15 @@ static int bmpo_process(void *p, fcom_cmd *cmd)
 			return FCOM_ERR;
 		}
 
-		b->state = W_DATA;
-
 		if (b->state == W_FMT && cmd->pic_colors != (byte)(char)-1) {
 			cmd->pic.out_format = info.format;
 			com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, "pic.pxconv");
 			cmd->out = cmd->in;
+			b->state = W_DATA;
 			return FCOM_BACK;
 		}
+
+		b->state = W_DATA;
 		break;
 	}
 

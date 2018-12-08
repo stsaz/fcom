@@ -8,6 +8,13 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.8 - Dec 8, 2018
+
+ + .ico reader
+ + fsync: Detect renamed files
+ * gsync: Fast listview
+
+
 fcom v0.7 - Nov 14, 2018
 
  + fcom rename - rename files (search and replace)
