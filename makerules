@@ -114,8 +114,7 @@ pic.$(SO): $(PIC_O)
 GUI_O := $(OBJ_DIR)/gui.o \
 	$(OBJ_DIR)/scrshots.o \
 	$(OBJ_DIR)/gsync.o $(OBJ_DIR)/gsync-sync.o $(OBJ_DIR)/gsync-conf.o \
-	$(FF_OBJ_DIR)/ffgui-winapi.o \
-	$(FF_OBJ_DIR)/ffgui-loader.o \
+	$(FF_GUI_OBJ) \
 	$(FF_OBJ_DIR)/ffpic.o \
 	$(FF_OBJ_DIR)/ffconf.o \
 	$(FF_OBJ_DIR)/ffparse.o \

@@ -8,6 +8,16 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.9 - Mar 16, 2018
+
+ + fcom peinfo - Show PE format information
+ + gsync: "Swap Source & Target"
+ + gsync: "Show Modified by ..."
+ - gsync: create directory for a user configuration file
+ - screenshot save: schedule task in main thread
+ - .jpg write: couldn't encode some files
+
+
 fcom v0.8 - Dec 8, 2018
 
  + .ico reader
