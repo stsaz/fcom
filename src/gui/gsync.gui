@@ -18,6 +18,9 @@ menu mcmd {
 		hotkey "Ctrl+O"
 		action A_SNAPLOAD
 	}
+	item "Swap Source & Target" {
+		action A_SWAP
+	}
 	item "-" {
 	}
 	item "Exit" {

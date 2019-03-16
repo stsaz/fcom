@@ -141,6 +141,7 @@ enum CMDS {
 	A_SYNC,
 	A_SNAPSAVE,
 	A_SNAPLOAD,
+	A_SWAP,
 	A_FILTER,
 	A_ONCHECK,
 	A_OPENDIR,
@@ -160,6 +161,7 @@ static const char* const cmds[] = {
 	"A_SYNC",
 	"A_SNAPSAVE",
 	"A_SNAPLOAD",
+	"A_SWAP",
 	"A_FILTER",
 	"A_ONCHECK",
 	"A_OPENDIR",
@@ -263,6 +265,13 @@ static void wsync_action(ffui_wnd *wnd, int id)
 
 	case A_SNAPSAVE:
 	case A_SNAPLOAD:
+		break;
+
+	case A_SWAP:
+		gsync_reset();
+		FF_SWAP2(gg->opts.srcfn, gg->opts.dstfn);
+		ffui_view_clear(&gg->wsync.vopts);
+		opts_show(&gg->opts, &gg->wsync.vopts);
 		break;
 
 	case A_SELALL:
