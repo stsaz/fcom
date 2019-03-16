@@ -369,9 +369,21 @@ static void opts_save(struct opts *c)
 	}
 	ffconf_write(&conf, NULL, 0, FFCONF_FIN);
 	ldr.confw = conf;
-	ffui_ldr_write(&ldr, c->fn);
-	ffui_ldrw_fin(&ldr);
+	if (0 != ffui_ldr_write(&ldr, c->fn) && fferr_nofile(fferr_last())) {
+		if (0 != ffdir_make_path(c->fn, 0) && fferr_last() != EEXIST) {
+			syserrlog("Can't create directory for the file: %s", c->fn);
+			goto done;
+		}
+		if (0 != ffui_ldr_write(&ldr, c->fn)) {
+			syserrlog("Can't write configuration file: %s", c->fn);
+			goto done;
+		}
+	}
+
 	dbglog(0, "saved settings to %s", c->fn);
+
+done:
+	ffui_ldrw_fin(&ldr);
 }
 
 /* struct opts -> GUI */
