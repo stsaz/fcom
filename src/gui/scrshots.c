@@ -22,7 +22,7 @@ extern const fcom_command *com;
 
 
 static void wscrshot_action(ffui_wnd *wnd, int id);
-static void scrshot_save(void);
+static void scrshot_save(void *param);
 struct opts;
 static int opts_init(struct opts *c);
 static int opts_load(struct opts *c);
@@ -348,8 +348,10 @@ struct sshot {
 };
 
 /** Create fcom task to save the current screenshot to a file. */
-static void scrshot_save(void)
+static void scrshot_save(void *param)
 {
+	ffmem_free(param);
+
 	fcom_cmd cmd = {0};
 	ffarr a = {0};
 	void *c;
@@ -570,9 +572,16 @@ static void wscrshot_action(ffui_wnd *wnd, int id)
 		opts_set(&gg->opts, &gg->wscrshot.vopts, VOPTS_VAL);
 		break;
 
-	case A_SCRSHOT:
-		scrshot_save();
+	case A_SCRSHOT: {
+		fftask *t = ffmem_new(fftask);
+		if (t == NULL) {
+			syserrlog("", 0);
+			break;
+		}
+		fftask_set(t, &scrshot_save, t);
+		core->task(FCOM_TASK_ADD, t);
 		break;
+	}
 
 	case A_WND_SHOW:
 		ffui_show(&gg->wscrshot.wscrshot, 1);
