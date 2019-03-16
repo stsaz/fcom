@@ -55,6 +55,7 @@ core.$(SO): $(CORE_O)
 FILE_O := $(OBJ_DIR)/fop.o \
 	$(FF_OBJ_DIR)/crc.o \
 	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffconf.o \
+	$(FF_OBJ_DIR)/ffpe.o \
 	$(FF_O)
 
 ifeq ($(OS),win)

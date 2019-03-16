@@ -21,6 +21,7 @@ FEATURES
 	* fcom crc
 	* fcom rename
 	* fcom sync-snapshot
+	* fcom peinfo
 * Archives
 	* fcom gz
 	* fcom ungz
@@ -80,6 +81,12 @@ Rename all files within the current directory - replace 'old' with 'new':
 Scan the current directory and save the snapshot to a file:
 
 	fcom sync-snapshot -R . -o /tmp/snapshot.txt
+
+#### fcom peinfo - Show PE format information
+
+Show PE header, data directories, sections info:
+
+	fcom peinfo file.exe
 
 ### Archives
 
