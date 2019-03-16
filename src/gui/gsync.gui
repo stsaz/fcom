@@ -29,10 +29,10 @@ menu mcmd {
 }
 
 menu mfile {
-	item "Open Folder" {
+	item "Show File in Explorer (Source)" {
 		action A_OPENDIR
 	}
-	item "Copy To Clipboard" {
+	item "Copy File To Clipboard (Source)" {
 		hotkey "Ctrl+C"
 		action A_CLIPCOPY
 	}

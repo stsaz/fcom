@@ -2,56 +2,26 @@
 Copyright (c) 2018 Simon Zolin
 */
 
-#include <fcom.h>
+#include <gui/gsync.h>
 
-#include <FF/gui/loader.h>
-#include <FF/gui/winapi.h>
-#include <FF/data/conf.h>
 #include <FF/time.h>
-#include <FF/path.h>
 #include <FF/number.h>
-
-
-#define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, __VA_ARGS__)
-#define infolog(fmt, ...)  fcom_infolog(FILT_NAME, fmt, __VA_ARGS__)
-#define errlog(fmt, ...)  fcom_errlog(FILT_NAME, fmt, __VA_ARGS__)
-#define syserrlog(fmt, ...)  fcom_syserrlog(FILT_NAME, fmt, __VA_ARGS__)
-
-extern const fcom_core *core;
-extern const fcom_command *com;
-static const fcom_fsync *fsync;
-static const fcom_fops *fops;
 
 static void wsync_action(ffui_wnd *wnd, int id);
 static void wsync_destroy(ffui_wnd *wnd);
 static void task_add(fftask_handler func);
-static void update_status();
+static void gsync_reset();
 static void gsync_status(const char *s);
 static void gsync_scancmp(void *udata);
 static void gsync_showresults(uint flags);
-static void gsync_sync(void *udata);
 static void gsync_check(void);
 static void gsync_fnop(uint id);
 static void list_setdata();
-#define isdir(a) !!((a) & FFUNIX_FILE_DIR)
 
-struct opts;
-static int opts_init(struct opts *c);
-static int opts_load(struct opts *c);
-static void opts_save(struct opts *c);
-static void opts_show(const struct opts *c, ffui_view *v);
-static void opts_set(struct opts *c, ffui_view *v, uint sub);
+struct ggui *gg;
+const fcom_fsync *fsync;
+const fcom_fops *fops;
 
-#define FILT_NAME  "gui.gsync"
-
-
-/** Extensions to enum FSYNC_ST. */
-enum {
-	FSYNC_ST_ERROR = 1 << 28,
-	FSYNC_ST_PENDING = 1 << 29, /** Operation on a file is pending */
-	FSYNC_ST_CHECKED = 1 << 30,
-	FSYNC_ST_DONE = 1 << 31,
-};
 
 enum SHOW_F {
 	SHOW_TREE_ADD = 1, // add directories to tree
@@ -66,50 +36,6 @@ enum L_COLS {
 	L_DSTNAME,
 	L_DSTINFO,
 };
-
-struct wsync {
-	ffui_wnd wsync;
-	ffui_view vopts;
-	ffui_view tdirs;
-	ffui_view vlist;
-	ffui_paned pn;
-	ffui_stbar stbar;
-	ffui_menu mm;
-};
-
-enum VOPTS_COLUMNS {
-	VOPTS_NAME,
-	VOPTS_VAL,
-	VOPTS_DESC,
-};
-
-struct opts {
-	char *fn;
-	char *srcfn;
-	char *dstfn;
-	ffstr filter;
-	uint showmask; //enum FSYNC_ST
-	byte show_dirs;
-	byte time_diff_sec;
-};
-
-struct ggui {
-	ffui_menu mcmd;
-	ffui_menu mfile;
-	struct wsync wsync;
-
-	fsync_dir *src;
-	fsync_dir *dst;
-	ffarr cmptbl; // comparison results.  struct fsync_cmp[]
-	ffarr cmptbl_filter; // filtered entries only.  struct fsync_cmp*[]
-	struct opts opts;
-	uint nchecked;
-	char *filter_dirname; // full directory name to show entries in
-
-	fftask tsk;
-};
-
-static struct ggui *gg;
 
 static const ffui_ldr_ctl wsync_ctls[] = {
 	FFUI_LDR_CTL(struct wsync, wsync),
@@ -180,10 +106,6 @@ static int gsync_getcmd(void *udata, const ffstr *name)
 		return -1;
 	return r + 1;
 }
-
-/** Get comparison result entry by index. */
-#define list_getobj(i) \
-	*ffarr_itemT(&gg->cmptbl_filter, i, struct fsync_cmp*)
 
 
 int gsync_create(void)
@@ -293,167 +215,14 @@ static void wsync_action(ffui_wnd *wnd, int id)
 		ffui_view_edit_hittest(&gg->wsync.vopts, VOPTS_VAL);
 		break;
 	case A_CONF_EDIT_DONE:
-		opts_set(&gg->opts, &gg->wsync.vopts, VOPTS_VAL);
+		if (1 == opts_set(&gg->opts, &gg->wsync.vopts, VOPTS_VAL))
+			gsync_showresults(SHOW_TREE_FILTER);
 		break;
 
 	case A_DISPINFO:
 		list_setdata();
 		break;
 	}
-}
-
-
-#define OFF(m)  FFPARS_DSTOFF(struct opts, m)
-static const ffpars_arg opts_args[] = {
-	{ "Source path",	FFPARS_TCHARPTR | FFPARS_FRECOPY | FFPARS_FSTRZ, OFF(srcfn) },
-	{ "Target path",	FFPARS_TCHARPTR | FFPARS_FRECOPY | FFPARS_FSTRZ, OFF(dstfn) },
-	{ "Compare: Time Diff in Seconds",	FFPARS_TINT8, OFF(time_diff_sec) },
-
-	{ "Filter",	FFPARS_TSTR | FFPARS_FRECOPY, OFF(filter) },
-	{ "Show Equal",	FFPARS_TINT | FFPARS_SETBIT(FSYNC_ST_EQ), OFF(showmask) },
-	{ "Show Modified",	FFPARS_TINT | FFPARS_SETBIT(FSYNC_ST_NEQ), OFF(showmask) },
-	{ "Show New",	FFPARS_TINT | FFPARS_SETBIT(FSYNC_ST_SRC), OFF(showmask) },
-	{ "Show Deleted",	FFPARS_TINT | FFPARS_SETBIT(FSYNC_ST_DEST), OFF(showmask) },
-	{ "Show Moved",	FFPARS_TINT | FFPARS_SETBIT(FSYNC_ST_MOVED), OFF(showmask) },
-	{ "Show Directories",	FFPARS_TINT8, OFF(show_dirs) },
-};
-#undef OFF
-
-static int opts_init(struct opts *c)
-{
-	c->srcfn = ffsz_alcopyz("");
-	c->dstfn = ffsz_alcopyz("");
-	c->showmask = -1;
-	c->show_dirs = 1;
-	return 0;
-}
-
-static void opts_destroy(struct opts *o)
-{
-	ffmem_safefree0(o->srcfn);
-	ffmem_safefree0(o->dstfn);
-	ffstr_free(&o->filter);
-}
-
-/** Load options from file. */
-static int opts_load(struct opts *c)
-{
-	struct ffconf_loadfile conf = {0};
-	if (NULL == (c->fn = core->env_expand(NULL, 0, "%APPDATA%\\fcom\\gsync.conf")))
-		return -1;
-	conf.fn = c->fn;
-	conf.obj = c;
-	conf.args = opts_args;
-	conf.nargs = FFCNT(opts_args);
-	dbglog(0, "reading %s", conf.fn);
-	int r = ffconf_loadfile(&conf);
-	if (r != 0 && !fferr_nofile(fferr_last())) {
-		errlog("%s", conf.errstr);
-	}
-	return r;
-}
-
-/** Save options to file. */
-static void opts_save(struct opts *c)
-{
-	char buf[64];
-	ffconfw conf;
-	ffui_loaderw ldr = {0};
-	const ffpars_arg *a;
-	ffstr s;
-	ffconf_winit(&conf, NULL, 0);
-	FFARRS_FOREACH(opts_args, a) {
-		ffconf_write(&conf, a->name, ffsz_len(a->name), FFCONF_TKEY);
-		ffpars_scheme_write(buf, a, c, &s);
-		ffconf_write(&conf, s.ptr, s.len, FFCONF_TVAL);
-	}
-	ffconf_write(&conf, NULL, 0, FFCONF_FIN);
-	ldr.confw = conf;
-	if (0 != ffui_ldr_write(&ldr, c->fn) && fferr_nofile(fferr_last())) {
-		if (0 != ffdir_make_path(c->fn, 0) && fferr_last() != EEXIST) {
-			syserrlog("Can't create directory for the file: %s", c->fn);
-			goto done;
-		}
-		if (0 != ffui_ldr_write(&ldr, c->fn)) {
-			syserrlog("Can't write configuration file: %s", c->fn);
-			goto done;
-		}
-	}
-
-	dbglog(0, "saved settings to %s", c->fn);
-
-done:
-	ffui_ldrw_fin(&ldr);
-}
-
-/* struct opts -> GUI */
-static void opts_show(const struct opts *c, ffui_view *v)
-{
-	union ffpars_val u;
-	ffui_viewitem it = {0};
-	char buf[128];
-
-	for (uint i = 0;  i != FFCNT(opts_args);  i++) {
-
-		const ffpars_arg *a = &opts_args[i];
-		u.b = ffpars_arg_ptr(a, (void*)c);
-
-		ffui_view_settextz(&it, a->name);
-		ffui_view_append(v, &it);
-
-		switch (a->flags & FFPARS_FTYPEMASK) {
-		case FFPARS_TSTR:
-			ffui_view_settextstr(&it, u.s);
-			break;
-		case FFPARS_TCHARPTR:
-			ffui_view_settextz(&it, *u.charptr);
-			break;
-		case FFPARS_TINT: {
-			int64 val = ffpars_getint(a, u);
-			uint f;
-			f = (a->flags & FFINT_SIGNED) ? FFINT_SIGNED : 0;
-			uint n = ffs_fromint(val, buf, sizeof(buf), f);
-			ffui_view_settext(&it, buf, n);
-			break;
-		}
-		default:
-			FF_ASSERT(0);
-		}
-
-		ffui_view_set(v, VOPTS_VAL, &it);
-
-		ffui_view_settextz(&it, "");
-		ffui_view_set(v, VOPTS_DESC, &it);
-	}
-	ffui_view_itemreset(&it);
-}
-
-/* GUI -> struct opts */
-static void opts_set(struct opts *c, ffui_view *v, uint sub)
-{
-	int i = ffui_view_focused(v);
-	int r;
-	FF_ASSERT(i >= 0);
-
-	ffstr text;
-	ffstr_setz(&text, v->text);
-	r = ffpars_arg_process(&opts_args[i], &text, c, NULL);
-	if (ffpars_iserr(r))
-		return;
-
-	if (!ffsz_cmp(opts_args[i].name, "Source")) {
-		r = ffpath_norm(gg->opts.srcfn, ffsz_len(gg->opts.srcfn), gg->opts.srcfn, ffsz_len(gg->opts.srcfn), FFPATH_MERGESLASH | FFPATH_MERGEDOTS | FFPATH_FORCESLASH);
-		gg->opts.srcfn[r] = '\0';
-
-	} else if (!ffsz_cmp(opts_args[i].name, "Target")) {
-		r = ffpath_norm(gg->opts.dstfn, ffsz_len(gg->opts.dstfn), gg->opts.dstfn, ffsz_len(gg->opts.dstfn), FFPATH_MERGESLASH | FFPATH_MERGEDOTS | FFPATH_FORCESLASH);
-		gg->opts.dstfn[r] = '\0';
-
-	} else if (!ffsz_cmp(opts_args[i].name, "Filter")
-		|| ffsz_match(opts_args[i].name, "Show ", 5))
-		gsync_showresults(SHOW_TREE_FILTER);
-
-	ffui_view_edit_set(v, i, sub);
 }
 
 static void wsync_destroy(ffui_wnd *wnd)
@@ -468,10 +237,8 @@ static void wsync_destroy(ffui_wnd *wnd)
 	ffmem_free0(gg);
 }
 
-/** Scan source and target trees, compare and show results. */
-static void gsync_scancmp(void *udata)
+static void gsync_reset()
 {
-	void *cmpctx = NULL;
 	ffui_view_clear(&gg->wsync.vlist);
 	ffui_tree_clear(&gg->wsync.tdirs);
 
@@ -479,11 +246,26 @@ static void gsync_scancmp(void *udata)
 	fsync->tree_free(gg->dst);  gg->dst = NULL;
 	ffarr_free(&gg->cmptbl);
 
+	gg->cmptbl_filter.len = 0;
+	gg->nchecked = 0;
+}
+
+/** Scan source and target trees, compare and show results. */
+static void gsync_scancmp(void *udata)
+{
+	void *cmpctx = NULL;
+
+	gsync_reset();
+
+	gsync_status("Scanning Source...");
 	if (NULL == (gg->src = fsync->scan_tree(gg->opts.srcfn)))
 		goto end;
+
+	gsync_status("Scanning Target...");
 	if (NULL == (gg->dst = fsync->scan_tree(gg->opts.dstfn)))
 		goto end;
 
+	gsync_status("Comparing...");
 	struct fsync_cmp cmp, *c;
 	uint f = FSYNC_CMP_DEFAULT;
 	if (gg->opts.time_diff_sec)
@@ -530,7 +312,7 @@ static int gsync_finfo(const struct fsync_file *e, ffarr *buf)
 	return 0;
 }
 
-static void update_status()
+void update_status()
 {
 	ffarr buf = {};
 	ffstr_catfmt(&buf, "Results: %L/%L (%L)%Z"
@@ -574,8 +356,6 @@ static const char* cmp_status_str(char *buf, size_t cap, const struct fsync_cmp 
 	return cmp_sstatus[st & _FSYNC_ST_MASK];
 }
 
-#define fsfile(/* struct file* */f)  ((struct fsync_file*)(f))
-
 static const char* const actionstr[] = {
 	"",
 	"Copy",
@@ -597,9 +377,21 @@ static ffbool cmpent_visible(const struct fsync_cmp *c)
 
 	if (!(ffbit_test32(&gg->opts.showmask, st)))
 		return 0;
+	if (st == FSYNC_ST_NEQ) {
+		uint v = gg->opts.show_modmask;
+		uint m = 0;
+		if (v & FF_BIT32(0))
+			m |= FSYNC_ST_OLDER | FSYNC_ST_NEWER;
+		if (v & FF_BIT32(1))
+			m |= FSYNC_ST_SMALLER | FSYNC_ST_LARGER;
+		if (v & FF_BIT32(2))
+			m |= FSYNC_ST_ATTR;
+		if (((c->status & _FSYNC_ST_NMASK) & m) == 0)
+			return 0;
 
-	if (!gg->opts.show_dirs && st != FSYNC_ST_DEST && isdir(e1->attr))
-		return 0;
+		if (!gg->opts.show_dirs && st != FSYNC_ST_DEST && isdir(e1->attr))
+			return 0;
+	}
 
 	if (gg->filter_dirname != NULL) {
 		if (st == FSYNC_ST_DEST)
@@ -783,198 +575,6 @@ end:
 	ffmem_safefree(fullname);
 }
 
-
-struct sync_ctx {
-	struct fsync_cmp *cmp;
-	char *fnL, *fnR;
-	uint row_index;
-};
-
-static void sync_cmdmon_onsig(fcom_cmd *cmd, uint sig);
-static const struct fcom_cmd_mon sync_cmdmon = { &sync_cmdmon_onsig };
-static void sync(struct sync_ctx *sc);
-
-/** Start synchronization. */
-static void gsync_sync(void *udata)
-{
-	struct sync_ctx *sc = ffmem_new(struct sync_ctx);
-	if (sc == NULL)
-		return;
-	sc->row_index = -1;
-	sync(sc);
-}
-
-static void sync_reset(struct sync_ctx *sc)
-{
-	ffmem_free0(sc->fnL);
-	ffmem_free0(sc->fnR);
-	sc->cmp = NULL;
-}
-
-static void sync_free(struct sync_ctx *sc)
-{
-	sync_reset(sc);
-	ffmem_free(sc);
-}
-
-/** Operation on a file is complete. */
-static void sync_result(struct sync_ctx *sc, int r)
-{
-	if (r != 0) {
-		sc->cmp->status |= FSYNC_ST_ERROR;
-	} else {
-		sc->cmp->status &= ~FSYNC_ST_CHECKED;
-		sc->cmp->status |= FSYNC_ST_DONE;
-		gg->nchecked--;
-	}
-	ffui_view_redraw(&gg->wsync.vlist, sc->row_index, sc->row_index);
-
-	update_status();
-}
-
-static void sync_cmdmon_onsig(fcom_cmd *cmd, uint sig)
-{
-	struct sync_ctx *sc = (void*)com->ctrl(cmd, FCOM_CMD_UDATA);
-	int r = (!cmd->err) ? 0 : -1;
-	sync_result(sc, r);
-	sync_reset(sc);
-	sync(sc);
-}
-
-/** Start file copy task. */
-static int sync_copy(struct sync_ctx *sc, const char *src, const char *dst, uint flags)
-{
-	fcom_cmd cmd = {};
-	cmd.name = "fcopy";
-	cmd.flags = FCOM_CMD_EMPTY;
-	cmd.input.fn = src;
-	cmd.output.fn = dst;
-	if (flags & FOP_KEEPDATE)
-		cmd.out_preserve_date = 1;
-	if (flags & FOP_OVWR)
-		cmd.out_overwrite = 1;
-	void *c;
-	if (NULL == (c = com->create(&cmd)))
-		return FCOM_ERR;
-	com->ctrl(c, FCOM_CMD_FILTADD_LAST, "core.file-in");
-	com->ctrl(c, FCOM_CMD_FILTADD_LAST, "core.file-out");
-	com->fcom_cmd_monitor(c, &sync_cmdmon);
-	com->ctrl(c, FCOM_CMD_SETUDATA, sc);
-	com->ctrl(c, FCOM_CMD_RUNASYNC);
-	return FCOM_ASYNC;
-}
-
-// "src/path/file" -> "dst/path/file"
-static char* dst_fn(const char *fnL)
-{
-	if (!ffsz_matchz(fnL, gg->opts.srcfn)) {
-		errlog("filename %s doesn't match path %s", fnL, gg->opts.srcfn);
-		return NULL;
-	}
-	return ffsz_alfmt("%s/%s", gg->opts.dstfn, fnL + ffsz_len(gg->opts.srcfn));
-}
-
-/** Synchronize checked files (src => dst).
-FSYNC_ST_NEQ: if file size has changed or contents don't match, copy file;
-  otherwise just set attributes.
-Suspend processing while file copy task is running asynchronously.
-*/
-static void sync(struct sync_ctx *sc)
-{
-	struct fsync_cmp *cmp;
-	struct fsync_file *f;
-	int r;
-
-	for (uint i = sc->row_index + 1;  i != gg->cmptbl_filter.len;  i++) {
-
-		sc->row_index = i;
-		sc->cmp = cmp = list_getobj(i);
-		if (!(cmp->status & FSYNC_ST_CHECKED))
-			continue;
-
-		if ((cmp->status & _FSYNC_ST_MASK) == FSYNC_ST_EQ)
-			continue;
-
-		cmp->status |= FSYNC_ST_PENDING;
-		ffui_view_redraw(&gg->wsync.vlist, i, i);
-
-		switch (cmp->status & _FSYNC_ST_MASK) {
-
-		case FSYNC_ST_SRC:
-			sc->fnL = fsync->get(FSYNC_FULLNAME, cmp->left);
-			f = fsfile(cmp->left);
-			sc->fnR = dst_fn(sc->fnL);
-			if (sc->fnL == NULL || sc->fnR == NULL)
-				goto end;
-
-			if (isdir(f->attr))
-				r = fops->mkdir(sc->fnR, 0);
-			else
-				r = sync_copy(sc, sc->fnL, sc->fnR, FOP_KEEPDATE);
-			break;
-
-		case FSYNC_ST_NEQ:
-			sc->fnL = fsync->get(FSYNC_FULLNAME, cmp->left);
-			sc->fnR = fsync->get(FSYNC_FULLNAME, cmp->right);
-			if (sc->fnL == NULL || sc->fnR == NULL)
-				goto end;
-
-			if (cmp->status & (FSYNC_ST_SMALLER | FSYNC_ST_LARGER)
-				|| !!fffile_cmp(sc->fnL, sc->fnR, 0)) {
-
-				r = sync_copy(sc, sc->fnL, sc->fnR, FOP_OVWR | FOP_KEEPDATE);
-
-			} else {
-				fffileinfo fi;
-				if (0 == (r = fffile_infofn(sc->fnL, &fi))) {
-
-					if (cmp->status & (FSYNC_ST_OLDER | FSYNC_ST_NEWER)) {
-						fftime t = fffile_infomtime(&fi);
-						r = fops->time(sc->fnR, &t, 0);
-					}
-
-					if (cmp->status & FSYNC_ST_ATTR) {
-						uint attr = fffile_infoattr(&fi);
-						fffile_attrsetfn(sc->fnR, attr);
-					}
-				}
-			}
-			break;
-
-		case FSYNC_ST_MOVED: {
-			sc->fnL = fsync->get(FSYNC_FULLNAME, cmp->right);
-			char *L = fsync->get(FSYNC_FULLNAME, cmp->left);
-			if (L == NULL)
-				goto end;
-			sc->fnR = dst_fn(L);
-			ffmem_free(L);
-			if (sc->fnL == NULL || sc->fnR == NULL)
-				goto end;
-			r = fops->move(sc->fnL, sc->fnR, FOP_OVWR | FOP_RECURS);
-			break;
-		}
-
-		case FSYNC_ST_DEST:
-			sc->fnR = fsync->get(FSYNC_FULLNAME, cmp->right);
-			if (sc->fnR == NULL)
-				goto end;
-			r = fops->del(sc->fnR, FOP_DIR);
-			break;
-
-		default:
-			r = -1;
-		}
-
-		if (r == FCOM_ASYNC)
-			return;
-
-		sync_result(sc, r);
-		sync_reset(sc);
-	}
-
-end:
-	sync_free(sc);
-}
 
 /** Check/uncheck the focused item and all selected items */
 static void gsync_check(void)
