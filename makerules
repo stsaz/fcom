@@ -17,6 +17,8 @@ $(OBJ_DIR)/%.o: $(SRCDIR)/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
 $(OBJ_DIR)/%.o: $(SRCDIR)/arc/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
+$(OBJ_DIR)/%.o: $(SRCDIR)/pic/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
 $(OBJ_DIR)/%.o: $(SRCDIR)/gui/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
 
@@ -95,6 +97,9 @@ arc.$(SO): $(ARC_O)
 
 
 PIC_O := $(OBJ_DIR)/pic.o \
+	$(OBJ_DIR)/bmp.o \
+	$(OBJ_DIR)/png.o \
+	$(OBJ_DIR)/jpg.o \
 	$(FF_OBJ_DIR)/ffpic.o \
 	$(FF_OBJ_DIR)/ffbmp.o \
 	$(FF_OBJ_DIR)/ffjpeg.o \
