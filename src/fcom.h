@@ -20,11 +20,11 @@ FSYNC
 /** THE CORE - manage modules, provide runtime helper functions. */
 
 #define FCOM_VER_MK(maj, minor) \
-	(((maj) << 9) | (minor))
+	(((maj) << 10) | (minor))
 #define FCOM_VER_MAJ  0
-#define FCOM_VER_MIN  9
+#define FCOM_VER_MIN  10
 #define FCOM_VER  FCOM_VER_MK(FCOM_VER_MAJ, FCOM_VER_MIN)
-#define FCOM_VER_STR  "0.9"
+#define FCOM_VER_STR  "0.10"
 #define FCOM_CONF_FN  "fcom.conf"
 
 enum FCOM_LOGLEV {

@@ -53,10 +53,12 @@ OUTPUT
  --force, -f        Overwrite output files
  --resume           Resume copy from the target file size
  --test, -t         Read-only mode
+
  --date=DATE        Set modification date
                     DATE: [YYYY-MM-DD] [hh:mm:ss]
  --date-as=FILE     Get date from file FILE
  --preserve-date    Copy modification date from input file
+
  --deflate-level    Set compression level for Deflate algorithm (1..9)
  --replace='SEARCH/REPLACE'
                     Set search and replace text pattern
