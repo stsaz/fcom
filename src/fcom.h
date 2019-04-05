@@ -224,6 +224,11 @@ typedef struct fcom_cmd {
 		uint out_format; //enum FFPIC_FMT
 	} pic;
 
+	struct {
+		uint width;
+		uint height;
+	} crop;
+
 	const char *outdir;
 	const char *date_as_fn;
 	ffstr search;

@@ -32,6 +32,9 @@ struct cmdconf {
 	ffstr search;
 	ffstr replace;
 
+	uint crop_width;
+	uint crop_height;
+
 	byte recurse;
 	byte show;
 	byte skip_errors;
@@ -138,6 +141,7 @@ static int arg_member(ffparser_schem *p, void *obj, const char *fn);
 static int arg_help(ffparser_schem *p, void *obj);
 static int arg_date(ffparser_schem *p, void *obj, const ffstr *val);
 static int arg_replace(ffparser_schem *p, void *obj, const ffstr *val);
+static int arg_crop(ffparser_schem *p, void *obj, const ffstr *val);
 
 
 #define OFF(member)  FFPARS_DSTOFF(struct cmdconf, member)
@@ -156,6 +160,7 @@ static const ffpars_arg cmdline_args[] = {
 	{ "png-compression",	FFPARS_TINT8, OFF(png_comp) },
 	{ "replace",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_replace) },
 	{ "colors",	FFPARS_TINT8, OFF(colors) },
+	{ "crop",	FFPARS_TSTR | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_crop) },
 
 	// OUTPUT
 	{ "out",	FFPARS_SETVAL('o') | FFPARS_TCHARPTR | FFPARS_FCOPY | FFPARS_FSTRZ, OFF(out) },
@@ -395,6 +400,29 @@ static int arg_replace(ffparser_schem *p, void *obj, const ffstr *val)
 	return 0;
 }
 
+// "width:height"
+static int arg_crop(ffparser_schem *p, void *obj, const ffstr *val)
+{
+	struct cmdconf *c = obj;
+	ffstr w, h;
+	if (NULL == ffs_split2by(val->ptr, val->len, ':', &w, &h)
+		|| (w.len == 0 && h.len == 0))
+		return FFPARS_EBADVAL;
+
+	uint ww, hh;
+	if (w.len != 0) {
+		if (!ffstr_toint(&w, &ww, FFS_INT32) || ww == 0)
+			return FFPARS_EBADVAL;
+		c->crop_width = ww;
+	}
+	if (h.len != 0) {
+		if (!ffstr_toint(&h, &hh, FFS_INT32) || hh == 0)
+			return FFPARS_EBADVAL;
+		c->crop_height = hh;
+	}
+	return 0;
+}
+
 static int cmdline(int argc, char **argv)
 {
 	ffparser_schem ps;
@@ -499,6 +527,10 @@ static void cmd_add(void *param)
 	cmd.search = c->conf.search;
 	cmd.replace = c->conf.replace;
 	cmd.recurse = c->conf.recurse;
+
+	cmd.crop.width = c->conf.crop_width;
+	cmd.crop.height = c->conf.crop_height;
+
 	cmd.output.fn = c->conf.out;
 	g->stdout_busy = cmd.out_std = (c->conf.out != NULL && ffsz_eq(c->conf.out, "@stdout"));
 	cmd.outdir = c->conf.outdir;

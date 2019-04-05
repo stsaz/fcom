@@ -33,6 +33,12 @@ static void pxconv_close(void *p, fcom_cmd *cmd);
 static int pxconv_process(void *p, fcom_cmd *cmd);
 static const fcom_filter pxconv_filt = { &pxconv_open, &pxconv_close, &pxconv_process };
 
+// CROP
+static void* piccrop_open(fcom_cmd *cmd);
+static void piccrop_close(void *p, fcom_cmd *cmd);
+static int piccrop_process(void *p, fcom_cmd *cmd);
+static const fcom_filter piccrop_filt = { &piccrop_open, &piccrop_close, &piccrop_process };
+
 extern const fcom_filter bmpi_filt;
 extern const fcom_filter bmpo_filt;
 
@@ -64,6 +70,7 @@ static const struct cmd commands[] = {
 static const struct cmd filters[] = {
 	{ "conv", NULL, &piconv_filt },
 	{ "pxconv", NULL, &pxconv_filt },
+	{ "crop", NULL, &piccrop_filt },
 	{ "bmp-in", NULL, &bmpi_filt },
 	{ "bmp-out", NULL, &bmpo_filt },
 	{ "jpg-in", NULL, &jpgi_filt },
@@ -313,7 +320,7 @@ static void fcom_cmd_set(fcom_cmd *dst, const fcom_cmd *src)
 }
 
 /** Create a sub-command for picture conversion.
-Filter chain: f.in -> p.in -> p.out -> f.out */
+Filter chain: f.in -> p.in -> [filters] -> p.out -> f.out */
 static int piconv_process1(struct piconv *c, fcom_cmd *cmd, const char *ifn)
 {
 	const char *ofn;
@@ -365,6 +372,10 @@ static int piconv_process1(struct piconv *c, fcom_cmd *cmd, const char *ifn)
 
 	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_IN(&ncmd));
 	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, ifilters[ii]);
+
+	if (cmd->crop.width != 0 || cmd->crop.height != 0)
+		com->ctrl(nc, FCOM_CMD_FILTADD_LAST, "pic.crop");
+
 	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, ofilters[oi]);
 	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(&ncmd));
 	com->fcom_cmd_monitor(nc, &picconv_mon_iface);
@@ -403,6 +414,62 @@ static int piconv_process(void *p, fcom_cmd *cmd)
 	}
 
 	return FCOM_ASYNC;
+}
+
+#undef FILT_NAME
+
+
+#define FILT_NAME  "pic.crop"
+
+struct piccrop {
+	uint height;
+};
+
+static void* piccrop_open(fcom_cmd *cmd)
+{
+	struct piccrop *c = ffmem_new(struct piccrop);
+	if (c == NULL)
+		return FCOM_OPEN_SYSERR;
+	if (cmd->crop.width != 0)
+		cmd->pic.width = cmd->crop.width;
+	if (cmd->crop.height != 0)
+		cmd->pic.height = cmd->crop.height;
+	return c;
+}
+
+static void piccrop_close(void *p, fcom_cmd *cmd)
+{
+	struct piccrop *c = p;
+	ffmem_free(c);
+}
+
+static int piccrop_process(void *p, fcom_cmd *cmd)
+{
+	struct piccrop *c = p;
+
+	if (!(cmd->flags & FCOM_CMD_FWD)) {
+		if (cmd->flags & FCOM_CMD_FIRST)
+			return FCOM_OUTPUTDONE;
+		if (c->height == cmd->crop.height)
+			return FCOM_OUTPUTDONE;
+		return FCOM_MORE;
+	}
+
+	if (cmd->in.len == 0)
+		return FCOM_OUTPUTDONE;
+
+	ffstr d;
+	if (cmd->crop.width != 0) {
+		if (0 != ffpic_cut(cmd->pic.format, cmd->in.ptr, cmd->in.len, 0, cmd->crop.width, &d)) {
+			fcom_errlog(FILT_NAME, "ffpic_cut() failed", 0);
+			return FCOM_ERR;
+		}
+		cmd->out = d;
+	} else
+		cmd->out = cmd->in;
+	c->height++;
+	fcom_dbglog(0, FILT_NAME, "%u/%u", c->height, cmd->crop.height);
+	return FCOM_DATA;
 }
 
 #undef FILT_NAME

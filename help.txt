@@ -29,7 +29,7 @@ Unpack archives (.gz, .xz, .tar, .zip, .7z, .iso, .ico):
  uniso FILE... [--out=FILE] [--member=FILE]... [--show]
 
 Convert pictures (.bmp, .jpg, .png):
- pic-convert FILE... --out=FILE [--colors=INT]
+ pic-convert FILE... --out=FILE [--colors=INT] [--crop=INT:INT]
 
 
 OPTIONS
@@ -58,11 +58,13 @@ OUTPUT
  --date-as=FILE     Get date from file FILE
  --preserve-date    Copy modification date from input file
  --deflate-level    Set compression level for Deflate algorithm (1..9)
- --jpeg-quality     Set JPEG quality (0..100)
- --png-compression  Set PNG compression level (0..9)
  --replace='SEARCH/REPLACE'
                     Set search and replace text pattern
+
+ --jpeg-quality     Set JPEG quality (0..100)
+ --png-compression  Set PNG compression level (0..9)
  --colors=INT       Set output picture color format: 24 (24-bit)
+ --crop=[INT]:[INT] Crop image to width:height pixels
 
 MISC
  --skip-errors, -k  Print but skip errors and continue operation
