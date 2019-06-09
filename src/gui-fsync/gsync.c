@@ -49,12 +49,22 @@ static const ffui_ldr_ctl wsync_ctls[] = {
 	FFUI_LDR_CTL_END
 };
 
+static const ffui_ldr_ctl wtree_ctls[] = {
+	FFUI_LDR_CTL(struct wtree, wnd),
+	FFUI_LDR_CTL(struct wtree, tdirs),
+	FFUI_LDR_CTL(struct wtree, eaddr),
+	FFUI_LDR_CTL(struct wtree, vlist),
+	FFUI_LDR_CTL(struct wtree, pn),
+	FFUI_LDR_CTL_END
+};
+
 static const ffui_ldr_ctl top_ctls[] = {
 	FFUI_LDR_CTL(struct ggui, mcmd),
 	FFUI_LDR_CTL(struct ggui, mfile),
 	FFUI_LDR_CTL(struct ggui, dlg),
 
 	FFUI_LDR_CTL3(struct ggui, wsync, wsync_ctls),
+	FFUI_LDR_CTL3(struct ggui, wtree, wtree_ctls),
 	FFUI_LDR_CTL_END
 };
 
@@ -64,24 +74,8 @@ static void* gsync_getctl(void *udata, const ffstr *name)
 	return ctl;
 }
 
-enum CMDS {
-	A_CMP = 1,
-	A_SYNC,
-	A_SNAPSAVE,
-	A_SNAPLOAD,
-	A_SNAPLOAD_RIGHT,
-	A_SWAP,
-	A_FILTER,
-	A_ONCHECK,
-	A_OPENDIR,
-	A_CLIPCOPY,
-	A_CLIPFN,
-	A_CLIPFN_RIGHT,
-	A_CONF_EDIT,
-	A_SELALL,
-	A_EXIT,
-
-	A_CONF_EDIT_DONE,
+enum {
+	A_CONF_EDIT_DONE = 1000,
 	A_DISPINFO,
 };
 
@@ -91,6 +85,8 @@ static const char* const cmds[] = {
 	"A_SNAPSAVE",
 	"A_SNAPLOAD",
 	"A_SNAPLOAD_RIGHT",
+	"A_SNAPSHOW",
+	"A_SNAPSHOW_RIGHT",
 	"A_SWAP",
 	"A_FILTER",
 	"A_ONCHECK",
@@ -101,6 +97,8 @@ static const char* const cmds[] = {
 	"A_CONF_EDIT",
 	"A_SELALL",
 	"A_EXIT",
+
+	"A_TREE_ENTER",
 };
 
 static int gsync_getcmd(void *udata, const ffstr *name)
@@ -126,6 +124,7 @@ int gsync_create(void)
 		return -1;
 
 	gg->wsync.vlist.dispinfo_id = A_DISPINFO;
+	tree_preinit();
 
 	char *path = NULL;
 	ffui_loader ldr;
@@ -145,6 +144,7 @@ int gsync_create(void)
 	gg->wsync.wsync.on_action = &wsync_action;
 	gg->wsync.wsync.on_destroy = &wsync_destroy;
 	gg->wsync.vopts.edit_id = A_CONF_EDIT_DONE;
+	tree_init();
 
 	ffui_iconlist il;
 	ffui_iconlist_create(&il, 16, 16);
@@ -226,6 +226,19 @@ static void wsync_action(ffui_wnd *wnd, int id)
 		task_add2(&snapload, s);
 		break;
 	}
+
+	case A_SNAPSHOW:
+		if (gg->src == NULL)
+			break;
+		ffui_show(&gg->wtree.wnd, 1);
+		tree_show(gg->src);
+		break;
+	case A_SNAPSHOW_RIGHT:
+		if (gg->dst == NULL)
+			break;
+		ffui_show(&gg->wtree.wnd, 1);
+		tree_show(gg->dst);
+		break;
 
 	case A_SWAP:
 		gsync_reset();

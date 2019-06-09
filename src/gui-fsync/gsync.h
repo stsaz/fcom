@@ -54,10 +54,19 @@ struct wsync {
 	ffui_menu mm;
 };
 
+struct wtree {
+	ffui_wnd wnd;
+	ffui_view tdirs;
+	ffui_edit eaddr;
+	ffui_view vlist;
+	ffui_paned pn;
+};
+
 struct ggui {
 	ffui_menu mcmd;
 	ffui_menu mfile;
 	struct wsync wsync;
+	struct wtree wtree;
 	ffui_dialog dlg;
 
 	fsync_dir *src;
@@ -69,11 +78,36 @@ struct ggui {
 	char *filter_dirname; // full directory name to show entries in
 
 	fftask tsk;
+
+	fsync_dir *tree_dirs[50];
+	uint ntree_dirs;
 };
 
 /** Get comparison result entry by index. */
 #define list_getobj(i) \
 	*ffarr_itemT(&gg->cmptbl_filter, i, struct fsync_cmp*)
+
+enum CMDS {
+	A_CMP = 1,
+	A_SYNC,
+	A_SNAPSAVE,
+	A_SNAPLOAD,
+	A_SNAPLOAD_RIGHT,
+	A_SNAPSHOW,
+	A_SNAPSHOW_RIGHT,
+	A_SWAP,
+	A_FILTER,
+	A_ONCHECK,
+	A_OPENDIR,
+	A_CLIPCOPY,
+	A_CLIPFN,
+	A_CLIPFN_RIGHT,
+	A_CONF_EDIT,
+	A_SELALL,
+	A_EXIT,
+
+	A_TREE_ENTER,
+};
 
 
 extern struct ggui *gg;
@@ -92,3 +126,7 @@ extern const fcom_fops *fops;
 
 void update_status();
 void gsync_sync(void *udata);
+
+void tree_preinit();
+void tree_init();
+void tree_show(fsync_dir *d);

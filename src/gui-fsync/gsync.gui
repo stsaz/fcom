@@ -22,6 +22,16 @@ menu mcmd {
 		hotkey "Ctrl+Shift+O"
 		action A_SNAPLOAD_RIGHT
 	}
+	item "-" {
+	}
+	item "Snapshot Explorer (Source)..." {
+		action A_SNAPSHOW
+	}
+	item "Snapshot Explorer (Target)..." {
+		action A_SNAPSHOW_RIGHT
+	}
+	item "-" {
+	}
 	item "Swap Source & Target" {
 		action A_SWAP
 	}
@@ -126,5 +136,46 @@ window wsync {
 
 	statusbar stbar {
 		style visible
+	}
+}
+
+window wtree {
+	title "File Tree Explorer"
+	position 100 100 600 400
+	borderstick 7
+	font {
+		name Arial
+		height 10
+	}
+
+	treeview tdirs {
+		position 0 200 200 100
+		style explorer_theme has_buttons has_lines track_select visible
+	}
+
+	editbox eaddr {
+		position 200 0 100 20
+		style visible
+	}
+
+	listview vlist {
+		position 200 20 100 100
+		style explorer_theme grid_lines multi_select visible
+		dblclick A_TREE_ENTER
+		column "Name" {
+			width 120
+		}
+		column "Size" {
+		}
+		column "Date" {
+		}
+	}
+	paned pn {
+		child tdirs {
+			resize cy
+		}
+		child vlist {
+			resize cx cy
+		}
 	}
 }
