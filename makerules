@@ -50,6 +50,7 @@ CORE_O := \
 	$(FF_O) \
 	$(FFOS_THD) \
 	$(FF_OBJ_DIR)/fftmr.o \
+	$(FF_OBJ_DIR)/fffileread.o \
 	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffpsarg.o $(FF_OBJ_DIR)/ffconf.o
 
 core.$(SO): $(CORE_O)
