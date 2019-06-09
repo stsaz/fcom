@@ -40,6 +40,9 @@ struct fsync_ctx;
 struct cursor;
 struct mv;
 static void cur_init(struct cursor *c, struct dir *d);
+static void cur_init2(struct cursor *c, struct dir *d);
+static struct file* cur_next2(struct cursor *c);
+
 static struct dir* scan_tree(const char *fn, uint flags);
 static fsync_dir* combine(fsync_dir *a, fsync_dir *b, uint flags);
 static void* cmp_init(fsync_dir *left, fsync_dir *right, uint flags);
@@ -231,13 +234,18 @@ static void tree_free(struct dir *d)
 {
 	if (d == NULL)
 		return;
-	ffchain_item *it;
-	it = d->sib.next;
-	dir_free(d);
-	while (it != NULL) {
-		d = FF_GETPTR(struct dir, sib, it);
-		it = it->next;
-		dir_free(d);
+
+	struct cursor c;
+	cur_init2(&c, d);
+
+	struct file *f;
+	for (;;) {
+		if (NULL == (f = cur_next2(&c))) {
+			dir_free(d);
+			return;
+		}
+		if (f->dir != NULL)
+			dir_free(f->dir);
 	}
 }
 
@@ -580,6 +588,54 @@ static struct file* cur_next(struct cursor *c)
 		cx->next = c->f;
 		if (f->dir != NULL)
 			cur_push(c, f->dir);
+	}
+}
+
+static void cur_init2(struct cursor *c, struct dir *d)
+{
+	c->ictx = 0;
+	c->ctx[0].d = d;
+	c->ctx[0].next = (void*)d->files.ptr;
+}
+
+static void cur_push2(struct cursor *c, struct dir *d)
+{
+	c->ictx++;
+	FF_ASSERT(c->ictx != FFCNT(c->ctx));
+	c->ctx[c->ictx].d = d;
+	c->ctx[c->ictx].next = (void*)d->files.ptr;
+}
+
+static struct file* cur_nextfile2(struct cursor *c)
+{
+	struct cur_ctx *cx = &c->ctx[c->ictx];
+	if (cx->next == ffarr_endT(&cx->d->files, struct file))
+		return NULL;
+	return cx->next++;
+}
+
+/** Walk through a file tree.
+. If file is a directory, enter it (increase level)
+. Return file (not directory) entries at this level
+. After the last entry at this level, decrease level, return the parent file entry
+*/
+static struct file* cur_next2(struct cursor *c)
+{
+	struct file *f;
+	for (;;) {
+		f = cur_nextfile2(c);
+		if (f == NULL) {
+			if (NULL == cur_pop(c))
+				return NULL;
+			return c->ctx[c->ictx].next - 1;
+		}
+
+		if (f->dir != NULL) {
+			cur_push2(c, f->dir);
+			continue;
+		}
+
+		return f;
 	}
 }
 
