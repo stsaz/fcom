@@ -447,6 +447,26 @@ enum FSYNC_CMD {
 	@param: struct file*
 	Return char* (static) */
 	FSYNC_DIRNAME,
+
+	/** Full directory name.
+	const char* (static) dirpath(fsync_dir *d) */
+	FSYNC_DIRPATH,
+
+	/** Get the number of files in directory.
+	uint count(fsync_dir *d) */
+	FSYNC_COUNT,
+
+	/** Get file by index.
+	struct fsync_file* getfile(fsync_dir *d, uint idx) */
+	FSYNC_GETFILE,
+
+	/** Get sub-directory.
+	fsync_dir* getsubdir(struct fsync_file *f) */
+	FSYNC_GETSUBDIR,
+
+	/** Get parent directory.
+	fsync_dir* getsubdir(struct fsync_file *f) */
+	FSYNC_GETPARENT,
 };
 
 typedef struct fcom_fsync {

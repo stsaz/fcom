@@ -277,6 +277,36 @@ static void* getprop(uint cmd, ...)
 		rc = (f->parent != NULL) ? f->parent->path : "";
 		break;
 	}
+	case FSYNC_DIRPATH: {
+		const struct dir *d = va_arg(va, struct dir*);
+		rc = d->path;
+		break;
+	}
+	case FSYNC_COUNT: {
+		const struct dir *d = va_arg(va, struct dir*);
+		rc = (void*)(size_t)d->files.len;
+		break;
+	}
+	case FSYNC_GETFILE: {
+		const struct dir *d = va_arg(va, struct dir*);
+		uint idx = va_arg(va, uint);
+		if (idx >= d->files.len) {
+			rc = NULL;
+			break;
+		}
+		rc = (void*)ffarr_itemT(&d->files, idx, struct file);
+		break;
+	}
+	case FSYNC_GETSUBDIR: {
+		const struct file *f = va_arg(va, struct file*);
+		rc = f->dir;
+		break;
+	}
+	case FSYNC_GETPARENT: {
+		const struct file *f = va_arg(va, struct file*);
+		rc = f->parent;
+		break;
+	}
 	}
 
 	va_end(va);
