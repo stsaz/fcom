@@ -136,6 +136,11 @@ struct file {
 	uint moved :1;
 };
 
+static void file_destroy(struct file *f)
+{
+	ffmem_safefree(f->name);
+}
+
 struct dir {
 	char *path;
 	ffarr files; //struct file[]
@@ -186,7 +191,7 @@ static void dir_free(struct dir *d)
 	ffmem_safefree(d->path);
 	struct file *f;
 	FFARR_WALKT(&d->files, f, struct file) {
-		ffmem_safefree(f->name);
+		file_destroy(f);
 	}
 	ffarr_free(&d->files);
 	ffmem_free(d);
@@ -326,6 +331,9 @@ static int scan1(struct dir *d, char *name, ffchain_item **dirs)
 				last = &e->sib;
 			}
 		}
+
+		fcom_dbglog(0, FILT_NAME, "added %s/%s"
+			, d->path, e->name);
 	}
 
 	*dirs = last;
@@ -532,7 +540,8 @@ static struct file* cur_next(struct cursor *c)
 			continue;
 		}
 		cx->next = c->f;
-		cur_push(c, f->dir);
+		if (f->dir != NULL)
+			cur_push(c, f->dir);
 	}
 }
 
@@ -960,7 +969,7 @@ static int fsyncss_process(void *p, fcom_cmd *cmd)
 
 			ffstr s;
 			ffconf_output(&f->cw, &s);
-			if (cmd->out.len >= 64 * 1024) {
+			if (s.len >= 64 * 1024) {
 				cmd->out = s;
 				f->state = 2;
 				return FCOM_DATA;
