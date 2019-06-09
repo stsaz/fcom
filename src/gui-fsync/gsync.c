@@ -2,7 +2,7 @@
 Copyright (c) 2018 Simon Zolin
 */
 
-#include <gui/gsync.h>
+#include <gui-fsync/gsync.h>
 
 #include <FF/time.h>
 #include <FF/sys/dir.h>

@@ -21,6 +21,10 @@ $(OBJ_DIR)/%.o: $(SRCDIR)/pic/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
 $(OBJ_DIR)/%.o: $(SRCDIR)/gui/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
+$(OBJ_DIR)/%.o: $(SRCDIR)/gui-fsync/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
+$(OBJ_DIR)/%.o: $(SRCDIR)/gui-scrshots/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
 
 $(RES): $(PROJDIR)/res/fcom.rc $(PROJDIR)/res/fcom.exe.manifest $(PROJDIR)/res/fcom.ico
 	$(WINDRES) -I$(SRCDIR) -I$(FF) -I$(FFOS) $(PROJDIR)/res/fcom.rc $@
@@ -115,7 +119,7 @@ pic.$(SO): $(PIC_O)
 
 GUI_O := $(OBJ_DIR)/gui.o \
 	$(OBJ_DIR)/scrshots.o \
-	$(OBJ_DIR)/gsync.o $(OBJ_DIR)/gsync-sync.o $(OBJ_DIR)/gsync-conf.o \
+	$(OBJ_DIR)/gsync.o $(OBJ_DIR)/sync.o $(OBJ_DIR)/conf.o \
 	$(FF_GUI_OBJ) \
 	$(FF_OBJ_DIR)/ffpic.o \
 	$(FF_OBJ_DIR)/ffconf.o \
@@ -144,7 +148,7 @@ install-only:
 	$(CP) $(PROJDIR)/README.md $(INSTDIR)/README.txt
 
 ifeq ($(OS),win)
-	$(CP) $(PROJDIR)/src/gui/*.gui $(PROJDIR)/res/screenshots.ico $(INSTDIR)
+	$(CP) $(PROJDIR)/src/gui-fsync/*.gui $(PROJDIR)/src/gui-scrshots/*.gui $(PROJDIR)/res/screenshots.ico $(INSTDIR)
 	unix2dos $(INSTDIR)/*.txt $(INSTDIR)/*.conf $(INSTDIR)/*.gui
 endif
 
