@@ -23,6 +23,7 @@ static const fcom_mod arc_mod = {
 int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf);
 
 extern const fcom_filter gzip_filt;
+extern const fcom_filter gzip1_filt;
 extern const fcom_filter ungz_filt;
 extern const fcom_filter ungz1_filt;
 extern const fcom_filter unxz_filt;
@@ -57,6 +58,7 @@ struct cmd {
 
 static const struct cmd cmds[] = {
 	{ "gz", "arc.gz", &gzip_filt },
+	{ "gz1", NULL, &gzip1_filt },
 	{ "ungz", "arc.ungz", &ungz_filt },
 	{ "ungz1", NULL, &ungz1_filt },
 	{ "unxz", "arc.unxz", &unxz_filt },
