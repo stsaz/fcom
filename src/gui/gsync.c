@@ -5,6 +5,7 @@ Copyright (c) 2018 Simon Zolin
 #include <gui/gsync.h>
 
 #include <FF/time.h>
+#include <FF/sys/dir.h>
 #include <FF/number.h>
 
 static void wsync_action(ffui_wnd *wnd, int id);
@@ -250,6 +251,49 @@ static void gsync_reset()
 	gg->nchecked = 0;
 }
 
+/** Scan directories, possibly with wildcards. */
+static fsync_dir* scan(const char *path, uint flags)
+{
+	ffstr p;
+	ffstr_setz(&p, path);
+	ffdirexp de;
+	const char *fn;
+	char *wc = NULL;
+	fsync_dir *r = NULL, *d = NULL, *parent = NULL;
+
+	if (NULL == ffs_findc(p.ptr, p.len, '*'))
+		return fsync->scan_tree(path, 0);
+
+	if (NULL == (wc = ffsz_alcopyz(path)))
+		goto done;
+	if (0 != ffdir_expopen(&de, wc, 0))
+		goto done;
+
+	while (NULL != (fn = ffdir_expread(&de))) {
+		if (NULL == (d = fsync->scan_tree(fn, flags)))
+			goto done;
+		if (parent != NULL) {
+			fsync_dir *dnew;
+			if (NULL == (dnew = fsync->combine(parent, d, 0)))
+				goto done;
+			d = dnew;
+		}
+		parent = d;
+		d = NULL;
+	}
+
+	r = parent;
+
+done:
+	ffdir_expclose(&de);
+	ffmem_free(wc);
+	if (r == NULL) {
+		fsync->tree_free(d);
+		fsync->tree_free(parent);
+	}
+	return r;
+}
+
 /** Scan source and target trees, compare and show results. */
 static void gsync_scancmp(void *udata)
 {
@@ -258,11 +302,11 @@ static void gsync_scancmp(void *udata)
 	gsync_reset();
 
 	gsync_status("Scanning Source...");
-	if (NULL == (gg->src = fsync->scan_tree(gg->opts.srcfn)))
+	if (NULL == (gg->src = scan(gg->opts.srcfn, 0)))
 		goto end;
 
 	gsync_status("Scanning Target...");
-	if (NULL == (gg->dst = fsync->scan_tree(gg->opts.dstfn)))
+	if (NULL == (gg->dst = scan(gg->opts.dstfn, 0)))
 		goto end;
 
 	gsync_status("Comparing...");

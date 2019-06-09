@@ -3,6 +3,7 @@ Copyright (c) 2019 Simon Zolin
 */
 
 #include <gui/gsync.h>
+#include <FF/path.h>
 
 
 struct sync_ctx {
@@ -85,14 +86,51 @@ static int sync_copy(struct sync_ctx *sc, const char *src, const char *dst, uint
 	return FCOM_ASYNC;
 }
 
-// "src/path/file" -> "dst/path/file"
+/**
+"src/path/file" -> "dst/path/file"
+
+For wildcards:
+1. "\diff-src\d*": "\diff-src\d1/new" -> "d1/new"
+2. "\diff-tgt\d*": "\diff-tgt" + "d1/new" -> "\diff-tgt\d1/new" */
 static char* dst_fn(const char *fnL)
 {
-	if (!ffsz_matchz(fnL, gg->opts.srcfn)) {
-		errlog("filename %s doesn't match path %s", fnL, gg->opts.srcfn);
+	ffstr fn, src, dst;
+	ffstr_setz(&fn, fnL);
+	ffstr_setz(&src, gg->opts.srcfn);
+	ffstr_setz(&dst, gg->opts.dstfn);
+
+	ffstr dir_src;
+	if (0 != ffpath_parent(&src, &fn, &dir_src)) {
+		FF_ASSERT(0);
 		return NULL;
 	}
-	return ffsz_alfmt("%s/%s", gg->opts.dstfn, fnL + ffsz_len(gg->opts.srcfn));
+
+	const char *star = ffs_findc(dst.ptr, dst.len, '*');
+
+	if (NULL == ffs_findc(src.ptr, src.len, '*')) {
+		if (star != NULL) {
+			errlog("not supported: destination dir is a wildcard", 0);
+			return NULL;
+		}
+		ffstr_shift(&fn, dir_src.len + FFSLEN("/"));
+		return ffsz_alfmt("%S/%S", &dst, &fn);
+	}
+
+	if (0 != ffs_wildcard(src.ptr, src.len, fn.ptr, fn.len, 0)) {
+		FF_ASSERT(0);
+		return NULL;
+	}
+	ffstr_shift(&fn, dir_src.len + FFSLEN("/"));
+
+	if (star == NULL) {
+		errlog("not supported: destination dir isn't a wildcard", 0);
+		return NULL;
+	}
+	dst.len = star - dst.ptr;
+	const char *sl = ffpath_rfindslash(dst.ptr, dst.len);
+	dst.len = sl - dst.ptr;
+
+	return ffsz_alfmt("%S/%S", &dst, &fn);
 }
 
 
