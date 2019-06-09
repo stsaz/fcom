@@ -449,6 +449,13 @@ typedef struct fcom_fsync {
 	/** Scan directories and create a file tree. */
 	fsync_dir* (*scan_tree)(const char *fn);
 
+	/** Combine two directories and return their max. path.
+	.e.g.:
+	 "/path/a" & "/path/b" -> "/path" with files=[a,b]
+	 "/path" & "/path/c" -> "/path" with files=[a,b,c]
+	Note: it can't handle more than 1 dir level. */
+	fsync_dir* (*combine)(fsync_dir *a, fsync_dir *b, uint flags);
+
 	/** Initialize file tree compare context.
 	Destroy with cmp_trees(cmp, NULL).
 	@flags: enum FSYNC_CMP */

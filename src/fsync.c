@@ -47,6 +47,7 @@ struct dir;
 struct mv;
 static void cur_init(struct cursor *c, struct dir *d);
 static struct dir* scan_tree(const char *fn);
+static fsync_dir* combine(fsync_dir *a, fsync_dir *b, uint flags);
 static void* cmp_init(fsync_dir *left, fsync_dir *right, uint flags);
 static int cmp_trees(struct fsync_ctx *c, struct fsync_cmp *cmp);
 static void cmp_show(struct fsync_ctx *c, struct fsync_cmp *cmp);
@@ -59,7 +60,7 @@ static void* getprop(uint cmd, ...);
 
 // FSYNC IFACE
 static const fcom_fsync fsync_if = {
-	&scan_tree, &cmp_init, (void*)&cmp_trees, &tree_free, &getprop
+	&scan_tree, &combine, &cmp_init, (void*)&cmp_trees, &tree_free, &getprop
 };
 
 
@@ -373,6 +374,66 @@ end:
 	last->next = NULL;
 	tree_free(first);
 	return NULL;
+}
+
+static fsync_dir* combine(fsync_dir *a, fsync_dir *b, uint flags)
+{
+	struct dir *parent, *tgt;
+	struct file *f;
+	ffstr p1, p2, dir, name;
+	ffstr_setz(&p1, a->path);
+	ffstr_setz(&p2, b->path);
+	if (0 != ffpath_parent(&p1, &p2, &dir))
+		return NULL;
+
+	if (ffstr_eq2(&dir, &p1)) {
+		// "/path/a" & "/path/a/a1" -> "/path/a" with files=[...,a1]
+		ffpath_split2(p2.ptr, p2.len, NULL, &name);
+		parent = a;
+		tgt = b;
+
+	} else if (ffstr_eq2(&dir, &p2)) {
+		// "/path/a/a1" & "/path/a" -> "/path/a" with files=[...,a1]
+		ffpath_split2(p1.ptr, p1.len, NULL, &name);
+		parent = b;
+		tgt = a;
+
+	} else {
+		// "/path/a" & "/path/b" -> "/path" with files=[a,b]
+		ffstr dname;
+		ffpath_split2(p1.ptr, p1.len, &dname, &name);
+		if (!ffstr_eq2(&dname, &dir)) {
+			errlog("combine: not supported: '%S' into '%S'", &p1, &dir);
+			return NULL;
+		}
+
+		if (NULL == (parent = ffmem_new(struct dir)))
+			return NULL;
+		if (NULL == (parent->path = ffsz_alcopystr(&dir)))
+			return NULL;
+
+		if (NULL == (f = ffarr_pushT(&parent->files, struct file)))
+			return NULL;
+		ffmem_tzero(f);
+		if (NULL == (f->name = ffsz_alcopystr(&name)))
+			return NULL;
+		f->parent = parent;
+		f->dir = a;
+		f->attr = FFUNIX_FILE_DIR;
+
+		ffpath_split2(p2.ptr, p2.len, NULL, &name);
+		tgt = b;
+	}
+
+	if (NULL == (f = ffarr_pushT(&parent->files, struct file)))
+		return NULL;
+	ffmem_tzero(f);
+	if (NULL == (f->name = ffsz_alcopystr(&name)))
+		return NULL;
+	f->parent = parent;
+	f->dir = tgt;
+	f->attr = FFUNIX_FILE_DIR;
+	return parent;
 }
 
 
