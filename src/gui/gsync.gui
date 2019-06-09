@@ -14,9 +14,13 @@ menu mcmd {
 		hotkey "Ctrl+S"
 		action A_SNAPSAVE
 	}
-	item "Load Snapshot..." {
+	item "Load Snapshot (Source)..." {
 		hotkey "Ctrl+O"
 		action A_SNAPLOAD
+	}
+	item "Load Snapshot (Target)..." {
+		hotkey "Ctrl+Shift+O"
+		action A_SNAPLOAD_RIGHT
 	}
 	item "Swap Source & Target" {
 		action A_SWAP
@@ -46,6 +50,10 @@ menu mfile {
 		hotkey "Ctrl+A"
 		action A_SELALL
 	}
+}
+
+dialog dlg {
+	filter "All (*.*)\x00*.*\x00\x00"
 }
 
 window wsync {

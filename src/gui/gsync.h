@@ -58,6 +58,7 @@ struct ggui {
 	ffui_menu mcmd;
 	ffui_menu mfile;
 	struct wsync wsync;
+	ffui_dialog dlg;
 
 	fsync_dir *src;
 	fsync_dir *dst;

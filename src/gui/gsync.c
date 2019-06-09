@@ -52,6 +52,7 @@ static const ffui_ldr_ctl wsync_ctls[] = {
 static const ffui_ldr_ctl top_ctls[] = {
 	FFUI_LDR_CTL(struct ggui, mcmd),
 	FFUI_LDR_CTL(struct ggui, mfile),
+	FFUI_LDR_CTL(struct ggui, dlg),
 
 	FFUI_LDR_CTL3(struct ggui, wsync, wsync_ctls),
 	FFUI_LDR_CTL_END
@@ -68,6 +69,7 @@ enum CMDS {
 	A_SYNC,
 	A_SNAPSAVE,
 	A_SNAPLOAD,
+	A_SNAPLOAD_RIGHT,
 	A_SWAP,
 	A_FILTER,
 	A_ONCHECK,
@@ -88,6 +90,7 @@ static const char* const cmds[] = {
 	"A_SYNC",
 	"A_SNAPSAVE",
 	"A_SNAPLOAD",
+	"A_SNAPLOAD_RIGHT",
 	"A_SWAP",
 	"A_FILTER",
 	"A_ONCHECK",
@@ -169,6 +172,30 @@ static void task_add(fftask_handler func)
 	core->task(FCOM_TASK_ADD, &gg->tsk);
 }
 
+static void task_add2(fftask_handler func, void *udata)
+{
+	gg->tsk.handler = func;
+	gg->tsk.param = udata;
+	core->task(FCOM_TASK_ADD, &gg->tsk);
+}
+
+struct snap {
+	char *name;
+	uint id;
+};
+
+static void snapload(void *udata)
+{
+	struct snap *s = udata;
+	fsync_dir *d = fsync->scan_tree(s->name, FSYNC_SCAN_SNAPSHOT);
+	if (s->id == A_SNAPLOAD)
+		gg->src = d;
+	else
+		gg->dst = d;
+	ffmem_free(s->name);
+	ffmem_free(s);
+}
+
 static void wsync_action(ffui_wnd *wnd, int id)
 {
 	switch (id) {
@@ -187,8 +214,18 @@ static void wsync_action(ffui_wnd *wnd, int id)
 		break;
 
 	case A_SNAPSAVE:
-	case A_SNAPLOAD:
 		break;
+	case A_SNAPLOAD:
+	case A_SNAPLOAD_RIGHT: {
+		struct snap *s = ffmem_new(struct snap);
+		s->id = id;
+		char *fn = ffui_dlg_open(&gg->dlg, &gg->wsync.wsync);
+		if (fn == NULL)
+			break;
+		s->name = ffsz_alcopyz(fn);
+		task_add2(&snapload, s);
+		break;
+	}
 
 	case A_SWAP:
 		gsync_reset();
