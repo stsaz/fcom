@@ -397,6 +397,10 @@ struct fsync_file {
 	uint attr;
 };
 
+enum FSYNC_SCAN {
+	FSYNC_SCAN_SNAPSHOT = 1, //load snapshot, don't scan file tree
+};
+
 enum FSYNC_CMP {
 	// FSYNC_CMP_NAME = 1,
 	FSYNC_CMP_SIZE = 2,
@@ -446,8 +450,10 @@ enum FSYNC_CMD {
 };
 
 typedef struct fcom_fsync {
-	/** Scan directories and create a file tree. */
-	fsync_dir* (*scan_tree)(const char *fn);
+	/** Scan directories and create a file tree.
+	flags: enum FSYNC_SCAN
+	Return file tree object;  NULL on error. */
+	fsync_dir* (*scan_tree)(const char *fn, uint flags);
 
 	/** Combine two directories and return their max. path.
 	.e.g.:

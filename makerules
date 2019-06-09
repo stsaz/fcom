@@ -67,10 +67,12 @@ file.$(SO): $(FILE_O)
 	$(LD) -shared $(FILE_O) $(LDFLAGS) -o$@
 
 
-FSYNC_O := $(OBJ_DIR)/fsync.o \
+FSYNC_O := $(OBJ_DIR)/fsync.o $(OBJ_DIR)/snapshot.o \
 	$(FF_OBJ_DIR)/crc.o \
 	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffconf.o \
 	$(FF_O)
+$(OBJ_DIR)/%.o: $(SRCDIR)/fsync/%.c $(SRCDIR)/fsync/fsync.h $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
 fsync.$(SO): $(FSYNC_O)
 	$(LD) -shared $(FSYNC_O) $(LDFLAGS) $(LD_LPTHREAD) -o$@
 

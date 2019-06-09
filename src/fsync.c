@@ -2,21 +2,16 @@
 Copyright (c) 2017 Simon Zolin
 */
 
-#include <fcom.h>
+#include <fsync/fsync.h>
 #include <FF/path.h>
 #include <FF/sys/dir.h>
 #include <FF/time.h>
 #include <FF/number.h>
 #include <FF/rbtree.h>
 #include <FF/crc.h>
-#include <FF/data/conf.h>
 
 
-#define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, __VA_ARGS__)
-#define errlog(fmt, ...)  fcom_errlog(FILT_NAME, fmt, __VA_ARGS__)
-#define syserrlog(fmt, ...)  fcom_syserrlog(FILT_NAME, fmt, __VA_ARGS__)
-
-static const fcom_core *core;
+const fcom_core *core;
 static const fcom_command *com;
 
 // MODULE
@@ -43,10 +38,9 @@ static const fcom_filter fsyncss_filt = { &fsyncss_open, &fsyncss_close, &fsyncs
 
 struct fsync_ctx;
 struct cursor;
-struct dir;
 struct mv;
 static void cur_init(struct cursor *c, struct dir *d);
-static struct dir* scan_tree(const char *fn);
+static struct dir* scan_tree(const char *fn, uint flags);
 static fsync_dir* combine(fsync_dir *a, fsync_dir *b, uint flags);
 static void* cmp_init(fsync_dir *left, fsync_dir *right, uint flags);
 static int cmp_trees(struct fsync_ctx *c, struct fsync_cmp *cmp);
@@ -59,7 +53,7 @@ static void* getprop(uint cmd, ...);
 #define isdir(a) !!((a) & FFUNIX_FILE_DIR)
 
 // FSYNC IFACE
-static const fcom_fsync fsync_if = {
+const fcom_fsync fsync_if = {
 	&scan_tree, &combine, &cmp_init, (void*)&cmp_trees, &tree_free, &getprop
 };
 
@@ -117,24 +111,8 @@ static int fsync_conf(const char *name, ffpars_ctx *ctx)
 }
 
 
+#undef FILT_NAME
 #define FILT_NAME  "sync"
-
-struct file {
-	// struct fsync_file
-	char *name;
-	uint64 size;
-	fftime mtime;
-	uint attr;
-
-	struct dir *parent;
-	struct dir *dir;
-	ffchain_item sib;
-	ffrbtl_node nod_name, nod_props;
-
-	/** The file is paired with another.
-	The flag prevents the same file from being used twice. */
-	uint moved :1;
-};
 
 static void file_destroy(struct file *f)
 {
@@ -184,6 +162,58 @@ static void* fsync_open(fcom_cmd *cmd)
 	ffrbt_init(&f->mvL.props_index);
 	ffrbt_init(&f->mvR.props_index);
 	return f;
+}
+
+struct dir* dir_new(const ffstr *name)
+{
+	struct dir *d;
+	if (NULL == (d = ffmem_new(struct dir)))
+		return NULL;
+	d->path = ffsz_alcopystr(name);
+	return d;
+}
+
+struct file* dir_newfile(struct dir *d)
+{
+	return ffarr_pushT(&d->files, struct file);
+}
+
+const char* dir_path(struct dir *d)
+{
+	return d->path;
+}
+
+/** Find file in a tree.
+d: Source directory tree, e.g. d->d1->d2
+name: e.g. "d1/d2/f1"
+*/
+struct file* tree_file_find(struct dir *d, const ffstr *name)
+{
+	ffstr path = *name, dname;
+	struct file *f;
+
+	dname = ffpath_next(&path);
+	if (!ffstr_eqz(&dname, d->path) || path.len == 0)
+		return NULL;
+	dname = ffpath_next(&path);
+
+	f = (void*)d->files.ptr;
+	for (; f != ffarr_endT(&d->files, struct file); ) {
+
+		if (ffstr_eqz(&dname, f->name)) {
+			d = f->dir;
+			if (path.len == 0)
+				return f;
+			if (d == NULL)
+				return NULL;
+			f = (void*)d->files.ptr;
+			dname = ffpath_next(&path);
+			continue;
+		}
+		f++;
+	}
+
+	return NULL;
 }
 
 static void dir_free(struct dir *d)
@@ -258,10 +288,15 @@ static int fsync_process(void *p, fcom_cmd *cmd)
 		return FCOM_ERR;
 	}
 
-	if (NULL == (f->src = scan_tree(fn)))
+	uint flags = 0;
+	ffstr ext;
+	ffpath_split3(fn, ffsz_len(fn), NULL, NULL, &ext);
+	if (ffstr_eqz(&ext, "txt"))
+		flags = FSYNC_SCAN_SNAPSHOT;
+	if (NULL == (f->src = scan_tree(fn, flags)))
 		return FCOM_ERR;
 
-	if (NULL == (f->dst = scan_tree(cmd->output.fn)))
+	if (NULL == (f->dst = scan_tree(cmd->output.fn, 0)))
 		return FCOM_ERR;
 
 	cur_init(&f->curL, f->src);
@@ -345,11 +380,14 @@ done:
 }
 
 /** Get contents of a file tree. */
-static struct dir* scan_tree(const char *name)
+static struct dir* scan_tree(const char *name, uint flags)
 {
 	ffchain_item *it, *last, tmp;
 	struct dir *d, *first = NULL;
 	struct file *fil;
+
+	if (flags & FSYNC_SCAN_SNAPSHOT)
+		return snapshot_load(name, flags);
 
 	ffchain_init(&tmp);
 	last = &tmp;
@@ -888,44 +926,6 @@ static void fsyncss_close(void *p, fcom_cmd *cmd)
 	ffmem_free(f);
 }
 
-/** Write dir info into snapshot. */
-static void fsyncss_writedir(struct fsyncss *f, struct dir *d, ffbool close)
-{
-	if (close)
-		ffconf_write(&f->cw, NULL, FFCONF_CLOSE, FFCONF_TOBJ);
-	f->curdir = d;
-	ffconf_write(&f->cw, "d", FFCONF_STRZ, FFCONF_TKEY);
-	ffconf_write(&f->cw, d->path, FFCONF_STRZ, FFCONF_TVAL);
-	ffconf_write(&f->cw, NULL, FFCONF_OPEN, FFCONF_TOBJ);
-	ffconf_write(&f->cw, "v", FFCONF_STRZ, FFCONF_TKEY);
-	ffconf_write(&f->cw, "0", FFCONF_STRZ, FFCONF_TVAL);
-}
-
-/** Write file info into snapshot. */
-static void fsyncss_write(struct fsyncss *f, const struct file *fl)
-{
-	ffconf_write(&f->cw, "f", FFCONF_STRZ, FFCONF_TKEY);
-	ffconf_write(&f->cw, fl->name, FFCONF_STRZ, FFCONF_TVAL);
-	ffconf_writeint(&f->cw, fl->size, FFINT_HEXLOW, FFCONF_TVAL);
-	ffconf_writeint(&f->cw, fl->attr, FFINT_HEXLOW, FFCONF_TVAL);
-	ffconf_writeint(&f->cw, 0, FFINT_HEXLOW, FFCONF_TVAL);
-	ffconf_writeint(&f->cw, 0, FFINT_HEXLOW, FFCONF_TVAL);
-	ffconf_writeint(&f->cw, fl->mtime.sec, FFINT_HEXLOW, FFCONF_TVAL);
-	ffconf_write(&f->cw, "0", FFCONF_STRZ, FFCONF_TVAL);
-}
-
-/* ver.0 format:
-# fcom file tree snapshot
-d "/d" {
-v 0 // version
-// name size attr uid gid mtime crc
-f "1" 0 0 0 0 0 0
-}
-d "/d/1" {
-v 0
-f "2" 0 0 0 0 0 0
-}
-*/
 static int fsyncss_process(void *p, fcom_cmd *cmd)
 {
 	struct fsyncss *f = p;
@@ -944,7 +944,7 @@ static int fsyncss_process(void *p, fcom_cmd *cmd)
 
 		com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(cmd));
 
-		if (NULL == (f->tree = scan_tree(fn)))
+		if (NULL == (f->tree = scan_tree(fn, 0)))
 			return FCOM_ERR;
 
 		cur_init(&f->cur, f->tree);
@@ -962,10 +962,11 @@ static int fsyncss_process(void *p, fcom_cmd *cmd)
 
 			if (fl->parent != f->curdir) {
 				// got a file from another directory
-				fsyncss_writedir(f, fl->parent, (f->curdir != NULL));
+				snapshot_writedir(&f->cw, fl->parent, (f->curdir != NULL));
+				f->curdir = fl->parent;
 			}
 
-			fsyncss_write(f, fl);
+			snapshot_writefile(&f->cw, fl);
 
 			ffstr s;
 			ffconf_output(&f->cw, &s);

@@ -5,7 +5,7 @@ OPERATION
  copy SOURCE -o TARGET [--resume]
  touch FILE... [--date=DATE] [--date-as=FILE]
  rename FILE... --replace='SEARCH/REPLACE'
- sync FILE -o FILE
+ sync (DIR | FILE.txt) -o DIR
  sync-snapshot FILE -o FILE.txt
  textcount FILE...
  crc FILE...
