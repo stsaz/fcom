@@ -20,6 +20,7 @@ FEATURES
 	* fcom textcount
 	* fcom crc
 	* fcom rename
+	* fcom sync
 	* fcom sync-snapshot
 	* fcom peinfo
 * Archives
@@ -75,6 +76,10 @@ Compute CRC32 checksum:
 Rename all files within the current directory - replace 'old' with 'new':
 
 	fcom rename * --replace='old/new'
+
+#### fcom sync - show the difference of 2 file trees
+
+	fcom sync DIR -o DIR
 
 #### fcom sync-snapshot - save directory tree to a file
 
@@ -189,7 +194,7 @@ INSTALL
 
 1. Create a directory for all needed sources:
 
-		mkdir firmdev && cd firmdev
+		mkdir fcom-src && cd fcom-src
 
 2. Download all needed source repositories:
 

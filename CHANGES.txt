@@ -8,7 +8,16 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
-fcom v0.9 - Mar 16, 2018
+fcom v0.10 - June 8, 2019
+
+ + pic-convert: --crop=[INT]:[INT] - Crop image to width:height pixels
+ + gsync: support '*' wildcards for src/dst directories
+ + gsync: "Load Snapshot" command
+ + gsync: File Tree Explorer
+ + gz: parallel file compression
+
+
+fcom v0.9 - Mar 16, 2019
 
  + fcom peinfo - Show PE format information
  + gsync: "Swap Source & Target"

@@ -2,7 +2,7 @@
 
 
 menu mcmd {
-	item "Compare" {
+	item "Scan && Compare" {
 		hotkey "F5"
 		action A_CMP
 	}
@@ -47,7 +47,7 @@ menu mfile {
 		action A_OPENDIR
 	}
 	item "Copy File To Clipboard (Source)" {
-		hotkey "Ctrl+C"
+		hotkey "Ctrl+Shift+C"
 		action A_CLIPCOPY
 	}
 	item "Copy Filename To Clipboard (Source)" {

@@ -271,7 +271,7 @@ static int arg_flist(ffparser_schem *p, void *obj, const char *fn)
 
 	dbglog(0, "opening file %s", fn);
 
-	if (FF_BADFD == (f = fffile_open(fn, O_RDONLY | O_NOATIME)))
+	if (FF_BADFD == (f = fffile_open(fn, FFO_RDONLY | FFO_NOATIME)))
 		goto done;
 	if (NULL == ffarr_alloc(&buf, fffile_size(f)))
 		goto done;
@@ -352,7 +352,7 @@ static int arg_help(ffparser_schem *p, void *obj)
 	if (NULL == (fn = core->getpath(FFSTR(CMDHELP_FN))))
 		goto done;
 
-	if (FF_BADFD == (f = fffile_open(fn, O_RDONLY | O_NOATIME)))
+	if (FF_BADFD == (f = fffile_open(fn, FFO_RDONLY | FFO_NOATIME)))
 		goto done;
 
 	if (NULL == ffarr_alloc(&buf, 64 + fffile_size(f)))

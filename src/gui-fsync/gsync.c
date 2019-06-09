@@ -776,6 +776,8 @@ static void gsync_fnop(uint id)
 
 	case A_CLIPFN:
 	case A_CLIPFN_RIGHT:
+		if (buf.len != 0)
+			buf.len -= FFSLEN("\n");
 		ffui_clipbd_set(buf.ptr, buf.len);
 		break;
 	}

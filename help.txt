@@ -2,7 +2,7 @@ fcom OPERATION [OPTIONS] ...
 
 OPERATION
 
- copy SOURCE -o TARGET [--resume]
+ copy FILE -o FILE [--resume]
  touch FILE... [--date=DATE] [--date-as=FILE]
  rename FILE... --replace='SEARCH/REPLACE'
  sync (DIR | FILE.txt) -o DIR
@@ -74,3 +74,9 @@ MISC
  --debug, -D        Print debug log messages to stdout
  --benchmark        Show the time spent for command execution
  --help             Show help
+
+Notes:
+ FILE: a file or a directory
+ DIR: a directory
+ INT: integer number
+ WILDCARD: a string with support for wildcards (* or ?)

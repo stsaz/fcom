@@ -253,8 +253,8 @@ static void fsync_close(void *p, fcom_cmd *cmd)
 {
 	fsync_ctx *c = p;
 
-	FF_SAFECLOSE(c->src, NULL, tree_free);
-	FF_SAFECLOSE(c->dst, NULL, tree_free);
+	tree_free(c->src);
+	tree_free(c->dst);
 
 	ffarr_free(&c->fn);
 	ffmem_free(c);
@@ -1007,7 +1007,7 @@ static void* fsyncss_open(fcom_cmd *cmd)
 static void fsyncss_close(void *p, fcom_cmd *cmd)
 {
 	struct fsyncss *f = p;
-	FF_SAFECLOSE(f->tree, NULL, tree_free);
+	tree_free(f->tree);
 	ffconf_wdestroy(&f->cw);
 	ffmem_free(f);
 }
