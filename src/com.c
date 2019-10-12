@@ -240,6 +240,22 @@ static int filt_call(comm *c, filter *f)
 	return r;
 }
 
+/** Return TRUE if:
+ . if it's the first filter
+ . if all previous filters are marked as "done" */
+static int filt_isfirst(comm *c, fflist_item *item)
+{
+	for (fflist_item *it = item->prev;  ;  it = it->prev) {
+		if (it == ffchain_sentl(&c->chain))
+			return 1;
+
+		filter *f = FF_GETPTR(filter, sib, it);
+		if (!f->done)
+			return 0;
+	}
+	return 0;
+}
+
 /** Call filters within the chain. */
 static int com_run(void *p)
 {
@@ -253,7 +269,7 @@ static int com_run(void *p)
 		f = FF_GETPTR(filter, sib, c->cur);
 
 		c->cmd.flags &= ~(FCOM_CMD_FIRST | FCOM_CMD_LAST);
-		if (c->cur->prev == ffchain_sentl(&c->chain))
+		if (filt_isfirst(c, c->cur))
 			c->cmd.flags |= FCOM_CMD_FIRST;
 		if (c->cur->next == ffchain_sentl(&c->chain))
 			c->cmd.flags |= FCOM_CMD_LAST;

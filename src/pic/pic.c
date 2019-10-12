@@ -259,45 +259,6 @@ static void path_split3(const char *fullname, size_t len, ffstr *path, ffstr *na
 	ffs_split2(name->ptr, name->len, dot, name, ext);
 }
 
-/** Get next input file, excluding directories.
-Return NULL if no more files. */
-static const char* next_file(fcom_cmd *cmd)
-{
-	const char *fn;
-	fffileinfo fi;
-	for (;;) {
-
-		if (NULL == (fn = com->arg_next(cmd, 0)))
-			return NULL;
-
-		if (0 == fffile_infofn(fn, &fi) && fffile_isdir(fffile_infoattr(&fi)))
-			continue;
-
-		return fn;
-	}
-}
-
-/** Make filename:  ([out_dir/] | [in_dir/]) in_name .out_ext */
-static int fn_make(ffarr *fn, ffstr *idir, const ffstr *iname, ffstr *odir, const ffstr *oext)
-{
-	fn->len = 0;
-	if (odir->len != 0) {
-		if (NULL == ffarr_append(fn, odir->ptr, odir->len + 1))
-			return FCOM_SYSERR;
-	} else if (idir->len != 0) {
-		idir->len++;
-		uint f = 0;
-		if (NULL == ffarr_grow(fn, idir->len, 0))
-			return FCOM_SYSERR;
-		fn->len += ffpath_norm(ffarr_end(fn), ffarr_unused(fn), idir->ptr, idir->len, f | FFPATH_MERGEDOTS);
-	}
-
-	if (0 == ffstr_catfmt(fn, "%S.%S%Z", iname, oext))
-		return FCOM_SYSERR;
-
-	return 0;
-}
-
 static void picconv_task_done(fcom_cmd *cmd, uint sig);
 static const struct fcom_cmd_mon picconv_mon_iface = { &picconv_task_done };
 
@@ -358,7 +319,7 @@ static int piconv_process1(struct piconv *c, fcom_cmd *cmd, const char *ifn)
 
 	ofn = cmd->output.fn;
 	if (oname.len == 0) {
-		if (0 != fn_make(&c->fn, &idir, &iname, &odir, &oext)) {
+		if (0 != ffpath_makefn_out(&c->fn, &idir, &iname, &odir, &oext)) {
 			r = FCOM_SYSERR;
 			goto err;
 		}
@@ -399,7 +360,7 @@ static int piconv_process(void *p, fcom_cmd *cmd)
 
 	for (;;) {
 
-		if (NULL == (ifn = next_file(cmd))) {
+		if (NULL == (ifn = com->arg_next(cmd, FCOM_CMD_ARG_FILE))) {
 			if (0 != ffatom_get(&c->nsubtasks))
 				return FCOM_ASYNC;
 			return FCOM_DONE;

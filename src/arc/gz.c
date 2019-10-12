@@ -343,7 +343,7 @@ static int ungz1_process(void *p, fcom_cmd *cmd)
 	for (;;) {
 
 	r = ffgz_read(&g->gz, ffarr_end(&g->buf), ffarr_unused(&g->buf));
-	switch (r) {
+	switch ((enum FFGZ_R)r) {
 
 	case FFGZ_INFO: {
 		uint mtime;
@@ -397,6 +397,9 @@ static int ungz1_process(void *p, fcom_cmd *cmd)
 		cmd->in_seek = 1;
 		return FCOM_MORE;
 
+	case FFGZ_WARN:
+		fcom_warnlog(FILT_NAME, "%s  offset:0x%xU", ffgz_errstr(&g->gz), cmd->input.offset);
+		continue;
 	case FFGZ_ERR:
 		fcom_errlog(FILT_NAME, "%s  offset:0x%xU", ffgz_errstr(&g->gz), cmd->input.offset);
 		return FCOM_ERR;

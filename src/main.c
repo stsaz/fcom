@@ -379,7 +379,7 @@ static int arg_date(ffparser_schem *p, void *obj, const ffstr *val)
 {
 	struct cmdconf *c = obj;
 	ffdtm dt;
-	if (0 == fftime_fromstr(&dt, val->ptr, val->len, FFTIME_YMD))
+	if (val->len != fftime_fromstr(&dt, val->ptr, val->len, FFTIME_YMD))
 		return FFPARS_EBADVAL;
 	fftime_join(&c->mtime, &dt, FFTIME_TZLOCAL);
 	return 0;

@@ -28,8 +28,6 @@ static const fcom_mod f_mod = {
 	.sig = &f_sig, .iface = &f_iface, .conf = &f_conf,
 };
 
-static const char* next_file(fcom_cmd *cmd);
-
 // QUICK FILE OPS
 extern int fffile_makepath(char *fn, size_t off);
 static int fop_mkdir(const char *fn, uint flags);
@@ -149,25 +147,6 @@ static int f_sig(uint signo)
 		break;
 	}
 	return 0;
-}
-
-
-/** Get next input file, excluding directories.
-Return NULL if no more files. */
-static const char* next_file(fcom_cmd *cmd)
-{
-	const char *fn;
-	fffileinfo fi;
-	for (;;) {
-
-		if (NULL == (fn = com->arg_next(cmd, 0)))
-			return NULL;
-
-		if (0 == fffile_infofn(fn, &fi) && fffile_isdir(fffile_infoattr(&fi)))
-			continue;
-
-		return fn;
-	}
 }
 
 
@@ -452,7 +431,7 @@ static int f_crc_process(void *p, fcom_cmd *cmd)
 
 	switch (c->state) {
 	case I_NEXTFILE:
-		if (NULL == (cmd->input.fn = next_file(cmd)))
+		if (NULL == (cmd->input.fn = com->arg_next(cmd, FCOM_CMD_ARG_FILE)))
 			return FCOM_DONE;
 		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
 		c->state = I_DATA;
@@ -511,7 +490,7 @@ static int f_pe_process(void *_p, fcom_cmd *cmd)
 again:
 	switch (p->state) {
 	case I_NEXTFILE:
-		if (NULL == (cmd->input.fn = next_file(cmd)))
+		if (NULL == (cmd->input.fn = com->arg_next(cmd, FCOM_CMD_ARG_FILE)))
 			return FCOM_FIN;
 		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
 		p->state = I_DATA;
