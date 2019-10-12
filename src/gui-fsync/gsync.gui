@@ -53,6 +53,9 @@ menu mfile {
 	item "Copy Filename To Clipboard (Source)" {
 		action A_CLIPFN
 	}
+	item "Show File in Explorer (Target)" {
+		action A_OPENDIR_RIGHT
+	}
 	item "Copy Filename To Clipboard (Target)" {
 		action A_CLIPFN_RIGHT
 	}

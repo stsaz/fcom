@@ -24,11 +24,15 @@ struct opts {
 	char *fn;
 	char *srcfn;
 	char *dstfn;
+	ffstr filter_name;
 	ffstr filter;
 	uint showmask; //enum FSYNC_ST
 	uint show_modmask; //enum FSYNC_ST flags for FSYNC_ST_NEQ
 	byte show_dirs;
+	byte show_dirs_only;
+	byte time_diff;
 	byte time_diff_sec;
+	byte show_done;
 };
 
 enum VOPTS_COLUMNS {
@@ -99,6 +103,7 @@ enum CMDS {
 	A_FILTER,
 	A_ONCHECK,
 	A_OPENDIR,
+	A_OPENDIR_RIGHT,
 	A_CLIPCOPY,
 	A_CLIPFN,
 	A_CLIPFN_RIGHT,

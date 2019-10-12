@@ -11,8 +11,10 @@ Copyright (c) 2019 Simon Zolin
 static const ffpars_arg opts_args[] = {
 	{ "Source path",	FFPARS_TCHARPTR | FFPARS_FRECOPY | FFPARS_FSTRZ, OFF(srcfn) },
 	{ "Target path",	FFPARS_TCHARPTR | FFPARS_FRECOPY | FFPARS_FSTRZ, OFF(dstfn) },
+	{ "Compare: Time Diff",	FFPARS_TINT8, OFF(time_diff) },
 	{ "Compare: Time Diff in Seconds",	FFPARS_TINT8, OFF(time_diff_sec) },
 
+	{ "Filter Name",	FFPARS_TSTR | FFPARS_FRECOPY, OFF(filter_name) },
 	{ "Filter",	FFPARS_TSTR | FFPARS_FRECOPY, OFF(filter) },
 	{ "Show Equal",	FFPARS_TINT | FFPARS_SETBIT(FSYNC_ST_EQ), OFF(showmask) },
 	{ "Show Modified",	FFPARS_TINT | FFPARS_SETBIT(FSYNC_ST_NEQ), OFF(showmask) },
@@ -23,6 +25,8 @@ static const ffpars_arg opts_args[] = {
 	{ "Show Deleted",	FFPARS_TINT | FFPARS_SETBIT(FSYNC_ST_DEST), OFF(showmask) },
 	{ "Show Moved",	FFPARS_TINT | FFPARS_SETBIT(FSYNC_ST_MOVED), OFF(showmask) },
 	{ "Show Directories",	FFPARS_TINT8, OFF(show_dirs) },
+	{ "Show Only Directories",	FFPARS_TINT8, OFF(show_dirs_only) },
+	{ "Show \"Done\"",	FFPARS_TINT8, OFF(show_done) },
 };
 #undef OFF
 
@@ -40,6 +44,7 @@ void opts_destroy(struct opts *o)
 {
 	ffmem_safefree0(o->srcfn);
 	ffmem_safefree0(o->dstfn);
+	ffstr_free(&o->filter_name);
 	ffstr_free(&o->filter);
 }
 
@@ -157,7 +162,7 @@ int opts_set(struct opts *c, ffui_view *v, uint sub)
 		r = ffpath_norm(gg->opts.dstfn, ffsz_len(gg->opts.dstfn), gg->opts.dstfn, ffsz_len(gg->opts.dstfn), FFPATH_MERGESLASH | FFPATH_MERGEDOTS | FFPATH_FORCESLASH);
 		gg->opts.dstfn[r] = '\0';
 
-	} else if (!ffsz_cmp(opts_args[i].name, "Filter")
+	} else if (ffsz_matchz(opts_args[i].name, "Filter")
 		|| ffsz_match(opts_args[i].name, "Show ", 5))
 		ret = 1;
 

@@ -49,8 +49,8 @@ static void* cmp_init(fsync_dir *left, fsync_dir *right, uint flags);
 static int cmp_trees(struct fsync_ctx *c, struct fsync_cmp *cmp);
 static void cmp_show(struct fsync_ctx *c, struct fsync_cmp *cmp);
 static int mv_index(struct fsync_ctx *c);
-static struct file* mv_find(struct mv *mv, struct file *f);
-static void mv_add(struct mv *mv, struct file *f);
+static struct file* mv_find(struct mv *mv, struct file *f, uint flags);
+static void mv_add(struct mv *mv, struct file *f, uint flags);
 static void tree_free(struct dir *d);
 static void* getprop(uint cmd, ...);
 #define isdir(a) !!((a) & FFUNIX_FILE_DIR)
@@ -151,7 +151,7 @@ typedef struct fsync_ctx {
 	ffarr fn;
 	struct cursor curL, curR;
 	struct mv mvL, mvR;
-	uint flags;
+	uint flags; // enum FSYNC_CMP
 } fsync_ctx;
 
 static void* fsync_open(fcom_cmd *cmd)
@@ -686,10 +686,11 @@ static int cmp_file(const struct file *f1, const struct file *f2, uint flags)
 	}
 
 	r = 0;
-	if ((flags & FSYNC_CMP_MTIME_SEC) == FSYNC_CMP_MTIME_SEC)
-		r = ffint_cmp(f1->mtime.sec, f2->mtime.sec);
-	else if (flags & FSYNC_CMP_MTIME) {
-		r = fftime_cmp(&f1->mtime, &f2->mtime);
+	if (flags & FSYNC_CMP_MTIME) {
+		if (flags & FSYNC_CMP_MTIME_SEC)
+			r = ffint_cmp(f1->mtime.sec, f2->mtime.sec);
+		else
+			r = fftime_cmp(&f1->mtime, &f2->mtime);
 	}
 	if (r != 0)
 		m |= (r < 0) ? FSYNC_ST_OLDER : FSYNC_ST_NEWER;
@@ -774,11 +775,11 @@ static int cmp_trees(fsync_ctx *c, struct fsync_cmp *cmp)
 
 	if (rcmp < 0) {
 		st = st2 = FSYNC_ST_SRC;
-		if (NULL != (r = mv_find(&c->mvR, l)))
+		if (NULL != (r = mv_find(&c->mvR, l, c->flags)))
 			st2 = FSYNC_ST_MOVED;
 	} else if (rcmp > 0) {
 		st = st2 = FSYNC_ST_DEST;
-		if (NULL != (l = mv_find(&c->mvL, r)))
+		if (NULL != (l = mv_find(&c->mvL, r, c->flags)))
 			st2 = FSYNC_ST_MOVED | FSYNC_ST_MOVED_DST;
 	} else
 		st = st2 = cmp_file(l, r, c->flags);
@@ -890,10 +891,10 @@ static int mv_index1(fsync_ctx *c)
 
 	if (rcmp < 0) {
 		st = FSYNC_ST_SRC;
-		mv_add(&c->mvL, l);
+		mv_add(&c->mvL, l, c->flags);
 	} else if (rcmp > 0) {
 		st = FSYNC_ST_DEST;
-		mv_add(&c->mvR, r);
+		mv_add(&c->mvR, r, c->flags);
 	}
 
 	if (st != FSYNC_ST_DEST) {
@@ -923,10 +924,15 @@ static ffrbtkey mv_namehash(struct file *f)
 }
 
 /** Get properties hash. */
-static ffrbtkey mv_hash(struct file *f)
+static ffrbtkey mv_hash(struct file *f, uint flags)
 {
 	uint k = crc32(&f->size, sizeof(f->size), 0);
-	k = crc32(&f->mtime, sizeof(f->mtime), k);
+	if (flags & FSYNC_CMP_MTIME) {
+		if (flags & FSYNC_CMP_MTIME_SEC)
+			k = crc32(&f->mtime.sec, sizeof(f->mtime.sec), k);
+		else
+			k = crc32(&f->mtime, sizeof(f->mtime), k);
+	}
 	return k;
 }
 
@@ -934,12 +940,11 @@ static ffrbtkey mv_hash(struct file *f)
 . Find candidate entries with the same properties and, possibly, names.
 . If names match, this is a moved file.
 . If names don't match, this is a renamed or moved file. */
-static struct file* mv_find(struct mv *mv, struct file *f)
+static struct file* mv_find(struct mv *mv, struct file *f, uint flags)
 {
 	ffrbtl_node *nod_name, *nod;
-	uint flags = FSYNC_CMP_SIZE | FSYNC_CMP_MTIME;
 
-	if (NULL == (nod = (void*)ffrbt_find(&mv->props_index, mv_hash(f), NULL)))
+	if (NULL == (nod = (void*)ffrbt_find(&mv->props_index, mv_hash(f, flags), NULL)))
 		return NULL;
 	nod_name = (void*)ffrbt_find(&mv->names_index, mv_namehash(f), NULL);
 
@@ -948,7 +953,7 @@ static struct file* mv_find(struct mv *mv, struct file *f)
 		FFRBTL_FOR_SIB(nod, it) {
 
 			struct file *nf = FF_GETPTR(struct file, nod_props, it);
-			if (!(!nf->moved && FSYNC_ST_EQ == cmp_file(f, nf, flags)))
+			if (nf->moved || FSYNC_ST_EQ != cmp_file(f, nf, flags))
 				continue;
 
 			ffrbtl_node *it_name;
@@ -965,20 +970,20 @@ static struct file* mv_find(struct mv *mv, struct file *f)
 	ffrbtl_node *it;
 	FFRBTL_FOR_SIB(nod, it) {
 		struct file *nf = FF_GETPTR(struct file, nod_props, it);
-		if (!nf->moved && FSYNC_ST_EQ == cmp_file(f, nf, flags)) {
-			nf->moved = 1;
-			return nf;
-		}
+		if (nf->moved || FSYNC_ST_EQ != cmp_file(f, nf, flags))
+			continue;
+		nf->moved = 1;
+		return nf;
 	}
 
 	return NULL;
 }
 
 /** Add file to table. */
-static void mv_add(struct mv *mv, struct file *f)
+static void mv_add(struct mv *mv, struct file *f, uint flags)
 {
 	ffrbtl_insert_withhash(&mv->names_index, &f->nod_name, mv_namehash(f));
-	ffrbtl_insert_withhash(&mv->props_index, &f->nod_props, mv_hash(f));
+	ffrbtl_insert_withhash(&mv->props_index, &f->nod_props, mv_hash(f, flags));
 }
 
 #undef FILT_NAME

@@ -91,6 +91,7 @@ static const char* const cmds[] = {
 	"A_FILTER",
 	"A_ONCHECK",
 	"A_OPENDIR",
+	"A_OPENDIR_RIGHT",
 	"A_CLIPCOPY",
 	"A_CLIPFN",
 	"A_CLIPFN_RIGHT",
@@ -252,6 +253,7 @@ static void wsync_action(ffui_wnd *wnd, int id)
 		break;
 
 	case A_OPENDIR:
+	case A_OPENDIR_RIGHT:
 	case A_CLIPCOPY:
 	case A_CLIPFN:
 	case A_CLIPFN_RIGHT:
@@ -362,8 +364,8 @@ static void gsync_scancmp(void *udata)
 	gsync_status("Comparing...");
 	struct fsync_cmp cmp, *c;
 	uint f = FSYNC_CMP_DEFAULT;
-	if (gg->opts.time_diff_sec)
-		f |= FSYNC_CMP_MTIME_SEC;
+	ffint_bitmask(&f, FSYNC_CMP_MTIME, gg->opts.time_diff);
+	ffint_bitmask(&f, FSYNC_CMP_MTIME_SEC, gg->opts.time_diff_sec);
 	cmpctx = fsync->cmp_init(gg->src, gg->dst, f);
 	for (;;) {
 		if (0 != fsync->cmp_trees(cmpctx, &cmp))
@@ -471,6 +473,10 @@ static ffbool cmpent_visible(const struct fsync_cmp *c)
 
 	if (!(ffbit_test32(&gg->opts.showmask, st)))
 		return 0;
+
+	if (!gg->opts.show_done && (c->status & FSYNC_ST_DONE))
+		return 0;
+
 	if (st == FSYNC_ST_NEQ) {
 		uint v = gg->opts.show_modmask;
 		uint m = 0;
@@ -487,6 +493,16 @@ static ffbool cmpent_visible(const struct fsync_cmp *c)
 			return 0;
 	}
 
+	if (!gg->opts.show_dirs
+		&& ((e1 != NULL && isdir(e1->attr))
+			|| (e2 != NULL && isdir(e2->attr))))
+		return 0;
+
+	if (gg->opts.show_dirs_only
+		&& !((e1 != NULL && isdir(e1->attr))
+			|| (e2 != NULL && isdir(e2->attr))))
+		return 0;
+
 	if (gg->filter_dirname != NULL) {
 		if (st == FSYNC_ST_DEST)
 			return 0;
@@ -495,14 +511,35 @@ static ffbool cmpent_visible(const struct fsync_cmp *c)
 			return 0;
 	}
 
-	if (gg->opts.filter.len != 0) {
+	if (gg->opts.filter_name.len != 0) {
 		ffstr n1 = {}, n2 = {};
 		if (st != FSYNC_ST_DEST)
 			ffstr_setz(&n1, e1->name);
 		if (st != FSYNC_ST_SRC)
 			ffstr_setz(&n2, e2->name);
+		if (-1 == ffstr_ifindstr(&n1, &gg->opts.filter_name)
+			&& -1 == ffstr_ifindstr(&n2, &gg->opts.filter_name))
+			return 0;
+	}
+
+	if (gg->opts.filter.len != 0) {
+		ffstr n1 = {}, n2 = {};
+		char *fullname;
+		if (st != FSYNC_ST_DEST) {
+			fullname = fsync->get(FSYNC_FULLNAME, e1);
+			ffstr_setz(&n1, fullname);
+		}
+		if (st != FSYNC_ST_SRC) {
+			fullname = fsync->get(FSYNC_FULLNAME, e2);
+			ffstr_setz(&n2, fullname);
+		}
+		ffbool skip = 0;
 		if (-1 == ffstr_ifindstr(&n1, &gg->opts.filter)
 			&& -1 == ffstr_ifindstr(&n2, &gg->opts.filter))
+			skip = 1;
+		ffmem_free(n1.ptr);
+		ffmem_free(n2.ptr);
+		if (skip)
 			return 0;
 	}
 
@@ -718,6 +755,7 @@ static void gsync_fnop(uint id)
 	ffarr buf = {0}, b2 = {0};
 	char *fullname = NULL;
 	void *obj;
+	ffbool arr = 0;
 
 	for (;;) {
 		if (-1 == (i = ffui_view_selnext(&gg->wsync.vlist, i)))
@@ -730,6 +768,7 @@ static void gsync_fnop(uint id)
 		case A_CLIPCOPY:
 			obj = c->left;
 			break;
+		case A_OPENDIR_RIGHT:
 		case A_CLIPFN_RIGHT:
 			obj = c->right;
 			break;
@@ -748,6 +787,7 @@ static void gsync_fnop(uint id)
 			break;
 
 		case A_OPENDIR:
+		case A_OPENDIR_RIGHT:
 		case A_CLIPCOPY: {
 			char **s;
 			if (NULL == (s = ffarr_pushgrowT(&buf, 16, char*)))
@@ -767,11 +807,14 @@ static void gsync_fnop(uint id)
 	switch (id) {
 
 	case A_OPENDIR:
+	case A_OPENDIR_RIGHT:
 		ffui_openfolder((const char**)buf.ptr, buf.len);
+		arr = 1;
 		break;
 
 	case A_CLIPCOPY:
 		ffui_clipbd_setfile((const char**)buf.ptr, buf.len);
+		arr = 1;
 		break;
 
 	case A_CLIPFN:
@@ -783,7 +826,7 @@ static void gsync_fnop(uint id)
 	}
 
 end:
-	if (id == A_OPENDIR || id == A_CLIPCOPY) {
+	if (arr) {
 		char **s;
 		FFARR_WALKT(&buf, s, char*) {
 			ffmem_free(*s);
