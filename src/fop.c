@@ -95,12 +95,14 @@ extern const fcom_filter wregfind_filt;
 static const fcom_filter wregfind_filt;
 #endif
 extern const fcom_filter txcnt_filt;
+extern const fcom_filter utf8_filt;
 
 static const struct oper cmds[] = {
 	{ "copy", "file.copy", &f_copy_filt },
 	{ "touch", "file.touch", &f_touch_filt },
 	{ "rename", "file.rename", &f_rename_filt },
 	{ "textcount", "file.textcount", &txcnt_filt },
+	{ "utf8", "file.utf8", &utf8_filt },
 	{ "crc", "file.crc", &f_crc_filt },
 #ifdef FF_WIN
 	{ "wregfind", "file.wregfind", &wregfind_filt },

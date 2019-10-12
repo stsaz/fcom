@@ -17,12 +17,14 @@ FEATURES
 
 * Files
 	* fcom touch
-	* fcom textcount
 	* fcom crc
 	* fcom rename
 	* fcom sync
 	* fcom sync-snapshot
 	* fcom peinfo
+* Text files
+	* fcom textcount
+	* fcom utf8
 * Archives
 	* fcom gz
 	* fcom ungz
@@ -59,12 +61,6 @@ Set the specified date on a new/existing file:
 	fcom touch ./myfile --date="2011-01-01 00:00:00"
 	fcom touch ./myfile2 --date-as=./myfile
 
-#### fcom textcount - show information about text files
-
-Count lines in all files in directory:
-
-	fcom textcount ./mydir -R
-
 #### fcom crc - compute file checksums
 
 Compute CRC32 checksum:
@@ -92,6 +88,23 @@ Scan the current directory and save the snapshot to a file:
 Show PE header, data directories, sections info:
 
 	fcom peinfo file.exe
+
+
+### Text files
+
+#### fcom textcount - show information about text files
+
+Count lines in all files in directory:
+
+	fcom textcount ./mydir -R
+
+
+#### fcom utf8 - convert text files to UTF-8
+
+Convert files to UTF-8, create new files in "new/" directory (file tree is preserved):
+
+	fcom utf8 -R text/ -o new/.txt
+
 
 ### Archives
 
