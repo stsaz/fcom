@@ -313,6 +313,7 @@ enum FCOM_CMD_CTL {
 
 enum FCOM_CMD_ARG {
 	FCOM_CMD_ARG_PEEK = 1, // get next argument, but don't increment cursor
+	FCOM_CMD_ARG_FILE = 2, // get next input file, excluding directories
 };
 
 /** Execute commands. */

@@ -455,6 +455,7 @@ static char* com_arg_next(fcom_cmd *_c, uint flags)
 {
 	comm *c = FF_GETPTR(comm, cmd, _c);
 	struct in_ent *e;
+	fffileinfo fi;
 
 	for (;;) {
 		if (c->in_next == ffchain_sentl(&c->in_list))
@@ -463,7 +464,6 @@ static char* com_arg_next(fcom_cmd *_c, uint flags)
 		e = FF_GETPTR(struct in_ent, sib, c->in_next);
 
 		if (c->cmd.recurse) {
-			fffileinfo fi;
 			if (0 == fffile_infofn(e->fn, &fi)
 				&& fffile_isdir(fffile_infoattr(&fi))) {
 				dir_scan(c, e->fn);
@@ -475,6 +475,14 @@ static char* com_arg_next(fcom_cmd *_c, uint flags)
 				}
 			}
 		}
+
+		if ((flags & FCOM_CMD_ARG_FILE)
+			&& 0 == fffile_infofn(e->fn, &fi)
+			&& fffile_isdir(fffile_infoattr(&fi))) {
+			c->in_next = e->sib.next;
+			continue;
+		}
+
 		break;
 	}
 
