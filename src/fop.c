@@ -401,6 +401,9 @@ static int f_rename_process(void *p, fcom_cmd *cmd)
 
 		ffstr_setz(&sfn, fn);
 
+		if (-1 == ffstr_find(&sfn, cmd->search.ptr, cmd->search.len))
+			continue;
+
 		size_t n = sfn.len - cmd->search.len + cmd->replace.len;
 		if (NULL == ffarr_realloc(&newfn, n + 1)) {
 			r = FCOM_SYSERR;
