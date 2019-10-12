@@ -383,7 +383,7 @@ static void f_rename_close(void *p, fcom_cmd *cmd)
 /** For each input filename replace text within. */
 static int f_rename_process(void *p, fcom_cmd *cmd)
 {
-	if (cmd->search.len == 0 || cmd->replace.len == 0) {
+	if (cmd->search.len == 0) {
 		errlog("Use --replace argument to specify search and replace text", 0);
 		return FCOM_ERR;
 	}
