@@ -134,7 +134,7 @@ static int zip_process(void *p, fcom_cmd *cmd)
 		return FCOM_DATA;
 
 	case FFZIP_FILEDONE:
-		fcom_infolog(FILT_NAME, "%s: %U => %U (%u%%)"
+		fcom_verblog(FILT_NAME, "%s: %U => %U (%u%%)"
 			, cmd->input.fn, z->zip.file_insize, z->zip.file_outsize
 			, (uint)FFINT_DIVSAFE(z->zip.file_outsize * 100, z->zip.file_insize));
 		z->state = W_EOF;
@@ -164,6 +164,7 @@ typedef struct unzip {
 	ffarr buf;
 	ffarr fn;
 	ffzip_file *curfile;
+	uint member_wildcard :1;
 } unzip;
 
 static void* unzip_open(fcom_cmd *cmd)
@@ -178,6 +179,15 @@ static void* unzip_open(fcom_cmd *cmd)
 
 	if (NULL == ffarr_alloc(&z->fn, 4096))
 		goto err;
+
+	const char **pm;
+	FFARR2_WALK(&cmd->members, pm) {
+		size_t n = ffsz_len(*pm);
+		if (*pm + n != ffs_findof(*pm, n, "*?", 2)) {
+			z->member_wildcard = 1;
+			break;
+		}
+	}
 
 	return z;
 
@@ -237,7 +247,21 @@ again:
 				return FCOM_MORE;
 			}
 
-			if (cmd->members.len != 0
+			if (z->member_wildcard) {
+				const char **pm;
+				ffstr fn;
+				ffstr_setz(&fn, f->fn);
+				ffbool match = 0;
+				FFARR2_WALK(&cmd->members, pm) {
+					if (!ffs_wildcard(*pm, ffsz_len(*pm), fn.ptr, fn.len, 0)) {
+						match = 1;
+						break;
+					}
+				}
+				if (!match)
+					continue;
+
+			} else if (cmd->members.len != 0
 				&& 0 > ffs_findarrz((void*)cmd->members.ptr, cmd->members.len, f->fn, ffsz_len(f->fn)))
 				continue;
 

@@ -25,7 +25,7 @@ Unpack archives (.gz, .xz, .tar, .zip, .7z, .iso, .ico):
  ungz FILE... [--out=FILE]
  unxz FILE... [--out=FILE]
  untar FILE... [--out=FILE] [--member=FILE]... [--show]
- unzip FILE... [--out=FILE] [--member=FILE]... [--show]
+ unzip FILE... [--out=FILE] [--member=WILDCARD]... [--show]
  un7z FILE... [--out=FILE] [--member=FILE]... [--show]
  uniso FILE... [--out=FILE] [--member=FILE]... [--show]
 
