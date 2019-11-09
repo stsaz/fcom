@@ -16,7 +16,7 @@ OPERATION
 
 Pack files (.gz, .tar, .zip, .iso):
  gz FILE... [--out=FILE]
- tar FILE... --out=FILE
+ tar FILE... --out=FILE(.tar | .tar.gz | .tgz)
  zip FILE... --out=FILE
  iso DIR --out=FILE
 
@@ -24,7 +24,7 @@ Unpack archives (.gz, .xz, .tar, .zip, .7z, .iso, .ico):
  unpack FILE... [--out=FILE] [--member=FILE]... [--show]
  ungz FILE... [--out=FILE]
  unxz FILE... [--out=FILE]
- untar FILE... [--out=FILE] [--member=FILE]... [--show]
+ untar FILE(.tar | .tar.gz | .tgz)... [--out=FILE] [--member=FILE]... [--show]
  unzip FILE... [--out=FILE] [--member=WILDCARD]... [--show]
  un7z FILE... [--out=FILE] [--member=FILE]... [--show]
  uniso FILE... [--out=FILE] [--member=FILE]... [--show]

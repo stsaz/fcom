@@ -222,7 +222,7 @@ static int gzip1_process(void *p, fcom_cmd *cmd)
 	int r;
 
 	if (cmd->flags & FCOM_CMD_FWD) {
-		if (cmd->in_last)
+		if (cmd->flags & FCOM_CMD_FIRST)
 			ffgz_wfinish(&g->gz);
 		g->gz.in = cmd->in;
 	}

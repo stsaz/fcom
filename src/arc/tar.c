@@ -36,6 +36,7 @@ static void untar_showinfo(struct untar *t, const fftar_file *f);
 typedef struct tar {
 	uint state;
 	fftar_cook tar;
+	const char *fn;
 } tar;
 
 static void* tar_open(fcom_cmd *cmd)
@@ -53,8 +54,13 @@ static void* tar_open(fcom_cmd *cmd)
 		fcom_errlog(FILT_NAME, "Output file name must be specified", 0);
 		goto end;
 	}
+	ffstr ext;
+	ffpath_split3(cmd->output.fn, ffsz_len(cmd->output.fn), NULL, NULL, &ext);
+	if (ffstr_ieqcz(&ext, "tgz") || ffstr_ieqcz(&ext, "gz"))
+		if (0 == com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, "arc.gz1"))
+			goto end;
 
-	com->ctrl(cmd, FCOM_CMD_FILTADD, FCOM_CMD_FILT_OUT(cmd));
+	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(cmd));
 	return t;
 
 end:
@@ -107,6 +113,8 @@ static int tar_process(void *p, fcom_cmd *cmd)
 			fcom_errlog(FILT_NAME, "%s", fftar_errstr(&t->tar));
 			return FCOM_ERR;
 		}
+		t->fn = cmd->input.fn;
+		cmd->input.fn = NULL; // arc.gz1 won't use input filename in .gz header
 		t->state = W_DATA;
 		//fall through
 	}
@@ -116,8 +124,9 @@ static int tar_process(void *p, fcom_cmd *cmd)
 	}
 
 	if (cmd->flags & FCOM_CMD_FWD) {
-		if (cmd->in_last)
+		if (cmd->flags & FCOM_CMD_FIRST) {
 			fftar_wfiledone(&t->tar);
+		}
 		t->tar.in = cmd->in;
 	}
 
@@ -131,7 +140,7 @@ static int tar_process(void *p, fcom_cmd *cmd)
 		return FCOM_DATA;
 
 	case FFTAR_FILEDONE:
-		fcom_verblog(FILT_NAME, "added %s: %U", cmd->input.fn, t->tar.fsize);
+		fcom_verblog(FILT_NAME, "added %s: %U", t->fn, t->tar.fsize);
 		t->state = W_EOF;
 		return FCOM_MORE;
 
