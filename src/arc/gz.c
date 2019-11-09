@@ -237,7 +237,7 @@ static int gzip1_process(void *p, fcom_cmd *cmd)
 	case FFGZ_DONE:
 		// if (g->gz.insize > (uint)-1)
 		// 	fcom_dbglog(0, FILT_NAME, "truncated input file size", 0);
-		fcom_infolog(FILT_NAME, "%U => %U (%u%%)"
+		fcom_verblog(FILT_NAME, "%U => %U (%u%%)"
 			, g->gz.insize, g->gz.outsize, (uint)FFINT_DIVSAFE(g->gz.outsize * 100, g->gz.insize));
 		return FCOM_OUTPUTDONE;
 

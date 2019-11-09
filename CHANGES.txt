@@ -8,6 +8,15 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.12 - Nov 9, 2019
+
+ + .zip read: --member=WILDCARD
+ + .tar write: support .tgz or .tar.gz
+ + .tar write: support long names
+ - .tar read: extracted incorrect symlinks
+ - .zip read: support files without compression
+
+
 fcom v0.11 - Oct 12, 2019
 
  + fcom utf8 - convert text files to UTF-8

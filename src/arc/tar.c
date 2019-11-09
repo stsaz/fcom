@@ -110,7 +110,7 @@ static int tar_process(void *p, fcom_cmd *cmd)
 		f.size = cmd->input.size;
 		f.mtime = cmd->input.mtime;
 		if (0 != fftar_newfile(&t->tar, &f)) {
-			fcom_errlog(FILT_NAME, "%s", fftar_errstr(&t->tar));
+			fcom_errlog(FILT_NAME, "%s: %s", cmd->input.fn, fftar_errstr(&t->tar));
 			return FCOM_ERR;
 		}
 		t->fn = cmd->input.fn;

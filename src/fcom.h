@@ -20,11 +20,11 @@ FSYNC
 /** THE CORE - manage modules, provide runtime helper functions. */
 
 #define FCOM_VER_MK(maj, minor) \
-	(((maj) << 10) | (minor))
+	(((maj) << 8) | (minor))
 #define FCOM_VER_MAJ  0
-#define FCOM_VER_MIN  10
+#define FCOM_VER_MIN  12
 #define FCOM_VER  FCOM_VER_MK(FCOM_VER_MAJ, FCOM_VER_MIN)
-#define FCOM_VER_STR  "0.10"
+#define FCOM_VER_STR  "0.12"
 #define FCOM_CONF_FN  "fcom.conf"
 
 enum FCOM_LOGLEV {
@@ -160,7 +160,7 @@ do { \
 		(core)->log(FCOM_LOGDBG, mod ": " fmt, __VA_ARGS__); \
 } while (0)
 
-#define fcom_verblog(mod, fmt, ...)  (core)->log(FCOM_LOGVERB, mod ": " fmt, __VA_ARGS__)
+#define fcom_verblog(mod, fmt, ...)  (core)->log(FCOM_LOGVERB, fmt, __VA_ARGS__)
 #define fcom_infolog(mod, fmt, ...)  (core)->log(FCOM_LOGINFO, mod ": " fmt, __VA_ARGS__)
 #define fcom_warnlog(mod, fmt, ...)  (core)->log(FCOM_LOGWARN, mod ": " fmt, __VA_ARGS__)
 #define fcom_errlog(mod, fmt, ...)  (core)->log(FCOM_LOGERR, mod ": " fmt, __VA_ARGS__)

@@ -225,7 +225,7 @@ again:
 
 	case R_FIRST:
 		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0)))
-			return FCOM_DONE;
+			return FCOM_FIN;
 		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
 		z->state = R_DATA1;
 		return FCOM_MORE;
