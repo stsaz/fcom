@@ -295,7 +295,7 @@ again:
 			continue;
 
 		case FFTAR_SLINK:
-			if (FCOM_DONE != (r = out_slink(cmd, "../r", cmd->output.fn)))
+			if (FCOM_DONE != (r = out_slink(cmd, f->link_to, cmd->output.fn)))
 				return r;
 			t->skipfile = 1;
 			continue;
