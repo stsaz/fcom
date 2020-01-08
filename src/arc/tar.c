@@ -2,17 +2,10 @@
 Copyright (c) 2019 Simon Zolin
 */
 
-#include <fcom.h>
+#include <arc/arc.h>
 #include <FF/pack/tar.h>
 #include <FF/path.h>
 #include <FF/time.h>
-
-
-extern const fcom_core *core;
-extern const fcom_command *com;
-extern int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf);
-extern int out_hlink(fcom_cmd *cmd, const char *target, const char *linkname);
-extern int out_slink(fcom_cmd *cmd, const char *target, const char *linkname);
 
 
 // TAR
@@ -167,6 +160,7 @@ typedef struct untar {
 	fftar tar;
 	ffarr fn;
 	uint skipfile :1;
+	uint member_wildcard :1;
 } untar;
 
 static void* untar_open(fcom_cmd *cmd)
@@ -179,6 +173,7 @@ static void* untar_open(fcom_cmd *cmd)
 		return FCOM_OPEN_SYSERR;
 	}
 
+	t->member_wildcard = arc_members_wildcard(&cmd->members);
 	return t;
 }
 
@@ -257,11 +252,11 @@ again:
 	case FFTAR_FILEHDR: {
 		f = fftar_nextfile(&t->tar);
 
-		if (cmd->members.len != 0) {
-			if (0 > ffs_findarrz((void*)cmd->members.ptr, cmd->members.len, f->name, ffsz_len(f->name))) {
-				t->skipfile = 1;
-				continue;
-			}
+		ffstr fn;
+		ffstr_setz(&fn, f->name);
+		if (!arc_need_member(&cmd->members, t->member_wildcard, &fn)) {
+			t->skipfile = 1;
+			continue;
 		}
 
 		if (fcom_logchk(core->conf->loglev, FCOM_LOGVERB))

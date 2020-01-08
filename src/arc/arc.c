@@ -2,7 +2,7 @@
 Copyright (c) 2017 Simon Zolin
 */
 
-#include <fcom.h>
+#include <arc/arc.h>
 
 #include <FF/path.h>
 
@@ -172,6 +172,38 @@ int out_slink(fcom_cmd *cmd, const char *target, const char *linkname)
 	r = FCOM_DONE;
 end:
 	return r;
+}
+
+/** Check if --member items contain wildcards. */
+ffbool arc_members_wildcard(const ffarr2 *members)
+{
+	const char **pm;
+	FFARR2_WALK(members, pm) {
+		size_t n = ffsz_len(*pm);
+		if (*pm + n != ffs_findof(*pm, n, "*?", 2))
+			return 1;
+	}
+	return 0;
+}
+
+/** Check if --member item matches the file name. */
+ffbool arc_need_member(const ffarr2 *members, ffbool member_wildcard, const ffstr *fn)
+{
+	if (members->len == 0)
+		return 1;
+
+	if (member_wildcard) {
+		const char **pm;
+		FFARR2_WALK(members, pm) {
+			if (!ffs_wildcard(*pm, ffsz_len(*pm), fn->ptr, fn->len, 0))
+				return 1;
+		}
+		return 0;
+	}
+
+	if (0 > ffs_findarrz((void*)members->ptr, members->len, fn->ptr, fn->len))
+		return 0;
+	return 1;
 }
 
 

@@ -2,15 +2,10 @@
 Copyright (c) 2019 Simon Zolin
 */
 
-#include <fcom.h>
+#include <arc/arc.h>
 #include <FF/pack/zip.h>
 #include <FF/number.h>
 #include <FF/time.h>
-
-
-extern const fcom_core *core;
-extern const fcom_command *com;
-extern int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf);
 
 
 // ZIP
@@ -180,15 +175,7 @@ static void* unzip_open(fcom_cmd *cmd)
 	if (NULL == ffarr_alloc(&z->fn, 4096))
 		goto err;
 
-	const char **pm;
-	FFARR2_WALK(&cmd->members, pm) {
-		size_t n = ffsz_len(*pm);
-		if (*pm + n != ffs_findof(*pm, n, "*?", 2)) {
-			z->member_wildcard = 1;
-			break;
-		}
-	}
-
+	z->member_wildcard = arc_members_wildcard(&cmd->members);
 	return z;
 
 err:
@@ -247,22 +234,9 @@ again:
 				return FCOM_MORE;
 			}
 
-			if (z->member_wildcard) {
-				const char **pm;
-				ffstr fn;
-				ffstr_setz(&fn, f->fn);
-				ffbool match = 0;
-				FFARR2_WALK(&cmd->members, pm) {
-					if (!ffs_wildcard(*pm, ffsz_len(*pm), fn.ptr, fn.len, 0)) {
-						match = 1;
-						break;
-					}
-				}
-				if (!match)
-					continue;
-
-			} else if (cmd->members.len != 0
-				&& 0 > ffs_findarrz((void*)cmd->members.ptr, cmd->members.len, f->fn, ffsz_len(f->fn)))
+			ffstr fn;
+			ffstr_setz(&fn, f->fn);
+			if (!arc_need_member(&cmd->members, z->member_wildcard, &fn))
 				continue;
 
 			if (fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
