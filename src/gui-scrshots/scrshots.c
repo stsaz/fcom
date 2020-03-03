@@ -378,6 +378,7 @@ static void scrshot_save(void *param)
 	cmd.output.fn = a.ptr;
 	cmd.jpeg_quality = gg->opts.jpeg_quality;
 	cmd.png_comp = gg->opts.png_compression;
+	cmd.pic_colors = -1;
 	cmd.pic.width = gg->opts.max_width;
 	cmd.pic.height = gg->opts.max_height;
 	if (NULL == (c = com->create(&cmd)))
