@@ -40,6 +40,8 @@ FEATURES
 * Pictures
 	* fcom pic-convert
 	* fcom screenshots
+* Network
+	* fcom dns
 * Windows-only
 	* fcom wregfind
 	* fcom gsync
@@ -172,6 +174,19 @@ Convert files to JPEG, create new files in "new/" directory (file tree is preser
 #### fcom screenshots - show GUI to save screenshots to disk (Windows)
 
 Save screenshots of your desktop or a top-level window by pressing a global hotkey.  Supports BMP, PNG, JPEG output formats.
+
+
+### Network
+
+#### fcom dns - resolve host address
+
+Resolve IPv4 and IPv6 addresses of the hosts using default DNS server:
+
+	fcom dns example.org example.com
+
+Resolve host address using Quad9 DNS server:
+
+	fcom dns example.org --servers='9.9.9.9'
 
 
 ### Windows-only

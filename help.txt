@@ -32,6 +32,8 @@ Unpack archives (.gz, .xz, .tar, .zip, .7z, .iso, .ico):
 Convert pictures (.bmp, .jpg, .png):
  pic-convert FILE... --out=FILE [--colors=INT] [--crop=INT:INT]
 
+Network:
+ dns HOSTNAME... [--servers='DNS_SERVER_ADDR;...']
 
 OPTIONS
 
@@ -81,3 +83,4 @@ Notes:
  DIR: a directory
  INT: integer number
  WILDCARD: a string with support for wildcards (* or ?)
+ DNS_SERVER_ADDR: DNS server address: IP[:PORT]

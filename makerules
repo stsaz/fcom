@@ -1,6 +1,6 @@
 
 OBJ_DIR := .
-BINS := $(BIN) core.$(SO) file.$(SO) fsync.$(SO) arc.$(SO) pic.$(SO)
+BINS := $(BIN) core.$(SO) file.$(SO) fsync.$(SO) arc.$(SO) pic.$(SO) net.$(SO)
 
 ifeq ($(OS),win)
 RES := $(OBJ_DIR)/fcom.coff
@@ -117,6 +117,18 @@ PIC_O := $(OBJ_DIR)/pic.o \
 	$(FF_O)
 pic.$(SO): $(PIC_O)
 	$(LD) -shared $(PIC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) -ljpeg-ff -lpng-ff -o$@
+
+
+NET_O := $(OBJ_DIR)/dns.o \
+	$(FF_OBJ_DIR)/ffdns.o \
+	$(FF_OBJ_DIR)/ffdns-client.o \
+	$(FF_OBJ_DIR)/ffurl.o \
+	$(FF_OBJ_DIR)/ffproto.o \
+	$(FF_OBJ_DIR)/ffparse.o \
+	$(FF_O) \
+	$(FFOS_SKT)
+net.$(SO): $(NET_O)
+	$(LD) -shared $(NET_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) $(LD_LWS2_32) -o$@
 
 
 GUI_O := $(OBJ_DIR)/gui.o \
