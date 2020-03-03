@@ -40,9 +40,9 @@ INPUT
                      @stdin - read from standard input
  --flist=FILE       Read filenames from FILE
  --include='WILDCARD[;WILDCARD]'
-                    Only include files matching a wildcard (case-insensitive)
+                    Only include files matching a pattern (full path or wildcard) (case-insensitive)
  --exclude='WILDCARD[;WILDCARD]'
-                    Exclude files & directories matching a wildcard (case-insensitive)
+                    Exclude files & directories matching a pattern (full path or wildcard) (case-insensitive)
  --recurse, -R      Recurse into sub-directories
  --member=FILE      Process just this archive member
  --show             Show contents

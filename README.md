@@ -130,6 +130,12 @@ Specify output file:
 
 	fcom zip /file1.txt /file2.txt -o arc.zip
 
+Pack with `--exclude` option:
+
+	fcom zip . -R -o arc.zip --exclude="*/.git;./tmpdir;*.bak"
+
+Here we exclude all `.git` directories (but not files with `.git` extension), `./tmpdir` directory and all `*.bak` files.
+
 #### fcom iso - create .iso image
 
 	fcom iso ./mydir -o myimage.iso

@@ -6,6 +6,7 @@ Copyright (c) 2017 Simon Zolin
 
 #include <FF/sys/dir.h>
 #include <FF/list.h>
+#include <FF/path.h>
 #include <FFOS/process.h>
 
 
@@ -81,7 +82,7 @@ static const char* getmod_bycmd(const char *cmdname);
 static filter* filt_add(comm *c, uint cmd, const char *name, filter *neigh);
 static int filt_call(comm *c, filter *f);
 static void filt_close(comm *c, filter *f);
-static ffbool file_matches(comm *c, const char *fn, ffbool dir);
+static ffbool file_matches(comm *c, const char *full_fn, ffbool dir);
 static int dir_scan(comm *c, char *name);
 static char* chain_print(comm *c, const ffchain_item *mark, char *buf, size_t cap);
 
@@ -484,7 +485,12 @@ static char* com_arg_next(fcom_cmd *_c, uint flags)
 				&& fffile_isdir(fffile_infoattr(&fi))) {
 				dir_scan(c, e->fn);
 
-				if (!file_matches(c, e->fn, 0)) {
+				ffstr name;
+				ffpath_split2(e->fn, ffsz_len(e->fn), NULL, &name);
+
+				if (ffstr_eqz(&name, ".")
+					|| ffstr_eqz(&name, "..")
+					|| !file_matches(c, e->fn, 0)) {
 					FF_ASSERT(!(flags & FCOM_CMD_ARG_PEEK));
 					c->in_next = e->sib.next;
 					continue;
@@ -509,18 +515,21 @@ static char* com_arg_next(fcom_cmd *_c, uint flags)
 
 /**
 'include' filter matches files only.
-'exclude' filter matches files & directories.
+'exclude' filter matches files & directories (names or full paths).
 Return TRUE if filename matches user's filename wildcards. */
-static ffbool file_matches(comm *c, const char *fn, ffbool dir)
+static ffbool file_matches(comm *c, const char *full_fn, ffbool dir)
 {
-	size_t fnlen = ffsz_len(fn);
 	const ffstr *wc;
 	ffbool ok = 1;
+	ffstr fn;
+	ffstr_setz(&fn, full_fn);
 
 	if (!dir) {
 		ok = (c->cmd.include_files.len == 0);
 		FFARR_WALKT(&c->cmd.include_files, wc, ffstr) {
-			if (0 == ffs_wildcard(wc->ptr, wc->len, fn, fnlen, FFS_WC_ICASE)) {
+
+			if (0 == ffs_wildcard(wc->ptr, wc->len, fn.ptr, fn.len, FFS_WC_ICASE)
+				|| ffpath_match(&fn, wc, FFPATH_CASE_ISENS)) {
 				ok = 1;
 				break;
 			}
@@ -530,13 +539,63 @@ static ffbool file_matches(comm *c, const char *fn, ffbool dir)
 	}
 
 	FFARR_WALKT(&c->cmd.exclude_files, wc, ffstr) {
-		if (0 == ffs_wildcard(wc->ptr, wc->len, fn, fnlen, FFS_WC_ICASE)) {
-			ok = 0;
-			break;
+
+		if (0 == ffs_wildcard(wc->ptr, wc->len, fn.ptr, fn.len, FFS_WC_ICASE)
+			|| ffpath_match(&fn, wc, FFPATH_CASE_ISENS)) {
+			return 0;
 		}
 	}
+
 	return ok;
 }
+
+#ifdef FCOM_TEST
+#include <FFOS/test.h>
+#define x  FFTEST_BOOL
+void test_file_matches()
+{
+	comm *c = ffmem_new(comm);
+
+	ffstr *dst, s, wc;
+	ffarr aincl = {};
+	ffstr_setz(&s, "/path");
+	while (s.len != 0) {
+		ffstr_nextval3(&s, &wc, ';');
+		dst = ffarr_pushgrowT(&aincl, 4, ffstr);
+		*dst = wc;
+	}
+	ffarr_set(&c->cmd.include_files, aincl.ptr, aincl.len);
+
+	ffarr aexcl = {};
+	ffstr_setz(&s, "*/.git;/path/bin;/path/dir/_bin;*.zip");
+	while (s.len != 0) {
+		ffstr_nextval3(&s, &wc, ';');
+		dst = ffarr_pushgrowT(&aexcl, 4, ffstr);
+		*dst = wc;
+	}
+	ffarr_set(&c->cmd.exclude_files, aexcl.ptr, aexcl.len);
+
+	x(!file_matches(c, "/path2", 0));
+
+	x(file_matches(c, "/path/file", 0));
+	x(file_matches(c, "/path/dir", 1));
+
+	x(!file_matches(c, "/path/.git", 1));
+	x(file_matches(c, "/path/.git2", 1));
+	x(file_matches(c, "/path/1.git", 1));
+	x(!file_matches(c, "/path/dir/.git", 1));
+
+	x(!file_matches(c, "/path/bin", 1));
+	x(file_matches(c, "/path/binn", 1));
+	x(file_matches(c, "/path/dir/bin", 1));
+
+	x(!file_matches(c, "/path/dir/_bin", 1));
+	x(file_matches(c, "/path/ddir/_bin", 1));
+
+	x(!file_matches(c, "/path/dir/1.zip", 1));
+	x(file_matches(c, "/path/dir/1.zip2", 1));
+}
+#endif
 
 /** List directory contents and add its filenames to the arguments list. */
 static int dir_scan(comm *c, char *name)
@@ -569,7 +628,7 @@ static int dir_scan(comm *c, char *name)
 		if (0 != fffile_infofn(fn, &fi))
 			ffmem_tzero(&fi);
 		uint isdir = fffile_isdir(fffile_infoattr(&fi));
-		if (!file_matches(c, ffdir_expname(&dr, fn), isdir))
+		if (!file_matches(c, fn, isdir))
 			continue;
 
 		if (NULL == (e = ffmem_alloc(sizeof(struct in_ent) + s.len + 1)))

@@ -131,6 +131,18 @@ gui.$(SO): $(GUI_O)
 	$(LD) -shared $(GUI_O) $(LDFLAGS) $(LD_LPTHREAD) -lshell32 -luxtheme -lcomctl32 -lcomdlg32 -lgdi32 -lole32 -luuid -o$@
 
 
+TEST_O := $(OBJ_DIR)/tester.o \
+	$(OBJ_DIR)/com.o \
+	$(FF_OBJ_DIR)/fftest.o \
+	$(FF_O)
+TESTER := tester
+ifeq ($(OS),win)
+TESTER := tester.exe
+endif
+$(TESTER): $(TEST_O)
+	$(LD)  $(TEST_O) $(LDFLAGS) $(LD_LDL) -o$@
+
+
 clean:
 	rm -vf $(BINS) *.debug *.o $(RES)
 
