@@ -435,7 +435,7 @@ static struct dir* scan_tree(const char *name, uint flags)
 	if (NULL == (d->path = ffsz_alcopyz(name)))
 		goto end;
 	if (0 != scan1(d, d->path, &last))
-		goto end;
+		{}
 
 	FFCHAIN_WALK(&tmp, it) {
 
@@ -448,7 +448,7 @@ static struct dir* scan_tree(const char *name, uint flags)
 			goto end;
 
 		if (0 != scan1(d, d->path, &last))
-			goto end;
+			{}
 	}
 
 	last->next = NULL;
@@ -1047,9 +1047,11 @@ static int fsyncss_process(void *p, fcom_cmd *cmd)
 
 	case 1:
 		for (;;) {
-			const struct file *fl = cur_next(&f->cur);
+			const struct file *fl = cur_get(&f->cur);
 			if (fl == NULL)
 				break;
+
+			cur_next(&f->cur);
 
 			if (fl->parent != f->curdir) {
 				// got a file from another directory
