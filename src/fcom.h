@@ -22,16 +22,16 @@ FSYNC
 #define FCOM_VER_MK(maj, minor) \
 	(((maj) << 8) | (minor))
 #define FCOM_VER_MAJ  0
-#define FCOM_VER_MIN  12
+#define FCOM_VER_MIN  13
 #define FCOM_VER  FCOM_VER_MK(FCOM_VER_MAJ, FCOM_VER_MIN)
-#define FCOM_VER_STR  "0.12"
+#define FCOM_VER_STR  "0.13"
 #define FCOM_CONF_FN  "fcom.conf"
 
 enum FCOM_LOGLEV {
 	FCOM_LOGERR,
 	FCOM_LOGWARN,
 	FCOM_LOGINFO,
-	FCOM_LOGVERB,
+	FCOM_LOGVERB, // implies FCOM_LOGNOPFX
 	FCOM_LOGDBG,
 	_FCOM_LEVMASK = 0x0f,
 
@@ -166,6 +166,8 @@ do { \
 #define fcom_errlog(mod, fmt, ...)  (core)->log(FCOM_LOGERR, mod ": " fmt, __VA_ARGS__)
 #define fcom_syswarnlog(mod, fmt, ...)  (core)->log(FCOM_LOGWARN | FCOM_LOGSYS, mod ": " fmt, __VA_ARGS__)
 #define fcom_syserrlog(mod, fmt, ...)  (core)->log(FCOM_LOGERR | FCOM_LOGSYS, mod ": " fmt, __VA_ARGS__)
+
+#define fcom_userlog(fmt, ...)  (core)->log(FCOM_LOGINFO | FCOM_LOGNOPFX, fmt, __VA_ARGS__)
 
 
 /** Initialize/destroy core.  These functions are called from the application executable. */

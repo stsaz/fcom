@@ -32,6 +32,7 @@ typedef struct un7z {
 	ff7z z;
 	ffarr fn;
 	ffarr buf;
+	const ff7zfile *curfile;
 } un7z;
 
 static void* un7z_open(fcom_cmd *cmd)
@@ -108,6 +109,7 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 				z->state = R_EOF;
 				return FCOM_MORE;
 			}
+			z->curfile = f;
 
 			if (cmd->members.len != 0
 				&& 0 > ffs_findarrz((void*)cmd->members.ptr, cmd->members.len, f->name, ffsz_len(f->name)))
@@ -156,7 +158,8 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 		return FCOM_MORE;
 
 	case FF7Z_ERR:
-		fcom_errlog(FILT_NAME, "%s", ff7z_errstr(&z->z));
+		fcom_errlog(FILT_NAME, "%s: %s"
+			, (z->curfile != NULL) ? z->curfile->name : "", ff7z_errstr(&z->z));
 		return FCOM_ERR;
 	}
 	}

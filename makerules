@@ -165,6 +165,11 @@ distclean: clean ffclean
 strip: $(BINS:.$(SO)=.$(SO).debug) $(BIN).debug $(BINS:.exe=.exe.debug)
 
 
+copy-bins:
+	$(CP) \
+		*.$(SO) \
+		$(INSTDIR)/mod
+
 install-only:
 	mkdir -vp $(INSTDIR)
 	$(CP) $(BIN) \

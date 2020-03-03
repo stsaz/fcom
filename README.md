@@ -83,7 +83,7 @@ Rename all files within the current directory - replace 'old' with 'new':
 
 Scan the current directory and save the snapshot to a file:
 
-	fcom sync-snapshot -R . -o /tmp/snapshot.txt
+	fcom sync-snapshot . -o /tmp/snapshot.txt
 
 #### fcom peinfo - Show PE format information
 
