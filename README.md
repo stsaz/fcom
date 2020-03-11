@@ -45,6 +45,8 @@ FEATURES
 * Windows-only
 	* fcom wregfind
 	* fcom gsync
+	* fcom disk
+	* fcom mount
 
 ### Files
 
@@ -204,6 +206,20 @@ How to use:
 2. Command -> Compare
 3. Select checkboxes near the files you wish to synchronize
 4. Command -> Synchronize
+
+#### fcom disk - list available disk volumes
+
+	fcom disk
+
+#### fcom mount - mount disk to a directory
+
+Create a mount point:
+
+	fcom mount \\?\Volume{GUID}\ -o c:\mount\
+
+Delete a mount point:
+
+	fcom mount "" -o c:\mount\
 
 
 ---------------

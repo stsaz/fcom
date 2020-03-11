@@ -150,7 +150,7 @@ static int arg_crop(ffparser_schem *p, void *obj, const ffstr *val);
 #define OFF(member)  FFPARS_DSTOFF(struct cmdconf, member)
 static const ffpars_arg cmdline_args[] = {
 	// INPUT
-	{ "",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_infile) },
+	{ "",	FFPARS_TSTR | FFPARS_FMULTI, FFPARS_DST(&arg_infile) },
 	{ "flist",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_flist) },
 	{ "include",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_finclude) },
 	{ "exclude",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_finclude) },
@@ -197,6 +197,9 @@ static int wcard_open(struct job *c, const ffstr *s)
 	ffdirexp de;
 	char *wc = NULL;
 	const char *fn;
+
+	if (ffstr_matchz(s, "\\\\?\\"))
+		return 0;
 
 	if (ffarr_end(s) == ffs_findof(s->ptr, s->len, "*?", 2))
 		return 0;

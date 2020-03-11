@@ -13,6 +13,8 @@ OPERATION
  wregfind STR... [--member=KEY]...
  screenshots
  gsync
+ disk
+ mount DISKNAME -o DIR
 
 Pack files (.gz, .tar, .zip, .iso):
  gz FILE... [--out=FILE]
