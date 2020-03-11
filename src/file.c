@@ -5,6 +5,7 @@ Copyright (c) 2017 Simon Zolin
 #include <fcom.h>
 
 #include <FF/sys/fileread.h>
+#include <FF/sys/filewrite.h>
 #include <FF/path.h>
 #include <FFOS/error.h>
 #include <FFOS/file.h>
@@ -57,23 +58,14 @@ static void diro_close(void *p, fcom_cmd *cmd);
 static int diro_process(void *p, fcom_cmd *cmd);
 static const fcom_filter diro_filt = { &diro_open, &diro_close, &diro_process };
 
-//STDIN
-static void* fistd_open(fcom_cmd *cmd);
-static void fistd_close(void *ctx, fcom_cmd *cmd);
-static int fistd_read(void *ctx, fcom_cmd *cmd);
-static const fcom_filter fistd_filt = { &fistd_open, &fistd_close, &fistd_read };
-
-//STDOUT
-static void* fostd_open(fcom_cmd *cmd);
-static void fostd_close(void *ctx, fcom_cmd *cmd);
-static int fostd_write(void *ctx, fcom_cmd *cmd);
-static const fcom_filter fostd_filt = { &fostd_open, &fostd_close, &fostd_write, };
-
 
 struct cmd {
 	const char *name;
 	const fcom_filter *iface;
 };
+
+extern const fcom_filter fistd_filt;
+extern const fcom_filter fostd_filt;
 
 static const struct cmd cmds[] = {
 	{ "file-in", &fi_filt },
@@ -338,32 +330,33 @@ static int fo_conf(ffpars_ctx *ctx)
 }
 
 typedef struct fout {
-	fffd fd;
-	ffarr buf;
+	fffilewrite *fw;
+	uint64 wr;
 	ffstr name;
 	fftime mtime;
 	uint attr;
-	uint64 off;
-	uint64 size;
-	uint64 prealloc;
-	uint64 prealloc_by;
 	uint ok :1;
-	struct {
-		uint nmwrite;
-		uint nfwrite;
-		uint nprealloc;
-	} stat;
 } fout;
 
-/** Open/create file.  Create file path, if needed.
-Preallocate space if advised by user. */
+static void fo_log(void *p, uint level, ffstr msg)
+{
+	// fout *f = p;
+	switch (level) {
+	case 0:
+		syserrlog("%S", &msg);
+		break;
+	case 1:
+		dbglog(0, "%S", &msg);
+		break;
+	}
+}
+
+/** Open/create file.  Create file path, if needed. */
 static void* fo_open(fcom_cmd *cmd)
 {
 	fout *f;
-	uint canskip = 0, mask;
 	if (NULL == (f = ffmem_new(fout)))
 		return NULL;
-	f->fd = FF_BADFD;
 
 	if (NULL == ffstr_alcopyz(&f->name, cmd->output.fn))
 		goto err;
@@ -371,199 +364,105 @@ static void* fo_open(fcom_cmd *cmd)
 	if (cmd->read_only)
 		return f;
 
-	if (NULL == ffarr_alloc(&f->buf, outconf->bufsize))
-		goto err;
-
+	fffilewrite_conf conf;
+	fffilewrite_setconf(&conf);
+	conf.udata = f;
+	conf.log = &fo_log;
+	conf.bufsize = outconf->bufsize;
+	conf.align = 4096;
+	conf.prealloc = (cmd->output.size != 0) ? cmd->output.size : outconf->prealloc;
+	conf.prealloc_grow = outconf->prealloc_grow;
+	conf.mkpath = outconf->mkpath;
+	conf.del_on_err = outconf->del_on_err;
+	conf.overwrite = cmd->out_overwrite;
 	const char *filename = cmd->output.fn;
-	uint flags = (cmd->out_overwrite || cmd->out_resume) ? O_CREAT : FFO_CREATENEW;
-	flags |= O_WRONLY;
-	mask = 0;
-	canskip = 1;
-	while (FF_BADFD == (f->fd = fffile_open(filename, flags))) {
-
-		if (outconf->mkpath && fferr_nofile(fferr_last())) {
-			if (0 != ffdir_make_path((void*)filename, 0)) {
-				syserrlog("%s: for filename %s", ffdir_make_S, filename);
-				goto err;
-			}
-
-			if (ffbit_testset32(&mask, 0))
-				goto err;
-
-#ifdef FF_UNIX
-		} else if (fferr_last() == EISDIR) {
-			flags = O_RDONLY;
-			if (ffbit_testset32(&mask, 1))
-				goto err;
-#endif
-
-		} else
-			goto err;
-	}
-
-	if (cmd->output.size != 0) {
-		if (0 == fffile_trunc(f->fd, cmd->output.size)) {
-			dbglog(0, "prealloc: %U", cmd->output.size);
-			f->prealloc = cmd->output.size;
-			f->stat.nprealloc++;
-		}
-	}
-
-	if (cmd->out_resume) {
-		fffileinfo fi;
-		if (0 != fffile_info(f->fd, &fi)) {
-			syserrlog("%s: %s", fffile_info_S, filename);
-			goto err;
-		}
-		cmd->out_seek = fffile_infosize(&fi);
-	}
+	if (NULL == (f->fw = fffilewrite_create(filename, &conf)))
+		goto err;
 
 	f->mtime = cmd->output.mtime;
 	f->attr = cmd->output.attr;
-
-	f->prealloc_by = outconf->prealloc;
 	return f;
 
 err:
-	syserrlog("%s", cmd->output.fn);
-	if (canskip && cmd->skip_err)
+	if (cmd->skip_err)
 		return f;
 	fo_close(f, cmd);
 	return NULL;
 }
 
-/**
-Truncate file to the actual size written.
-Delete file on error. */
 static void fo_close(void *p, fcom_cmd *cmd)
 {
 	fout *f = p;
 	uint verbose = cmd->read_only;
 
-	if (f->fd != FF_BADFD) {
+	if (f->fw != NULL) {
+		fffilewrite_stat st;
+		fffilewrite_getstat(f->fw, &st);
+		fffilewrite_free(f->fw);
 
-		if (!cmd->out_notrunc)
-			fffile_trunc(f->fd, f->size);
-
-		if (!f->ok && outconf->del_on_err) {
-
-			if (0 != fffile_close(f->fd))
-				syserrlog("%s", fffile_close_S);
-
-			if (0 == fffile_rm(f->name.ptr))
-				dbglog(0, "removed file %S", &f->name);
-
-		} else {
-
+		if (f->ok) {
 #ifdef FF_UNIX
 			if (f->attr != 0 && !cmd->out_attr_win)
-				fffile_attrset(f->fd, f->attr);
-#elif FF_WIN >= 0x0600
-			if (f->attr != 0 && cmd->out_attr_win)
-				fffile_attrset(f->fd, f->attr);
-#elif FF_WIN < 0x0600
+				fffile_attrsetfn(f->name.ptr, f->attr);
+#elif defined FF_WIN
 			if (f->attr != 0 && cmd->out_attr_win)
 				fffile_attrsetfn(f->name.ptr, f->attr);
 #endif
 
 			if (fftime_sec(&f->mtime) != 0)
-				fffile_settime(f->fd, &f->mtime);
+				fffile_settimefn(f->name.ptr, &f->mtime);
 
-			if (0 != fffile_close(f->fd))
-				syserrlog("%s", fffile_close_S);
 			verbose = 1;
+			dbglog(0, "%S: mem write#:%u  file write#:%u  prealloc#:%u"
+				, &f->name, st.nmwrite, st.nfwrite, st.nprealloc);
 		}
 	}
 
 	if (verbose) {
 		fcom_verblog(FILT_NAME, "saved file %S, %Ukb written"
-			, &f->name, (int64)ffmax(f->size / 1024, f->size != 0));
+			, &f->name, (int64)ffmax(f->wr / 1024, f->wr != 0));
 	}
 
 	ffstr_free(&f->name);
-	ffarr_free(&f->buf);
-	dbglog(0, "mem write#:%u  file write#:%u  prealloc:%Uk(%u)"
-		, f->stat.nmwrite, f->stat.nfwrite, f->prealloc / 1024, f->stat.nprealloc);
 	ffmem_free(f);
-}
-
-/** Write data to file.  Preallocate space, if needed. */
-static int fo_write(fout *f, fcom_cmd *cmd, const ffstr *s)
-{
-	if (f->off + s->len > f->prealloc) {
-		uint64 n = ff_align_ceil(f->off + s->len, f->prealloc_by);
-		if (0 == fffile_trunc(f->fd, n)) {
-			dbglog(0, "prealloc: %U", n);
-
-			if (outconf->prealloc_grow)
-				f->prealloc_by += f->prealloc_by;
-
-			f->prealloc = n;
-			f->stat.nprealloc++;
-		}
-	}
-
-	ssize_t r = fffile_write(f->fd, s->ptr, s->len);
-	if (r != (ssize_t)s->len)
-		return FCOM_SYSERR;
-	f->stat.nfwrite++;
-
-	dbglog(0, "written %L bytes at offset %Uk (%L pending)", s->len, f->off / 1024, cmd->in.len);
-	f->off += s->len;
-	ffint_setmax(f->size, f->off);
-	return 0;
 }
 
 /** Add more data from user.  Flush to file, if necessary. */
 static int fo_adddata(void *p, fcom_cmd *cmd)
 {
 	fout *f = p;
-	ffstr s;
 
-	if (f->fd == FF_BADFD) {
+	if (f->fw == NULL) {
 		return (cmd->flags & FCOM_CMD_FIRST) ? FCOM_DONE : FCOM_MORE;
 	}
 
+	int64 off = -1;
 	if (cmd->out_seek) {
 		cmd->out_seek = 0;
-
-		if (f->buf.len != 0) {
-			if (0 != fo_write(f, cmd, (void*)&f->buf))
-				return FCOM_SYSERR;
-			f->buf.len = 0;
-		}
-
-		dbglog(0, "seeking to %xU", cmd->output.offset);
-
-		if (0 > fffile_seek(f->fd, cmd->output.offset, SEEK_SET)) {
-			syserrlog("%s: %S", fffile_seek_S, &f->name);
-			return FCOM_ERR;
-		}
-		f->off = cmd->output.offset;
+		off = cmd->output.offset;
 	}
 
-	for (;;) {
+	uint flags = 0;
+	if (cmd->flags & FCOM_CMD_FIRST)
+		flags = FFFILEWRITE_FFLUSH;
 
-		size_t r = ffbuf_add(&f->buf, cmd->in.ptr, cmd->in.len, &s);
-		ffstr_shift(&cmd->in, r);
-
-		if (s.len == 0) {
-			if (r != 0)
-				f->stat.nmwrite++;
-			if (!(cmd->flags & FCOM_CMD_FIRST))
-				return FCOM_MORE;
-			else if (f->buf.len == 0) {
-				f->ok = 1;
-				return FCOM_DONE;
-			}
-
-			ffstr_set2(&s, &f->buf);
-			f->buf.len = 0;
+	int r = fffilewrite_write(f->fw, cmd->in, off, flags);
+	switch (r) {
+	case FFFILEWRITE_RWRITTEN:
+		f->wr += cmd->in.len;
+		if (cmd->flags & FCOM_CMD_FIRST) {
+			f->ok = 1;
+			return FCOM_DONE;
 		}
+		return FCOM_MORE;
 
-		if (0 != fo_write(f, cmd, &s))
-			return FCOM_SYSERR;
+	case FFFILEWRITE_RERR:
+		return FCOM_ERR;
+
+	case FFFILEWRITE_RASYNC:
+		return FCOM_ASYNC;
 	}
+	return FCOM_ERR;
 }
 
 #undef FILT_NAME
@@ -629,83 +528,3 @@ static int diro_process(void *p, fcom_cmd *cmd)
 }
 
 #undef FILT_NAME
-
-
-#define FILT_NAME  "stdin"
-
-typedef struct fistd {
-	ffarr buf;
-} fistd;
-
-static void* fistd_open(fcom_cmd *cmd)
-{
-	fistd *f;
-	if (NULL == (f = ffmem_new(fistd)))
-		return FCOM_OPEN_SYSERR;
-
-	if (NULL == ffarr_alloc(&f->buf, 64 * 1024)) {
-		fistd_close(f, cmd);
-		return FCOM_OPEN_SYSERR;
-	}
-
-	return f;
-}
-
-static void fistd_close(void *ctx, fcom_cmd *cmd)
-{
-	fistd *f = ctx;
-	ffarr_free(&f->buf);
-	ffmem_free(f);
-}
-
-static int fistd_read(void *ctx, fcom_cmd *cmd)
-{
-	fistd *f = ctx;
-	size_t r;
-
-	if (cmd->in_seek) {
-		fcom_errlog(FILT_NAME, "can't seek on stdin.  offset:%U", cmd->input.offset);
-		return FCOM_ERR;
-	}
-
-	r = ffstd_fread(ffstdin, f->buf.ptr, f->buf.cap);
-	if (r == 0) {
-		cmd->out.len = 0;
-		cmd->in_last = 1;
-		return FCOM_DONE;
-	} else if ((ssize_t)r < 0) {
-		fcom_syserrlog(FILT_NAME, "%s", fffile_read_S);
-		return FCOM_ERR;
-	}
-
-	dbglog(0, "read %L bytes from stdin"
-		, r);
-	ffstr_set(&cmd->out, f->buf.ptr, r);
-	return FCOM_DATA;
-}
-
-#undef FILT_NAME
-
-
-static void* fostd_open(fcom_cmd *cmd)
-{
-	return FCOM_OPEN_DUMMY;
-}
-
-static void fostd_close(void *ctx, fcom_cmd *cmd)
-{
-}
-
-static int fostd_write(void *ctx, fcom_cmd *cmd)
-{
-	size_t r;
-
-	r = fffile_write(ffstdout, cmd->in.ptr, cmd->in.len);
-	if (r != cmd->in.len)
-		return FCOM_SYSERR;
-
-	if (cmd->flags & FCOM_CMD_FIRST)
-		return FCOM_DONE;
-
-	return FCOM_MORE;
-}

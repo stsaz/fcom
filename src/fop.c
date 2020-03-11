@@ -293,12 +293,14 @@ static int f_copy_process(void *p, fcom_cmd *cmd)
 		return FCOM_DONE;
 	if (cmd->output.fn == NULL)
 		return FCOM_ERR;
-	com->fcom_cmd_filtadd(cmd, FCOM_CMD_FILT_IN(cmd));
-	com->fcom_cmd_filtadd(cmd, FCOM_CMD_FILT_OUT(cmd));
-	return FCOM_MORE;
+	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_IN(cmd));
+	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(cmd));
+	return FCOM_NEXTDONE;
 }
 #undef FILT_NAME
 
+
+#define FILT_NAME  "touch"
 
 static void* f_touch_open(fcom_cmd *cmd)
 {
@@ -311,31 +313,63 @@ static void f_touch_close(void *p, fcom_cmd *cmd)
 
 static int f_touch_process(void *p, fcom_cmd *cmd)
 {
-	if (NULL == (cmd->output.fn = com->arg_next(cmd, 0)))
-		return FCOM_DONE;
-
-	com->fcom_cmd_filtadd(cmd, "core.file-out");
+	fftime mtime;
+	const char *fn;
 
 	if (fftime_sec(&cmd->mtime) != 0 && cmd->date_as_fn != NULL)
 		return FCOM_ERR;
 
 	if (cmd->date_as_fn != NULL) {
 		fffileinfo fi;
-		if (0 != fffile_infofn(cmd->date_as_fn, &fi))
-			return FCOM_SYSERR;
-		cmd->output.mtime = fffile_infomtime(&fi);
+		if (0 != fffile_infofn(cmd->date_as_fn, &fi)) {
+			syserrlog("%s", cmd->date_as_fn);
+			return FCOM_ERR;
+		}
+		mtime = fffile_infomtime(&fi);
 
 	} else if (fftime_sec(&cmd->mtime) != 0)
-		cmd->output.mtime = cmd->mtime;
+		mtime = cmd->mtime;
 	else
-		fftime_now(&cmd->output.mtime);
+		fftime_now(&mtime);
 
-	// open or create, but don't modify file data
-	cmd->out_overwrite = 1;
-	cmd->out_notrunc = 1;
-	cmd->output.size = 0;
-	return FCOM_NEXTDONE;
+	for (;;) {
+		if (NULL == (fn = com->arg_next(cmd, 0)))
+			return FCOM_DONE;
+
+		if (0 == fffile_settimefn(fn, &mtime)) {
+			verblog("%s", fn);
+			continue;
+		}
+
+		if (!fferr_nofile(fferr_last())) {
+			syserrlog("%s: %s", fn, fffile_info_S);
+			return FCOM_ERR;
+		}
+
+		// create a new file
+		fffd fd;
+		while (FF_BADFD == (fd = fffile_open(fn, FFO_CREATENEW | FFO_WRONLY | FFO_NOATIME))) {
+			if (fferr_nofile(fferr_last())) {
+				if (0 != ffdir_make_path((void*)fn, 0)) {
+					syserrlog("%s: for filename %s", ffdir_make_S, fn);
+					return FCOM_ERR;
+				}
+			}
+		}
+		if (0 != fffile_close(fd))
+			syserrlog("%s: %s", fn, fffile_close_S);
+
+		if (0 == fffile_settimefn(fn, &mtime)) {
+			verblog("%s", fn);
+			continue;
+		}
+		syserrlog("%s: %s", fn, fffile_settime_S);
+		return FCOM_ERR;
+	}
+
+	return FCOM_ERR;
 }
+#undef FILT_NAME
 
 
 #define FILT_NAME  "f-rename"
