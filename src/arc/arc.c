@@ -206,6 +206,25 @@ ffbool arc_need_member(const ffarr2 *members, ffbool member_wildcard, const ffst
 	return 1;
 }
 
+ffbool arc_need_file(fcom_cmd *cmd, const ffstr *fn)
+{
+	if (!cmd->skip_err || cmd->out_overwrite)
+		return 1;
+
+	int rc = 0;
+	ffarr ofn = {};
+	if (FCOM_DATA != fn_out(cmd, fn, &ofn))
+		goto end;
+	if (fffile_exists(ofn.ptr)) {
+		fcom_dbglog(0, "arc", "skipping existing file: %s", ofn.ptr);
+		goto end;
+	}
+	rc = 1;
+end:
+	ffarr_free(&ofn);
+	return rc;
+}
+
 
 struct unpack {
 	uint state;

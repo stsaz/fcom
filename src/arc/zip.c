@@ -246,6 +246,9 @@ again:
 			if (!arc_need_member(&cmd->members, z->member_wildcard, &fn))
 				continue;
 
+			if (!arc_need_file(cmd, &fn))
+				continue;
+
 			if (fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
 				unzip_showinfo(z, f);
 			if (cmd->show)
