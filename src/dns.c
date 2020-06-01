@@ -6,6 +6,7 @@ Copyright (c) 2020 Simon Zolin */
 #include <FF/net/dns-client.h>
 #include <FF/net/dns.h>
 #include <FF/net/proto.h>
+#include <FFOS/netconf.h>
 
 
 #define errlog(mod, fmt, ...)  fcom_errlog(mod, fmt, __VA_ARGS__)

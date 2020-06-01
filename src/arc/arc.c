@@ -178,7 +178,7 @@ end:
 ffbool arc_members_wildcard(const ffarr2 *members)
 {
 	const char **pm;
-	FFARR2_WALK(members, pm) {
+	FFSLICE_WALK_T(members, pm, const char*) {
 		size_t n = ffsz_len(*pm);
 		if (*pm + n != ffs_findof(*pm, n, "*?", 2))
 			return 1;
@@ -194,7 +194,7 @@ ffbool arc_need_member(const ffarr2 *members, ffbool member_wildcard, const ffst
 
 	if (member_wildcard) {
 		const char **pm;
-		FFARR2_WALK(members, pm) {
+		FFSLICE_WALK_T(members, pm, const char*) {
 			if (!ffs_wildcard(*pm, ffsz_len(*pm), fn->ptr, fn->len, 0))
 				return 1;
 		}
@@ -296,7 +296,7 @@ again:
 	}
 
 	if ((ffstr_ieqcz(&ext, "gz") || ffstr_ieqcz(&ext, "xz"))
-		&& ffstr_irmatchz(&nm, ".tar"))
+		&& ffstr_irmatchcz(&nm, ".tar"))
 		ffstr_setz(&ext, "tar");
 
 	if (0 > (r = ffcharr_findsorted(arc_exts, FFCNT(arc_exts), sizeof(arc_exts[0]), ext.ptr, ext.len))) {

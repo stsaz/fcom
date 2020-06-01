@@ -117,7 +117,7 @@ static int wregfind_process(void *p, fcom_cmd *cmd)
 		return r;
 
 	if (cmd->members.len != 0) {
-		const char **it;
+		char **it;
 		ffchain_item *lw = c->lr;
 		ssize_t n;
 		FFARR_WALKT(&cmd->members, it, char*) {

@@ -522,9 +522,9 @@ static void cmds_free(void)
 	ffmem_safefree(g->conf.out);
 	ffmem_safefree(g->conf.outdir);
 	ffmem_safefree(g->conf.date_as_fn);
-	ffarr2_free(&g->conf.include_files);
-	ffarr2_free(&g->conf.exclude_files);
-	ffarr2_free(&g->conf.servers);
+	ffslice_free(&g->conf.include_files);
+	ffslice_free(&g->conf.exclude_files);
+	ffslice_free(&g->conf.servers);
 	ffstr_free(&g->conf.search);
 
 	char **ps;

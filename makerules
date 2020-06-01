@@ -11,7 +11,7 @@ all: ff $(BINS)
 
 include $(FF)/makerules
 include $(FF3PT)/makerules
-FF_O := $(FFOS_OBJ) $(FF_OBJ) $(FF_OBJ_DIR)/ffutf8.o $(FF_OBJ_DIR)/ffdbg.o
+FF_O := $(FFOS_OBJ) $(FF_OBJ) $(FF_OBJ_DIR)/ffutf8.o
 
 $(OBJ_DIR)/%.o: $(SRCDIR)/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
@@ -27,7 +27,7 @@ $(OBJ_DIR)/%.o: $(SRCDIR)/gui-scrshots/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
 
 $(RES): $(PROJDIR)/res/fcom.rc $(PROJDIR)/res/fcom.exe.manifest $(PROJDIR)/res/fcom.ico
-	$(WINDRES) -I$(SRCDIR) -I$(FF) -I$(FFOS) $(PROJDIR)/res/fcom.rc $@
+	$(WINDRES) -I$(SRCDIR) -I$(FFBASE) -I$(FF) -I$(FFOS) $(PROJDIR)/res/fcom.rc $@
 
 
 BIN_O := $(OBJ_DIR)/main.o \
