@@ -275,13 +275,6 @@ INSTALL
 
 
 ---------------
-LICENSE
----------------
-The code provided here is free for use in open-source and proprietary projects.
-You may distribute, redistribute, modify the whole code or the parts of it, just keep the original copyright statement inside the files.
-
-
----------------
 HOMEPAGE
 ---------------
 http://github.com/stsaz/fcom
