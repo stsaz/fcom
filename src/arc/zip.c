@@ -49,7 +49,7 @@ static void* zip_open(fcom_cmd *cmd)
 
 	uint lev = (cmd->deflate_level != 255) ? cmd->deflate_level : 6;
 	if (0 != ffzip_winit(&z->zip, lev, 0)) {
-		fcom_errlog(FILT_NAME, "%s", ffzip_errstr(&z->zip));
+		fcom_errlog(FILT_NAME, "%s", ffzip_werrstr(&z->zip));
 		goto err;
 	}
 
@@ -102,7 +102,7 @@ static int zip_process(void *p, fcom_cmd *cmd)
 		ffzip_fattr attr = {0};
 		ffzip_setsysattr(&attr, cmd->input.attr);
 		if (0 != ffzip_wfile(&z->zip, cmd->input.fn, &cmd->input.mtime, &attr)) {
-			fcom_errlog(FILT_NAME, "%s", ffzip_errstr(&z->zip));
+			fcom_errlog(FILT_NAME, "%s", ffzip_werrstr(&z->zip));
 			return FCOM_ERR;
 		}
 		z->state = W_DATA;
@@ -142,7 +142,7 @@ static int zip_process(void *p, fcom_cmd *cmd)
 		return FCOM_DONE;
 
 	case FFZIP_ERR:
-		fcom_errlog(FILT_NAME, "%s", ffzip_errstr(&z->zip));
+		fcom_errlog(FILT_NAME, "%s", ffzip_werrstr(&z->zip));
 		return FCOM_ERR;
 	}
 	}
@@ -162,12 +162,18 @@ typedef struct unzip {
 	uint member_wildcard :1;
 } unzip;
 
+static void zip_log(void *udata, uint level, ffstr msg)
+{
+	fcom_dbglog(0, FILT_NAME, "%S", &msg);
+}
+
 static void* unzip_open(fcom_cmd *cmd)
 {
 	unzip *z;
 	if (NULL == (z = ffmem_new(unzip)))
 		return FCOM_OPEN_SYSERR;
 	ffzip_init(&z->zip, 0);
+	z->zip.log = zip_log;
 
 	if (NULL == ffarr_alloc(&z->buf, BUFSIZE))
 		goto err;
@@ -220,6 +226,7 @@ again:
 	case R_DATA1:
 		ffmem_tzero(&z->zip);
 		ffzip_init(&z->zip, cmd->input.size);
+		z->zip.log = zip_log;
 		z->state = R_DATA;
 		//fall through
 
