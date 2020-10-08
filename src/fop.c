@@ -428,7 +428,7 @@ static int f_rename_process(void *p, fcom_cmd *cmd)
 		}
 
 		r = ffstr_replace((ffstr*)&newfn, &sfn, &cmd->search, &cmd->replace, FFSTR_REPL_ICASE);
-		if (r == 0)
+		if (r < 0)
 			continue;
 
 		if (NULL == ffarr_append(&newfn, "", 1))
