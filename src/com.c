@@ -612,7 +612,7 @@ static int dir_scan(comm *c, char *name)
 
 	dbglog(0, "opening directory %s", name);
 
-	if (0 != ffdir_expopen(&dr, name, 0)) {
+	if (0 != ffdir_expopen(&dr, name, FFDIR_EXP_NOWILDCARD)) {
 		if (fferr_last() != ENOMOREFILES) {
 			syserrlog("%s", ffdir_open_S);
 			return -1;
