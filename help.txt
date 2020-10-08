@@ -50,7 +50,8 @@ INPUT
  --recurse, -R      Recurse into sub-directories
 
 ARCHIVE READING
- --member=FILE      Process just this archive member
+ --member='WILDCARD[;WILDCARD]'
+                    Names of the archive members to process
  --show             Show contents
 
 ARCHIVE WRITING

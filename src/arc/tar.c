@@ -160,7 +160,6 @@ typedef struct untar {
 	fftar tar;
 	ffarr fn;
 	uint skipfile :1;
-	uint member_wildcard :1;
 } untar;
 
 static void* untar_open(fcom_cmd *cmd)
@@ -173,7 +172,6 @@ static void* untar_open(fcom_cmd *cmd)
 		return FCOM_OPEN_SYSERR;
 	}
 
-	t->member_wildcard = arc_members_wildcard(&cmd->members);
 	return t;
 }
 
@@ -254,7 +252,7 @@ again:
 
 		ffstr fn;
 		ffstr_setz(&fn, f->name);
-		if (!arc_need_member(&cmd->members, t->member_wildcard, &fn)) {
+		if (!arc_need_member(&cmd->members, 0, &fn)) {
 			t->skipfile = 1;
 			continue;
 		}

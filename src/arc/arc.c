@@ -192,18 +192,16 @@ ffbool arc_need_member(const ffarr2 *members, ffbool member_wildcard, const ffst
 	if (members->len == 0)
 		return 1;
 
-	if (member_wildcard) {
-		const char **pm;
-		FFSLICE_WALK_T(members, pm, const char*) {
-			if (!ffs_wildcard(*pm, ffsz_len(*pm), fn->ptr, fn->len, 0))
-				return 1;
+	const char **pm;
+	FFSLICE_WALK_T(members, pm, const char*) {
+		ffstr m;
+		ffstr_setz(&m, *pm);
+		if (0 == ffs_wildcard(m.ptr, m.len, fn->ptr, fn->len, FFS_WC_ICASE)
+			|| ffpath_match(fn, &m, FFPATH_CASE_ISENS)) {
+			return 1;
 		}
-		return 0;
 	}
-
-	if (0 > ffs_findarrz((void*)members->ptr, members->len, fn->ptr, fn->len))
-		return 0;
-	return 1;
+	return 0;
 }
 
 ffbool arc_need_file(fcom_cmd *cmd, const ffstr *fn)

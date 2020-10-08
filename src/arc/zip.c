@@ -159,7 +159,6 @@ typedef struct unzip {
 	ffarr buf;
 	ffarr fn;
 	ffzip_file *curfile;
-	uint member_wildcard :1;
 } unzip;
 
 static void zip_log(void *udata, uint level, ffstr msg)
@@ -181,7 +180,6 @@ static void* unzip_open(fcom_cmd *cmd)
 	if (NULL == ffarr_alloc(&z->fn, 4096))
 		goto err;
 
-	z->member_wildcard = arc_members_wildcard(&cmd->members);
 	return z;
 
 err:
@@ -243,7 +241,7 @@ again:
 
 			ffstr fn;
 			ffstr_setz(&fn, f->fn);
-			if (!arc_need_member(&cmd->members, z->member_wildcard, &fn))
+			if (!arc_need_member(&cmd->members, 0, &fn))
 				continue;
 
 			if (!arc_need_file(cmd, &fn))

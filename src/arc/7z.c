@@ -3,6 +3,7 @@ Copyright (c) 2019 Simon Zolin
 */
 
 #include <fcom.h>
+#include <arc/arc.h>
 #include <FF/pack/7z.h>
 
 
@@ -109,11 +110,14 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 				z->state = R_EOF;
 				return FCOM_MORE;
 			}
-			z->curfile = f;
 
-			if (cmd->members.len != 0
-				&& 0 > ffs_findarrz((void*)cmd->members.ptr, cmd->members.len, f->name, ffsz_len(f->name)))
+			ffstr fn;
+			ffstr_setz(&fn, f->name);
+			if (!arc_need_member(&cmd->members, 0, &fn)) {
 				continue;
+			}
+
+			z->curfile = f;
 
 			if (fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
 				un7z_showinfo(z, f);

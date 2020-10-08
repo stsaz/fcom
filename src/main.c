@@ -140,7 +140,7 @@ static int arg_infile(ffparser_schem *p, void *obj, const ffstr *val);
 static int arg_flist(ffparser_schem *p, void *obj, const char *fn);
 static int arg_finclude(ffparser_schem *p, void *obj, const ffstr *val);
 static int arg_servers(ffparser_schem *p, void *obj, const ffstr *val);
-static int arg_member(ffparser_schem *p, void *obj, const char *fn);
+static int arg_member(ffparser_schem *p, void *obj, const ffstr *val);
 static int arg_help(ffparser_schem *p, void *obj);
 static int arg_date(ffparser_schem *p, void *obj, const ffstr *val);
 static int arg_replace(ffparser_schem *p, void *obj, const ffstr *val);
@@ -158,7 +158,7 @@ static const ffpars_arg cmdline_args[] = {
 	{ "recurse",	FFPARS_SETVAL('R') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(recurse) },
 
 	// ARCHIVE READING
-	{ "member",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_member) },
+	{ "member",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_member) },
 	{ "show",	FFPARS_TBOOL8 | FFPARS_FALONE, OFF(show) },
 
 	// ARCHIVE WRITING
@@ -369,13 +369,17 @@ end:
 	return rc;
 }
 
-static int arg_member(ffparser_schem *p, void *obj, const char *fn)
+static int arg_member(ffparser_schem *p, void *obj, const ffstr *val)
 {
-	char **ps;
-	if (NULL == (ps = ffarr_pushgrowT(&g->conf.members, 8, char*)))
-		return FFPARS_ESYS;
-	if (NULL == (*ps = ffsz_alcopyz(fn)))
-		return FFPARS_ESYS;
+	ffstr s = *val, wc;
+	char **dst;
+	while (s.len != 0) {
+		ffstr_nextval3(&s, &wc, ';');
+		if (NULL == (dst = ffarr_pushgrowT(&g->conf.members, 4, char*)))
+			return FFPARS_ESYS;
+		if (NULL == (*dst = ffsz_alcopystr(&wc)))
+			return FFPARS_ESYS;
+	}
 	return 0;
 }
 
