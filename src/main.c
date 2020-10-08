@@ -21,6 +21,7 @@ struct cmdconf {
 	char *out;
 	char *outdir;
 	char *date_as_fn;
+	char *passwd;
 	byte force;
 	byte test;
 	fftime mtime;
@@ -172,6 +173,8 @@ static const ffpars_arg cmdline_args[] = {
 	{ "png-compression",	FFPARS_TINT8, OFF(png_comp) },
 	{ "colors",	FFPARS_TINT8, OFF(colors) },
 	{ "crop",	FFPARS_TSTR | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_crop) },
+
+	{ "password",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY, OFF(passwd) },
 
 	// OUTPUT
 	{ "out",	FFPARS_SETVAL('o') | FFPARS_TCHARPTR | FFPARS_FCOPY | FFPARS_FSTRZ, OFF(out) },
@@ -537,6 +540,7 @@ static void cmds_free(void)
 	ffmem_safefree(g->conf.out);
 	ffmem_safefree(g->conf.outdir);
 	ffmem_safefree(g->conf.date_as_fn);
+	ffmem_free(g->conf.passwd);
 	ffslice_free(&g->conf.include_files);
 	ffslice_free(&g->conf.exclude_files);
 	ffslice_free(&g->conf.servers);
@@ -591,6 +595,7 @@ static void cmd_add(void *param)
 	cmd.benchmark = c->conf.benchmark;
 	cmd.mtime = c->conf.mtime;
 	cmd.date_as_fn = c->conf.date_as_fn;
+	cmd.passwd = c->conf.passwd;
 	cmd.show = c->conf.show;
 	cmd.out_preserve_date = c->conf.preserve_date;
 	com = core->iface("core.com");

@@ -93,6 +93,18 @@ Show PE header, data directories, sections info:
 
 	fcom peinfo file.exe
 
+#### fcom encrypt - encrypt files
+
+Encrypt all .txt files and create the output files with .crypto extension:
+
+	fcom encrypt --password=123 *.txt -o .crypto
+
+#### fcom decrypt - decrypt files
+
+Decrypt all .crypto files and create the output files with .txt extension:
+
+	fcom decrypt --password=123 *.crypto -o .txt
+
 
 ### Text files
 

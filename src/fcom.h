@@ -234,6 +234,7 @@ typedef struct fcom_cmd {
 
 	const char *outdir;
 	const char *date_as_fn;
+	const char *passwd;
 	ffstr search;
 	ffstr replace;
 	fftime mtime;

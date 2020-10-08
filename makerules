@@ -1,6 +1,6 @@
 
 OBJ_DIR := .
-BINS := $(BIN) core.$(SO) file.$(SO) fsync.$(SO) arc.$(SO) pic.$(SO) net.$(SO)
+BINS := $(BIN) core.$(SO) file.$(SO) fsync.$(SO) arc.$(SO) pic.$(SO) net.$(SO) crypto.$(SO)
 
 ifeq ($(OS),win)
 RES := $(OBJ_DIR)/fcom.coff
@@ -84,6 +84,14 @@ $(OBJ_DIR)/%.o: $(SRCDIR)/fsync/%.c $(SRCDIR)/fsync/fsync.h $(SRCDIR)/fcom.h $(F
 	$(C)  $(CFLAGS) $<  -o$@
 fsync.$(SO): $(FSYNC_O)
 	$(LD) -shared $(FSYNC_O) $(LDFLAGS) $(LD_LPTHREAD) -o$@
+
+
+crypto.$(SO): $(OBJ_DIR)/crypto.o \
+	$(FF_OBJ_DIR)/crc.o $(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffconf.o $(FF_O) \
+	$(FF_OBJ_DIR)/sha256.o $(FF_OBJ_DIR)/sha256-ff.o $(FF_OBJ_DIR)/sha1.o \
+	$(FF3PTLIB)/AES-ff.a
+
+	$(LD) -shared $+ $(LDFLAGS) $(LD_LPTHREAD) -o$@
 
 
 ARC_O := $(OBJ_DIR)/arc.o \

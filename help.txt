@@ -5,6 +5,7 @@ OPERATION
  copy FILE -o FILE [--resume]
  touch FILE... [--date=DATE] [--date-as=FILE]
  rename FILE... --replace='SEARCH/REPLACE'
+ encrypt|decrypt --password=STR FILE... -o FILE...
  sync (DIR | FILE.txt) -o DIR
  sync-snapshot FILE -o FILE.txt
  textcount FILE...
@@ -79,6 +80,8 @@ OUTPUT
                     DATE: [YYYY-MM-DD] [hh:mm:ss]
  --date-as=FILE     Get date from file FILE
  --preserve-date    Copy modification date from input file
+
+ --password=STR     Password for encryption/decryption
 
 MISC
  --workers=INT, -w  Set max. number of worker threads (see fcom.conf::workers)
