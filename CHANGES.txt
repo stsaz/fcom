@@ -8,6 +8,20 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.14 - Oct 7, 2020
+
+ + fcom encrypt, fcom decrypt: encrypt-decrypt files
+ + --workers
+ * .gz read: support multi-chunk files
+ * --date: support date without time
+ * file: don't use direct I/O by default
+ * interrupt command processing after ctrl+c
+ * --member='WILDCARD[;WILDCARD]'
+ - hanging when opening directories with '?'
+ - "--rename": fix
+ - file write: random file name corruption
+
+
 fcom v0.13 - Mar 1, 2020
 
  + fcom dns - resolve host address

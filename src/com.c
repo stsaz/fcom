@@ -213,7 +213,16 @@ static void com_close(void *p)
 }
 
 static const char* const filt_rstr[] = {
-	"more", "back", "data", "done", "output-done", "next-done", "err", "syserr", "fin", "async",
+	"FCOM_MORE",
+	"FCOM_BACK",
+	"FCOM_DATA",
+	"FCOM_DONE",
+	"FCOM_OUTPUTDONE",
+	"FCOM_NEXTDONE",
+	"FCOM_ERR",
+	"FCOM_SYSERR",
+	"FCOM_FIN",
+	"FCOM_ASYNC",
 };
 
 static int filt_call(comm *c, filter *f)

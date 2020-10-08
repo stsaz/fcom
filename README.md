@@ -1,8 +1,6 @@
 fcom is a fast file commander for Windows, Linux and FreeBSD.
 Its goal is to include functions for working with files of different types: text, binary, archives, pictures, etc.
 
-Note: beta version.  Testing and feedback are welcome!
-
 ### Contents:
 * FEATURES
 * INSTALL
@@ -16,37 +14,40 @@ FEATURES
 ---------------
 
 * Files
-	* fcom touch
-	* fcom crc
-	* fcom rename
-	* fcom sync
-	* fcom sync-snapshot
-	* fcom peinfo
+	* `fcom touch` - create/set attributes on files or directories
+	* `fcom crc` - compute file checksums
+	* `fcom rename` - rename files (search and replace)
+	* `fcom sync` - show the difference of 2 file trees
+	* `fcom sync-snapshot` - save directory tree to a file
+	* `fcom peinfo` - Show PE format information
+	* `fcom encrypt` - encrypt files
+	* `fcom decrypt` - decrypt files
 * Text files
-	* fcom textcount
-	* fcom utf8
-* Archives
-	* fcom gz
-	* fcom ungz
-	* fcom unxz
-	* fcom tar
-	* fcom zip
-	* fcom iso
-	* fcom untar
-	* fcom unzip
-	* fcom un7z
-	* fcom uniso
-	* fcom unpack
+	* `fcom textcount` - show information about text files
+	* `fcom utf8` - convert text files to UTF-8
+* Archives (pack)
+	* `fcom gz` - pack files to .gz
+	* `fcom tar` - pack files to .tar
+	* `fcom zip` - pack files to .zip
+	* `fcom iso` - create .iso image
+* Archives (unpack)
+	* `fcom ungz` - unpack .gz files
+	* `fcom unxz` - unpack .xz files
+	* `fcom untar` - unpack .tar files
+	* `fcom unzip` - unpack .zip files
+	* `fcom un7z` - unpack .7z files
+	* `fcom uniso` - unpack .iso files
+	* `fcom unpack` - unpack archives (determine format by file extension)
 * Pictures
-	* fcom pic-convert
-	* fcom screenshots
+	* `fcom pic-convert` - convert pictures
+	* `fcom screenshots` - show GUI to save screenshots to disk (Windows)
 * Network
-	* fcom dns
+	* `fcom dns` - resolve host address
 * Windows-only
-	* fcom wregfind
-	* fcom gsync
-	* fcom disk
-	* fcom mount
+	* `fcom wregfind` - search within Windows system registry
+	* `fcom gsync` - show GUI to synchronize files
+	* `fcom disk` - list available disk volumes
+	* `fcom mount` - mount disk to a directory
 
 ### Files
 
@@ -130,17 +131,6 @@ Pack to separate .gz files in the current directory:
 
 	fcom gz /file1.txt /file2.txt
 
-#### fcom ungz - unpack .gz files
-#### fcom unxz - unpack .xz files
-
-Unpack to the current directory:
-
-	fcom unxz ./file1.xz ./file2.xz
-
-Specify output file:
-
-	fcom unxz ./file1.xz -o ./file1.txt
-
 #### fcom tar - pack files to .tar
 #### fcom zip - pack files to .zip
 
@@ -155,6 +145,17 @@ Here we exclude all `.git` directories (but not files with `.git` extension), `.
 #### fcom iso - create .iso image
 
 	fcom iso ./mydir -o myimage.iso
+
+#### fcom ungz - unpack .gz files
+#### fcom unxz - unpack .xz files
+
+Unpack to the current directory:
+
+	fcom unxz ./file1.xz ./file2.xz
+
+Specify output file:
+
+	fcom unxz ./file1.xz -o ./file1.txt
 
 #### fcom untar - unpack .tar files
 #### fcom unzip - unpack .zip files
@@ -260,6 +261,8 @@ INSTALL
 
 2. Download all needed source repositories:
 
+		git clone https://github.com/stsaz/ffbase
+		git clone https://github.com/stsaz/ffpack
 		git clone https://github.com/stsaz/ffos
 		git clone https://github.com/stsaz/ff
 		git clone https://github.com/stsaz/ff-3pt

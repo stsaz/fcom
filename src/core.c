@@ -5,6 +5,7 @@ Copyright (c) 2017 Simon Zolin */
 
 #include <FF/data/conf.h>
 #include <FF/path.h>
+#include <FF/time.h>
 #include <FFOS/dir.h>
 #include <FFOS/queue.h>
 #include <FFOS/process.h>
@@ -190,18 +191,6 @@ const fcom_core* core_create(fcom_log log, char **argv, char **env)
 #endif
 	ffkqu_settm(&g->kqtime, (uint)-1);
 
-#ifdef FF_WIN
-	{
-	ffarr path = {0};
-	if (0 == ffstr_catfmt(&path, "%Smod%Z", &g->rootdir)) {
-		ffarr_free(&path);
-		goto err;
-	}
-	ffdl_init(path.ptr);
-	ffarr_free(&path);
-	}
-#endif
-
 	ffstr nm;
 	ffstr_setcz(&nm, "core.com");
 	if (0 != mod_add(&nm, NULL))
@@ -224,7 +213,7 @@ int core_prepare()
 	if (n == 0) {
 		ffsysconf sc;
 		ffsc_init(&sc);
-		n = ffsc_get(&sc, _SC_NPROCESSORS_ONLN);
+		n = ffsc_get(&sc, FFSYSCONF_NPROCESSORS_ONLN);
 		g->conf.workers = n;
 	}
 

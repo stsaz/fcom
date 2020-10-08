@@ -172,6 +172,7 @@ static void* unzip_open(fcom_cmd *cmd)
 	if (NULL == (z = ffmem_new(unzip)))
 		return FCOM_OPEN_SYSERR;
 	ffzip_init(&z->zip, 0);
+	z->zip.codepage = FFUNICODE_WIN1252;
 	z->zip.log = zip_log;
 
 	if (NULL == ffarr_alloc(&z->buf, BUFSIZE))
@@ -224,6 +225,7 @@ again:
 	case R_DATA1:
 		ffmem_tzero(&z->zip);
 		ffzip_init(&z->zip, cmd->input.size);
+		z->zip.codepage = FFUNICODE_WIN1252;
 		z->zip.log = zip_log;
 		z->state = R_DATA;
 		//fall through
@@ -244,12 +246,12 @@ again:
 			if (!arc_need_member(&cmd->members, 0, &fn))
 				continue;
 
-			if (!arc_need_file(cmd, &fn))
-				continue;
-
 			if (fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
 				unzip_showinfo(z, f);
 			if (cmd->show)
+				continue;
+
+			if (!arc_need_file(cmd, &fn))
 				continue;
 
 			ffzip_readfile(&z->zip, f->offset);

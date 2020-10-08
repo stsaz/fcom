@@ -17,7 +17,7 @@ include $(FFOS)/makeconf
 ifeq ($(OS),win)
 INSTDIR := ./$(PROJ)
 BIN := fcom.exe
-CFLAGS += -DFF_WIN=0x0501
+CFLAGS += -DFF_WIN_APIVER=0x0501
 
 else
 INSTDIR := ./$(PROJ)-0
@@ -29,6 +29,9 @@ FF_OBJ_DIR := ./ff-obj
 ifeq ($(OPT),0)
 	CFLAGS_OPT += -DFF_DEBUG
 endif
+# CFLAGS += -fsanitize=address
+# LDFLAGS += -fsanitize=address -ldl
+CFLAGS += -DFFBASE_HAVE_FFERR_STR
 FFOS_CFLAGS := $(CFLAGS) $(CFLAGS_OPT)
 FF_CFLAGS := $(CFLAGS) $(CFLAGS_OPT)
 FF3PT_CFLAGS := $(CFLAGS) $(CFLAGS_OPT)

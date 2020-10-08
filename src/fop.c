@@ -30,7 +30,6 @@ static const fcom_mod f_mod = {
 };
 
 // QUICK FILE OPS
-extern int fffile_makepath(char *fn, size_t off);
 static int fop_mkdir(const char *fn, uint flags);
 static int fop_del(const char *fn, uint flags);
 static int fop_move(const char *src, const char *dst, uint flags);
@@ -244,7 +243,7 @@ static int fop_move(const char *src, const char *dst, uint flags)
 	if (0 != fffile_rename(src, dst)) {
 
 		if ((flags & FOP_RECURS) && fferr_nofile(fferr_last())) {
-			if (0 != fffile_makepath((char*)dst, 0))
+			if (0 != ffdir_make_path((char*)dst, 0))
 				goto err;
 			if (0 != fffile_rename(src, dst))
 				goto err;

@@ -557,7 +557,8 @@ static void cmds_free(void)
 
 static void mon_onsig(fcom_cmd *cmd, uint sig)
 {
-	g->retcode = 0;
+	if (!cmd->err)
+		g->retcode = 0;
 	core->cmd(FCOM_STOP);
 }
 

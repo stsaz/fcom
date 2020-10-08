@@ -69,7 +69,7 @@ FILE_O := $(OBJ_DIR)/fop.o \
 
 ifeq ($(OS),win)
 FILE_O += $(OBJ_DIR)/sys-win.o \
-	$(FF_OBJ_DIR)/ffwreg.o $(FF_OBJ_DIR)/ffwreg2.o
+	$(FF_OBJ_DIR)/ffwreg2.o
 endif
 
 file.$(SO): $(FILE_O)
@@ -192,7 +192,7 @@ ifeq ($(OS),win)
 	unix2dos $(INSTDIR)/*.txt $(INSTDIR)/*.conf $(INSTDIR)/*.gui
 endif
 
-	chmod 644 $(INSTDIR)/*
+	chmod 644 $(INSTDIR)/*.txt $(INSTDIR)/*.conf
 	chmod 755 $(INSTDIR)/$(BIN)
 
 	mkdir -vp $(INSTDIR)/mod
