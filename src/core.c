@@ -568,23 +568,28 @@ static int core_cmd(uint cmd, ...)
 		break;
 	}
 
-	case FCOM_RUN:
+	case FCOM_RUN: {
 		if (0 != mods_sig(FCOM_SIGSTART)) {
 			r = 1;
 			break;
 		}
 		work_loop(g->workers.ptr);
-		break;
 
-	case FCOM_STOP: {
-		FCOM_ASSERT(work_ismain());
-		FF_WRITEONCE(g->stopped, 1);
 		struct worker *w;
-		FFARR_WALKT(&g->workers, w, struct worker) {
-			if (w->init)
+		FFSLICE_WALK_T(&g->workers, w, struct worker) {
+			if (w != (struct worker*)g->workers.ptr && w->init)
 				ffkqu_post(&w->kqpost, &w->evposted);
 		}
+
 		mods_sig(FCOM_SIGFREE);
+		break;
+	}
+
+	case FCOM_STOP: {
+		FF_WRITEONCE(g->stopped, 1);
+		core_com_iface.ctrl(NULL, FCOM_CMD_STOPALL);
+		struct worker *w = (void*)g->workers.ptr;
+		ffkqu_post(&w->kqpost, &w->evposted);
 		break;
 	}
 

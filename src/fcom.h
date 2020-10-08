@@ -310,6 +310,9 @@ enum FCOM_CMD_CTL {
 	FCOM_CMD_FILTADD,
 	FCOM_CMD_FILTADD_AFTER,
 	FCOM_CMD_FILTADD_LAST,
+
+	/** Stop all processing */
+	FCOM_CMD_STOPALL,
 };
 
 enum FCOM_CMD_ARG {

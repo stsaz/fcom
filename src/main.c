@@ -55,7 +55,6 @@ struct cmdconf {
 struct job {
 	struct cmdconf conf;
 	fcom_conf gconf;
-	ffsignal sigs_task;
 	fftask tsk;
 	uint retcode;
 	uint stdout_busy :1;
@@ -520,8 +519,7 @@ fail:
 	return ret;
 }
 
-static const int sigs[] = { SIGINT };
-static const int sigs_block[] = { SIGINT };
+static const ffuint signals[] = { SIGINT };
 
 static void cmds_free(void)
 {
@@ -618,13 +616,9 @@ done:
 	core->cmd(FCOM_STOP);
 }
 
-static void onsig(void *udata)
+static void signal_handler(struct ffsig_info *i)
 {
-	int sig;
-
-	if (-1 == (sig = ffsig_read(&g->sigs_task, NULL)))
-		return;
-
+	dbglog(0, "received signal:%d", i->sig);
 	core->cmd(FCOM_STOP);
 }
 
@@ -672,10 +666,6 @@ int main(int argc, char **argv, char **env)
 	int r = 1;
 
 	ffmem_init();
-	(void)sigs_block;
-#ifndef _DEBUG
-	ffsig_mask(SIG_BLOCK, sigs_block, FFCNT(sigs_block));
-#endif
 
 	if (NULL == (g = ffmem_new(struct job)))
 		return 1;
@@ -716,9 +706,8 @@ int main(int argc, char **argv, char **env)
 	if (0 != core->fcom_core_readconf(FCOM_CONF_FN))
 		goto done;
 
-	g->sigs_task.udata = g;
-	if (0 != ffsig_ctl(&g->sigs_task, core->kq, sigs, FFCNT(sigs), &onsig)) {
-		syserrlog("%s", "ffsig_ctl()");
+	if (0 != ffsig_subscribe(signal_handler, signals, FF_COUNT(signals))) {
+		syserrlog("%s", "ffsig_subscribe()");
 		goto done;
 	}
 
@@ -732,7 +721,6 @@ int main(int argc, char **argv, char **env)
 
 done:
 	if (core != NULL) {
-		ffsig_ctl(&g->sigs_task, core->kq, sigs, FFCNT(sigs), NULL);
 		g->core_free();
 	}
 	FF_SAFECLOSE(g->core_dl, NULL, ffdl_close);

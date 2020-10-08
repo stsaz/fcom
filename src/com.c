@@ -25,6 +25,7 @@ struct cmd {
 
 struct gcomm {
 	ffarr cmds; //struct cmd[]
+	ffuint stop_all :1;
 };
 
 static struct gcomm *g;
@@ -265,6 +266,11 @@ static int com_run(void *p)
 	filter *f;
 
 	for (;;) {
+
+		if (g->stop_all) {
+			dbglog(0, "forced to stop processing", 0);
+			goto err;
+		}
 
 		FF_ASSERT(c->cur != ffchain_sentl(&c->chain));
 		f = FF_GETPTR(filter, sib, c->cur);
@@ -716,11 +722,29 @@ static filter* filt_add(comm *c, uint cmd, const char *name, filter *neigh)
 	return f;
 }
 
+static const char* const cmd_str[] = {
+	"FCOM_CMD_MONITOR",
+	"FCOM_CMD_UDATA",
+	"FCOM_CMD_SETUDATA",
+	"FCOM_CMD_RUNASYNC",
+	"FCOM_CMD_KQ",
+	"FCOM_CMD_FILTADD_PREV",
+	"FCOM_CMD_FILTADD",
+	"FCOM_CMD_FILTADD_AFTER",
+	"FCOM_CMD_FILTADD_LAST",
+	"FCOM_CMD_STOPALL",
+};
+
 /** Set command's parameters. */
 static size_t com_ctrl(fcom_cmd *_c, uint cmd, ...)
 {
 	ssize_t r = -1;
 	comm *c = FF_GETPTR(comm, cmd, _c);
+
+	dbglog(0, "command:%s  c:%p"
+		, (cmd < FF_COUNT(cmd_str)) ? cmd_str[cmd] : ""
+		, c);
+
 	va_list va;
 	va_start(va, cmd);
 
@@ -764,8 +788,11 @@ static size_t com_ctrl(fcom_cmd *_c, uint cmd, ...)
 			goto err;
 		break;
 	}
-	}
 
+	case FCOM_CMD_STOPALL:
+		g->stop_all = 1;
+		break;
+	}
 
 err:
 	va_end(va);
