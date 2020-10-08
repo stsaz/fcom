@@ -3,7 +3,7 @@ Copyright (c) 2019 Simon Zolin
 */
 
 #include <fcom.h>
-#include <FF/pack/xz.h>
+#include <ffpack/xzread.h>
 #include <FF/path.h>
 
 
@@ -48,9 +48,11 @@ static int unxz_process(void *p, fcom_cmd *cmd)
 
 typedef struct unxz {
 	uint state;
-	ffxz xz;
+	ffxzread xz;
 	ffarr buf;
 	ffarr fn;
+	ffstr in;
+	ffuint64 outsize;
 } unxz;
 
 enum {
@@ -76,7 +78,7 @@ static void unxz1_close(void *p, fcom_cmd *cmd)
 	unxz *x = p;
 	ffarr_free(&x->buf);
 	ffarr_free(&x->fn);
-	ffxz_close(&x->xz);
+	ffxzread_close(&x->xz);
 	ffmem_free(x);
 }
 
@@ -86,6 +88,7 @@ static int unxz1_process(void *p, fcom_cmd *cmd)
 	int r;
 	enum E { R_FIRST, R_INIT, R_DATA, R_EOF, };
 
+again:
 	switch ((enum E)x->state) {
 	case R_FIRST:
 		if (cmd->in.len == 0) {
@@ -95,7 +98,8 @@ static int unxz1_process(void *p, fcom_cmd *cmd)
 		//fall through
 
 	case R_INIT:
-		ffxz_init(&x->xz, cmd->input.size);
+		if (0 != ffxzread_open(&x->xz, cmd->input.size))
+			return FCOM_ERR;
 		cmd->output.mtime = cmd->input.mtime;
 		x->state = R_DATA;
 		break;
@@ -104,23 +108,26 @@ static int unxz1_process(void *p, fcom_cmd *cmd)
 		break;
 
 	case R_EOF:
-		if (cmd->in.len != 0) {
-			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%xU", cmd->input.offset);
-			return FCOM_ERR;
+		if (x->in.len == 0) {
+			if (cmd->in_last)
+				return FCOM_DONE;
+			return FCOM_MORE;
 		}
-		return FCOM_DONE;
+		fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%xU", cmd->input.offset);
+		return FCOM_ERR;
 	}
 
 	if (cmd->flags & FCOM_CMD_FWD)
-		x->xz.in = cmd->in;
+		x->in = cmd->in;
 
 	for (;;) {
 
-	r = ffxz_read(&x->xz, ffarr_end(&x->buf), ffarr_unused(&x->buf));
-	switch (r) {
+	r = ffxzread_process(&x->xz, &x->in, &cmd->out);
+	switch ((enum FFXZREAD_R)r) {
 
-	case FFXZ_INFO:
-		cmd->output.size = ffxz_size(&x->xz);
+	case FFXZREAD_INFO: {
+		ffxzread_info *info = ffxzread_getinfo(&x->xz);
+		cmd->output.size = info->uncompressed_size;
 		cmd->output.mtime = cmd->input.mtime;
 		cmd->output.attr = cmd->input.attr;
 
@@ -134,34 +141,37 @@ static int unxz1_process(void *p, fcom_cmd *cmd)
 			cmd->output.fn = x->fn.ptr;
 		}
 		continue;
+	}
 
-	case FFXZ_DATA:
-		cmd->out = x->xz.out;
+	case FFXZREAD_DATA:
+		x->outsize += cmd->out.len;
 		return FCOM_DATA;
 
-	case FFXZ_DONE:
+	case FFXZREAD_DONE: {
+		ffxzread_info *info = ffxzread_getinfo(&x->xz);
 		fcom_verblog(FILT_NAME, "finished: %U => %U (%u%%)"
-			, x->xz.insize, x->xz.outsize
-			, (int)(x->xz.insize * 100 / x->xz.outsize));
+			, info->compressed_size, x->outsize
+			, (int)(info->compressed_size * 100 / x->outsize));
 
-		if (x->xz.in.len != 0) {
+		if (x->in.len != 0) {
 			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%xU", cmd->input.offset);
 			return FCOM_ERR;
 		}
 		FF_CMPSET(&cmd->output.fn, x->fn.ptr, NULL);
 		x->state = R_EOF;
+		goto again;
+	}
+
+	case FFXZREAD_MORE:
 		return FCOM_MORE;
 
-	case FFXZ_MORE:
-		return FCOM_MORE;
-
-	case FFXZ_SEEK:
-		cmd->input.offset = ffxz_offset(&x->xz);
+	case FFXZREAD_SEEK:
+		cmd->input.offset = ffxzread_offset(&x->xz);
 		cmd->in_seek = 1;
 		return FCOM_MORE;
 
-	case FFXZ_ERR:
-		fcom_errlog(FILT_NAME, "%s  offset:0x%xU", ffxz_errstr(&x->xz), cmd->input.offset);
+	case FFXZREAD_ERROR:
+		fcom_errlog(FILT_NAME, "%s  offset:0x%xU", ffxzread_error(&x->xz), cmd->input.offset);
 		return FCOM_ERR;
 	}
 	}

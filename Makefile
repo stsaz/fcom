@@ -8,6 +8,7 @@ OPT := LTO3
 
 FFBASE := $(ROOT)/ffbase
 FFOS := $(ROOT)/ffos
+FFPACK := $(ROOT)/ffpack
 FF := $(ROOT)/ff
 FF3PT := $(ROOT)/ff-3pt
 
@@ -34,7 +35,7 @@ FF3PT_CFLAGS := $(CFLAGS) $(CFLAGS_OPT)
 FF3PTLIB := $(FF3PT)-bin/$(OS)-$(ARCH)
 
 CFLAGS += -Wall -Wextra -Werror -Wno-unused-parameter -Wno-missing-field-initializers \
-	-I$(SRCDIR) -I$(FFBASE) -I$(FF) -I$(FFOS) -I$(FF3PT)
+	-I$(SRCDIR) -I$(FFBASE) -I$(FFPACK) -I$(FF) -I$(FFOS) -I$(FF3PT)
 
 LDFLAGS += -L$(FF3PTLIB)
 
