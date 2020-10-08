@@ -49,6 +49,7 @@ struct cmdconf {
 	byte debug;
 	byte verbose;
 	byte benchmark;
+	byte workers;
 };
 
 struct job {
@@ -156,13 +157,20 @@ static const ffpars_arg cmdline_args[] = {
 	{ "exclude",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_finclude) },
 	{ "servers",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_servers) },
 	{ "recurse",	FFPARS_SETVAL('R') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(recurse) },
+
+	// ARCHIVE READING
 	{ "member",	FFPARS_TCHARPTR | FFPARS_FSTRZ | FFPARS_FCOPY | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_member) },
 	{ "show",	FFPARS_TBOOL8 | FFPARS_FALONE, OFF(show) },
 
+	// ARCHIVE WRITING
 	{ "deflate-level",	FFPARS_TINT8, OFF(deflate_level) },
+
+	// TEXT PROCESSING
+	{ "replace",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_replace) },
+
+	// IMAGE PROCESSING
 	{ "jpeg-quality",	FFPARS_TINT8, OFF(jpeg_quality) },
 	{ "png-compression",	FFPARS_TINT8, OFF(png_comp) },
-	{ "replace",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_replace) },
 	{ "colors",	FFPARS_TINT8, OFF(colors) },
 	{ "crop",	FFPARS_TSTR | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_crop) },
 
@@ -176,6 +184,7 @@ static const ffpars_arg cmdline_args[] = {
 	{ "preserve-date",	FFPARS_TBOOL8 | FFPARS_FALONE, OFF(preserve_date) },
 
 	// MISC
+	{ "workers",	FFPARS_SETVAL('w') | FFPARS_TINT8, OFF(workers) },
 	{ "skip-errors",	FFPARS_SETVAL('k') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(skip_errors) },
 	{ "verbose",	FFPARS_SETVAL('v') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(verbose) },
 	{ "debug",	FFPARS_SETVAL('D') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(debug) },
@@ -693,6 +702,9 @@ int main(int argc, char **argv, char **env)
 		g->gconf.loglev = FCOM_LOGDBG;
 	else if (g->conf.verbose)
 		g->gconf.loglev = FCOM_LOGVERB;
+
+	if (g->conf.workers != 0)
+		g->gconf.workers = g->conf.workers;
 
 	if (0 != core->fcom_core_setconf(&g->gconf))
 		goto done;

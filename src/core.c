@@ -118,9 +118,15 @@ static void on_posted(void *);
 
 static int conf_modconf(ffparser_schem *p, void *obj, ffpars_ctx *ctx);
 static int conf_mod(ffparser_schem *p, void *obj, const ffstr *val);
+int conf_workers(ffparser_schem *p, struct fcom_conf *conf, int64 *val)
+{
+	if (conf->workers == 0)
+		conf->workers = *val;
+	return 0;
+}
 
 static const ffpars_arg conf_args[] = {
-	{ "workers",  FFPARS_TINT8, FFPARS_DSTOFF(struct fcom_conf, workers) },
+	{ "workers",  FFPARS_TINT8, FFPARS_DST(conf_workers) },
 	{ "mod_conf",	FFPARS_TOBJ | FFPARS_FOBJ1 | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&conf_modconf) },
 	{ "mod",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&conf_mod) },
 };
@@ -204,26 +210,34 @@ const fcom_core* core_create(fcom_log log, char **argv, char **env)
 	core_comm_sig(FCOM_SIGINIT);
 	file_mod.sig(FCOM_SIGINIT);
 
-	uint n = g->conf.workers;
-	if (n == 0) {
-		ffsysconf sc;
-		ffsc_init(&sc);
-		n = ffsc_get(&sc, _SC_NPROCESSORS_ONLN);
-	}
-	g->conf.workers = n;
-	if (NULL == ffarr_alloczT(&g->workers, n, struct worker))
-		goto err;
-	g->workers.len = n;
-	struct worker *w = (void*)g->workers.ptr;
-	if (0 != work_init(w, 0))
-		goto err;
-	core->kq = w->kq;
-
 	return &gcore;
 
 err:
 	core_free();
 	return NULL;
+}
+
+/** Create main worker */
+int core_prepare()
+{
+	uint n = g->conf.workers;
+	if (n == 0) {
+		ffsysconf sc;
+		ffsc_init(&sc);
+		n = ffsc_get(&sc, _SC_NPROCESSORS_ONLN);
+		g->conf.workers = n;
+	}
+
+	if (NULL == ffarr_alloczT(&g->workers, n, struct worker))
+		return -1;
+	g->workers.len = n;
+	dbglog(0, "workers: %u", n);
+
+	struct worker *w = (void*)g->workers.ptr;
+	if (0 != work_init(w, 0))
+		return -1;
+	core->kq = w->kq;
+	return 0;
 }
 
 static void on_posted(void *param)
@@ -524,7 +538,11 @@ static int core_cmd(uint cmd, ...)
 	switch ((enum FCOM_CMD)cmd) {
 	case FCOM_READCONF:
 		r = readconf(va_arg(va, char*));
+		if (r != 0)
+			break;
+		r = core_prepare();
 		break;
+
 	case FCOM_SETCONF:
 		r = setconf(va_arg(va, fcom_conf*));
 		break;
