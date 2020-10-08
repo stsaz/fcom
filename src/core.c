@@ -527,9 +527,23 @@ fail:
 	return -1;
 }
 
+static const char* const cmd_str[] = {
+	"FCOM_READCONF",
+	"FCOM_SETCONF",
+	"FCOM_MODADD",
+	"FCOM_RUN",
+	"FCOM_STOP",
+	"FCOM_WORKER_ASSIGN",
+	"FCOM_WORKER_RELEASE",
+	"FCOM_WORKER_AVAIL",
+	"FCOM_TASK_XPOST",
+	"FCOM_TASK_XDEL",
+};
+
 static int core_cmd(uint cmd, ...)
 {
-	dbglog(0, "received command %u", cmd);
+	dbglog(0, "received command %s"
+		, (cmd < FF_COUNT(cmd_str)) ? cmd_str[cmd] : "");
 
 	int r = 0;
 	va_list va;
@@ -546,12 +560,14 @@ static int core_cmd(uint cmd, ...)
 	case FCOM_SETCONF:
 		r = setconf(va_arg(va, fcom_conf*));
 		break;
+
 	case FCOM_MODADD: {
 		ffstr *name = va_arg(va, ffstr*);
 		ffpars_ctx *ctx = va_arg(va, ffpars_ctx*);
 		r = mod_add(name, ctx);
 		break;
 	}
+
 	case FCOM_RUN:
 		if (0 != mods_sig(FCOM_SIGSTART)) {
 			r = 1;
@@ -559,12 +575,14 @@ static int core_cmd(uint cmd, ...)
 		}
 		work_loop(g->workers.ptr);
 		break;
+
 	case FCOM_STOP: {
 		FCOM_ASSERT(work_ismain());
 		FF_WRITEONCE(g->stopped, 1);
 		struct worker *w;
 		FFARR_WALKT(&g->workers, w, struct worker) {
-			ffkqu_post(&w->kqpost, &w->evposted);
+			if (w->init)
+				ffkqu_post(&w->kqpost, &w->evposted);
 		}
 		mods_sig(FCOM_SIGFREE);
 		break;
