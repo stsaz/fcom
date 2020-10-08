@@ -294,6 +294,7 @@ typedef struct fcom_filter {
 
 enum FCOM_CMD_CTL {
 	FCOM_CMD_MONITOR,
+	FCOM_CMD_MONITOR_FUNC,
 	FCOM_CMD_UDATA,
 	FCOM_CMD_SETUDATA,
 
@@ -361,9 +362,13 @@ typedef struct fcom_command {
 struct fcom_cmd_mon {
 	/** Called within the worker thread when command object is about to be destroyed. */
 	void (*onsig)(fcom_cmd *cmd, uint sig);
+	// void (*onsig_param)(fcom_cmd *cmd, uint sig, void *param);
 };
 /** Associate monitor interface with a command. */
 #define fcom_cmd_monitor(cmd, mon)  ctrl(cmd, FCOM_CMD_MONITOR, mon)
+
+/** Associate monitor function with a command */
+#define fcom_cmd_monitor_func(cmd, func, param)  ctrl(cmd, FCOM_CMD_MONITOR_FUNC, func, param)
 
 
 /** FOPS - operations with files */

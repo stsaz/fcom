@@ -51,6 +51,7 @@ typedef struct {
 	fflist_cursor cur;
 	ffchain_item chain_stored;
 	const struct fcom_cmd_mon *mon;
+	struct fcom_cmd_mon mon_s;
 
 	ffchain in_list; //struct in_ent[]
 	ffchain_item *in_next;
@@ -201,8 +202,11 @@ static void com_close(void *p)
 	if (c->cmd.out_fn_copy)
 		ffmem_free((char*)c->cmd.output.fn);
 
-	if (c->mon != NULL)
-		c->mon->onsig(&c->cmd, 0);
+	if (c->mon != NULL) {
+		void (*onsig_param)(fcom_cmd *cmd, uint sig, void *param);
+		onsig_param = (void*)c->mon->onsig;
+		onsig_param(&c->cmd, 0, c->udata);
+	}
 
 	dbglog(0, "'%s' finished", c->cmd.name);
 	ffmem_free(c);
@@ -724,6 +728,7 @@ static filter* filt_add(comm *c, uint cmd, const char *name, filter *neigh)
 
 static const char* const cmd_str[] = {
 	"FCOM_CMD_MONITOR",
+	"FCOM_CMD_MONITOR_FUNC",
 	"FCOM_CMD_UDATA",
 	"FCOM_CMD_SETUDATA",
 	"FCOM_CMD_RUNASYNC",
@@ -753,6 +758,12 @@ static size_t com_ctrl(fcom_cmd *_c, uint cmd, ...)
 		c->mon = va_arg(va, void*);
 		dbglog(0, "set monitor iface: %p", c->mon);
 		r = 0;
+		break;
+
+	case FCOM_CMD_MONITOR_FUNC:
+		c->mon_s.onsig = va_arg(va, void*);
+		c->mon = &c->mon_s;
+		c->udata = va_arg(va, void*);
 		break;
 
 	case FCOM_CMD_UDATA:
