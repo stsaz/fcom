@@ -381,8 +381,10 @@ static void* fo_open(fcom_cmd *cmd)
 	if (NULL == (f = ffmem_new(fout)))
 		return NULL;
 
-	if (NULL == ffstr_alcopyz(&f->name, cmd->output.fn))
+	f->name.ptr = ffsz_dup(cmd->output.fn);
+	if (f->name.ptr == NULL)
 		goto err;
+	f->name.len = ffsz_len(f->name.ptr);
 
 	if (cmd->read_only)
 		return f;
