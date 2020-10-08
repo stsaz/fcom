@@ -4,12 +4,14 @@ Copyright (c) 2017 Simon Zolin
 
 #include <fcom.h>
 
+#include <FF/sys/thpool.h>
 #include <FF/sys/fileread.h>
 #include <FF/sys/filewrite.h>
 #include <FF/path.h>
 #include <FFOS/error.h>
 #include <FFOS/file.h>
 #include <FFOS/dir.h>
+#include <FFOS/asyncio.h>
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, __VA_ARGS__)
@@ -17,7 +19,15 @@ Copyright (c) 2017 Simon Zolin
 #define syserrlog(fmt, ...)  fcom_syserrlog(FILT_NAME, fmt, __VA_ARGS__)
 
 extern const fcom_core *core;
-static const fcom_command *com;
+
+struct file_mod {
+	fflock lk;
+	ffthpool *thpool;
+	const fcom_command *com;
+};
+static struct file_mod *mod;
+
+static ffthpool* thpool_create();
 
 // MODULE
 static int file_sig(uint signo);
@@ -38,7 +48,7 @@ static const fcom_filter fi_filt = {
 struct inconf;
 static struct inconf *inconf;
 typedef struct file file;
-static void fi_log(void *p, uint level, const ffstr *msg);
+static void fi_log(void *p, uint level, ffstr msg);
 static void fi_onread(void *p);
 
 // OUTPUT
@@ -51,6 +61,7 @@ static const fcom_filter fo_filt = {
 };
 struct outconf;
 static struct outconf *outconf;
+static void onwrite(void *udata);
 
 // DIR OUTPUT
 static void* diro_open(fcom_cmd *cmd);
@@ -98,16 +109,23 @@ static int file_sig(uint signo)
 {
 	switch (signo) {
 	case FCOM_SIGINIT:
-		com = core->iface("core.com");
+		mod = ffmem_new(struct file_mod);
+		mod->com = core->iface("core.com");
 		break;
+
 	case FCOM_SIGSTART:
 		if (0 != ffaio_fctxinit())
 			return -1;
 		break;
+
 	case FCOM_SIGFREE:
+		if (0 != ffthpool_free(mod->thpool))
+			fcom_syserrlog("file", "ffthpool_free", 0);
+		mod->thpool = NULL;
 		ffmem_safefree(inconf);
 		ffmem_safefree(outconf);
 		ffaio_fctxclose();
+		ffmem_free0(mod);
 		break;
 	}
 	return 0;
@@ -122,14 +140,16 @@ struct inconf {
 	uint align;
 	byte directio;
 	byte readahead;
+	byte use_thread_pool;
 };
 
 #define OFF(member)  FFPARS_DSTOFF(struct inconf, member)
 static const ffpars_arg fi_conf_args[] = {
 	{ "bufsize",	FFPARS_TSIZE | FFPARS_FNOTZERO,  OFF(bufsize) },
 	{ "nbufs",	FFPARS_TINT8 | FFPARS_FNOTZERO,  OFF(nbufs) },
-	{ "direct_io",	FFPARS_TBOOL8,  OFF(directio) },
 	{ "readahead",	FFPARS_TBOOL8,  OFF(readahead) },
+	{ "use_thread_pool",	FFPARS_TBOOL8,  OFF(use_thread_pool) },
+	{ "direct_io",	FFPARS_TBOOL8,  OFF(directio) },
 };
 #undef OFF
 
@@ -149,7 +169,8 @@ static int fi_conf(ffpars_ctx *ctx)
 	inconf->bufsize = 64 * 1024;
 	inconf->nbufs = 3;
 	inconf->align = 4096;
-	inconf->directio = 1;
+	inconf->use_thread_pool = 1;
+	inconf->directio = 0;
 	inconf->readahead = 1;
 	ffpars_setargs(ctx, inconf, fi_conf_args, FFCNT(fi_conf_args));
 	return 0;
@@ -163,15 +184,18 @@ static void* fi_open(fcom_cmd *cmd)
 	f->fn = cmd->input.fn;
 
 	fffileread_conf conf = {};
+	if (inconf->use_thread_pool && !inconf->directio)
+		conf.thpool = thpool_create();
+	conf.directio = inconf->directio;
 	conf.udata = f;
 	conf.log = &fi_log;
+	conf.log_debug = fcom_logchk(core->conf->loglev, FCOM_LOGDBG);
 	conf.onread = &fi_onread;
-	conf.kq = (fffd)com->ctrl(cmd, FCOM_CMD_KQ);
+	conf.kq = (fffd)mod->com->ctrl(cmd, FCOM_CMD_KQ);
 	conf.oflags = FFO_RDONLY | FFO_NOATIME | FFO_NONBLOCK | FFO_NODOSNAME;
 	conf.bufsize = inconf->bufsize;
 	conf.nbufs = inconf->nbufs;
 	conf.bufalign = inconf->align;
-	conf.directio = inconf->directio;
 	f->fr = fffileread_create(f->fn, &conf);
 	if (f->fr == NULL)
 		goto err;
@@ -191,8 +215,9 @@ static void* fi_open(fcom_cmd *cmd)
 		cmd->output.mtime = cmd->input.mtime;
 	cmd->in_last = 0;
 
-	dbglog(0, "opened file %s, %UKB, directio:%u"
-		, f->fn, f->size / 1024, (int)conf.directio);
+	f->uctx = cmd;
+	dbglog(0, "opened file %s, %UKB"
+		, f->fn, f->size / 1024);
 	return f;
 
 err:
@@ -209,21 +234,21 @@ static void fi_close(void *p, fcom_cmd *cmd)
 		fffileread_stat(f->fr, &stat);
 		dbglog(0, "cache-hit#:%u  read#:%u  async#:%u  seek#:%u"
 			, stat.ncached, stat.nread, stat.nasync, f->nseek);
-		fffileread_unref(f->fr);
+		fffileread_free(f->fr);
 	}
 
 	ffmem_free(f);
 }
 
-static void fi_log(void *p, uint level, const ffstr *msg)
+static void fi_log(void *p, uint level, ffstr msg)
 {
 	file *f = p;
 	switch (level) {
-	case 0:
-		syserrlog("%s: %S", f->fn, msg);
+	case FFFILEREAD_LOG_ERR:
+		errlog("%s: %S", f->fn, &msg);
 		break;
-	case 1:
-		dbglog(0, "%S", msg);
+	case FFFILEREAD_LOG_DBG:
+		dbglog(0, "%S", &msg);
 		break;
 	}
 }
@@ -231,9 +256,7 @@ static void fi_log(void *p, uint level, const ffstr *msg)
 static void fi_onread(void *p)
 {
 	file *f = p;
-	if (f->uctx == NULL)
-		return;
-	com->run(f->uctx);
+	mod->com->ctrl(f->uctx, FCOM_CMD_RUNASYNC);
 }
 
 /** Return data requested by user, if available, or suspend otherwise. */
@@ -249,17 +272,15 @@ static int fi_process(void *p, fcom_cmd *cmd)
 		return FCOM_DONE;
 	}
 
-	if (f->uctx != NULL) {
-		f->uctx = NULL;
+	if (cmd->in_seek) {
+		//read data at offset
+		cmd->in_seek = 0;
+		dbglog(0, "seek:%U", cmd->input.offset);
+		f->nseek++;
+		f->next_off = cmd->input.offset;
 	} else {
-		if (cmd->in_seek) {
-			//read data at offset
-			dbglog(0, "seek:%U", cmd->input.offset);
-			f->nseek++;
-		} else {
-			//read next data block
-			cmd->input.offset = f->next_off;
-		}
+		//read next data block
+		cmd->input.offset = f->next_off;
 	}
 
 	uint flags = 0;
@@ -268,11 +289,10 @@ static int fi_process(void *p, fcom_cmd *cmd)
 	if (cmd->in_backward)
 		flags |= FFFILEREAD_FBACKWARD;
 
-	r = fffileread_getdata(f->fr, &b, cmd->input.offset, flags);
+	r = fffileread_getdata(f->fr, &b, f->next_off, flags);
 	switch ((enum FFFILEREAD_R)r) {
 
 	case FFFILEREAD_RASYNC:
-		f->uctx = cmd;
 		return FCOM_ASYNC;
 
 	case FFFILEREAD_RERR:
@@ -286,10 +306,8 @@ static int fi_process(void *p, fcom_cmd *cmd)
 		break;
 	}
 
-	if (cmd->in_seek)
-		cmd->in_seek = 0;
 	cmd->out = b;
-	f->next_off = cmd->input.offset + b.len;
+	f->next_off += b.len;
 	return FCOM_DATA;
 }
 
@@ -304,6 +322,7 @@ struct outconf {
 	byte prealloc_grow;
 	byte mkpath;
 	byte del_on_err;
+	byte use_thread_pool;
 };
 
 #define OFF(member)  FFPARS_DSTOFF(struct outconf, member)
@@ -313,6 +332,7 @@ static const ffpars_arg fo_conf_args[] = {
 	{ "prealloc_grow",	FFPARS_TBOOL8,  OFF(prealloc_grow) },
 	{ "mkpath",	FFPARS_TBOOL8,  OFF(mkpath) },
 	{ "del_on_err",	FFPARS_TBOOL8,  OFF(del_on_err) },
+	{ "use_thread_pool",	FFPARS_TBOOL8,  OFF(use_thread_pool) },
 };
 #undef OFF
 
@@ -325,6 +345,7 @@ static int fo_conf(ffpars_ctx *ctx)
 	outconf->prealloc_grow = 1;
 	outconf->mkpath = 1;
 	outconf->del_on_err = 1;
+	outconf->use_thread_pool = 1;
 	ffpars_setargs(ctx, outconf, fo_conf_args, FFCNT(fo_conf_args));
 	return 0;
 }
@@ -335,17 +356,19 @@ typedef struct fout {
 	ffstr name;
 	fftime mtime;
 	uint attr;
+	fcom_cmd *cmd;
 	uint ok :1;
+	uint skip :1;
 } fout;
 
 static void fo_log(void *p, uint level, ffstr msg)
 {
 	// fout *f = p;
 	switch (level) {
-	case 0:
+	case FFFILEWRITE_LOG_ERR:
 		syserrlog("%S", &msg);
 		break;
-	case 1:
+	case FFFILEWRITE_LOG_DBG:
 		dbglog(0, "%S", &msg);
 		break;
 	}
@@ -368,8 +391,11 @@ static void* fo_open(fcom_cmd *cmd)
 	fffilewrite_setconf(&conf);
 	conf.udata = f;
 	conf.log = &fo_log;
+	conf.log_debug = fcom_logchk(core->conf->loglev, FCOM_LOGDBG);
+	conf.onwrite = &onwrite;
+	if (outconf->use_thread_pool)
+		conf.thpool = thpool_create();
 	conf.bufsize = outconf->bufsize;
-	conf.align = 4096;
 	conf.prealloc = (cmd->output.size != 0) ? cmd->output.size : outconf->prealloc;
 	conf.prealloc_grow = outconf->prealloc_grow;
 	conf.mkpath = outconf->mkpath;
@@ -381,6 +407,7 @@ static void* fo_open(fcom_cmd *cmd)
 
 	f->mtime = cmd->output.mtime;
 	f->attr = cmd->output.attr;
+	f->cmd = cmd;
 	return f;
 
 err:
@@ -413,8 +440,8 @@ static void fo_close(void *p, fcom_cmd *cmd)
 				fffile_settimefn(f->name.ptr, &f->mtime);
 
 			verbose = 1;
-			dbglog(0, "%S: mem write#:%u  file write#:%u  prealloc#:%u"
-				, &f->name, st.nmwrite, st.nfwrite, st.nprealloc);
+			dbglog(0, "%S: mem write#:%u  file write#:%u  async#:%u  prealloc#:%u"
+				, &f->name, st.nmwrite, st.nfwrite, st.nasync, st.nprealloc);
 		}
 	}
 
@@ -427,6 +454,12 @@ static void fo_close(void *p, fcom_cmd *cmd)
 	ffmem_free(f);
 }
 
+static void onwrite(void *udata)
+{
+	fout *f = udata;
+	mod->com->ctrl(f->cmd, FCOM_CMD_RUNASYNC);
+}
+
 /** Add more data from user.  Flush to file, if necessary. */
 static int fo_adddata(void *p, fcom_cmd *cmd)
 {
@@ -435,34 +468,51 @@ static int fo_adddata(void *p, fcom_cmd *cmd)
 	if (f->fw == NULL) {
 		return (cmd->flags & FCOM_CMD_FIRST) ? FCOM_DONE : FCOM_MORE;
 	}
+	if (f->skip) {
+		return (cmd->flags & FCOM_CMD_FIRST) ? FCOM_DONE : FCOM_MORE;
+	}
 
-	int64 off = -1;
+	int64 seek = -1;
 	if (cmd->out_seek) {
 		cmd->out_seek = 0;
-		off = cmd->output.offset;
+		seek = cmd->output.offset;
+		dbglog(0, "seeking to %xU...", seek);
 	}
 
 	uint flags = 0;
 	if (cmd->flags & FCOM_CMD_FIRST)
 		flags = FFFILEWRITE_FFLUSH;
 
-	int r = fffilewrite_write(f->fw, cmd->in, off, flags);
-	switch (r) {
-	case FFFILEWRITE_RWRITTEN:
-		f->wr += cmd->in.len;
-		if (cmd->flags & FCOM_CMD_FIRST) {
-			f->ok = 1;
-			return FCOM_DONE;
+	for (;;) {
+		ssize_t r = fffilewrite_write(f->fw, cmd->in, seek, flags);
+		switch (r) {
+		default:
+			if (r == 0 && (cmd->flags & FCOM_CMD_FIRST)) {
+				f->ok = 1;
+				return FCOM_DONE;
+			}
+
+			ffstr_shift(&cmd->in, r);
+			f->wr += r;
+
+			if (cmd->in.len == 0 && !(cmd->flags & FCOM_CMD_FIRST)) {
+				return FCOM_MORE;
+			}
+
+			seek = -1;
+			continue;
+
+		case FFFILEWRITE_RERR:
+			if (cmd->skip_err) {
+				f->skip = 1;
+				return (cmd->flags & FCOM_CMD_FIRST) ? FCOM_DONE : FCOM_MORE;
+			}
+			return FCOM_ERR;
+
+		case FFFILEWRITE_RASYNC:
+			return FCOM_ASYNC;
 		}
-		return FCOM_MORE;
-
-	case FFFILEWRITE_RERR:
-		return FCOM_ERR;
-
-	case FFFILEWRITE_RASYNC:
-		return FCOM_ASYNC;
 	}
-	return FCOM_ERR;
 }
 
 #undef FILT_NAME
@@ -528,3 +578,24 @@ static int diro_process(void *p, fcom_cmd *cmd)
 }
 
 #undef FILT_NAME
+
+
+/** Create thread pool. */
+static ffthpool* thpool_create()
+{
+	if (mod->thpool != NULL)
+		return mod->thpool;
+
+	fflk_lock(&mod->lk);
+	if (mod->thpool == NULL) {
+		ffthpoolconf ioconf = {};
+		ioconf.maxthreads = 1;
+		if (inconf->use_thread_pool && outconf->use_thread_pool)
+			ioconf.maxthreads = 2;
+		ioconf.maxqueue = 64;
+		if (NULL == (mod->thpool = ffthpool_create(&ioconf)))
+			fcom_syserrlog("file", "ffthpool_create", 0);
+	}
+	fflk_unlock(&mod->lk);
+	return mod->thpool;
+}
