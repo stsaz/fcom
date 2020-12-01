@@ -14,9 +14,9 @@ include $(FF3PT)/makerules
 FF_O := $(FFOS_OBJ) $(FF_OBJ) $(FF_OBJ_DIR)/ffutf8.o
 FF_HDR += $(FFPACK)/ffpack/*.h
 
-$(OBJ_DIR)/%.o: $(SRCDIR)/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+$(OBJ_DIR)/%.o: $(SRCDIR)/%.c $(SRCDIR)/*.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
-$(OBJ_DIR)/%.o: $(SRCDIR)/arc/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+$(OBJ_DIR)/%.o: $(SRCDIR)/arc/%.c $(SRCDIR)/arc/*.h $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
 $(OBJ_DIR)/%.o: $(SRCDIR)/pic/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
@@ -105,7 +105,6 @@ ARC_O := $(OBJ_DIR)/arc.o \
 	$(OBJ_DIR)/ico.o \
 	$(FF_OBJ_DIR)/crc.o \
 	$(FF_OBJ_DIR)/fftar.o \
-	$(FF_OBJ_DIR)/ffzip.o \
 	$(FF_OBJ_DIR)/ff7z.o $(FF_OBJ_DIR)/ff7z-fmt.o \
 	$(FF_OBJ_DIR)/ffiso.o $(FF_OBJ_DIR)/ffiso-fmt.o \
 	$(FF_OBJ_DIR)/ffico.o \
@@ -130,7 +129,6 @@ pic.$(SO): $(PIC_O)
 
 
 NET_O := $(OBJ_DIR)/dns.o \
-	$(FF_OBJ_DIR)/ffdns.o \
 	$(FF_OBJ_DIR)/ffdns-client.o \
 	$(FF_OBJ_DIR)/ffurl.o \
 	$(FF_OBJ_DIR)/ffproto.o \

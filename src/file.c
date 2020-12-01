@@ -366,7 +366,7 @@ static void fo_log(void *p, uint level, ffstr msg)
 	// fout *f = p;
 	switch (level) {
 	case FFFILEWRITE_LOG_ERR:
-		syserrlog("%S", &msg);
+		errlog("%S", &msg);
 		break;
 	case FFFILEWRITE_LOG_DBG:
 		dbglog(0, "%S", &msg);

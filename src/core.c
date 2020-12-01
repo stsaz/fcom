@@ -175,9 +175,8 @@ const fcom_core* core_create(fcom_log log, char **argv, char **env)
 		goto err;
 	}
 
-	fftime_zone tz;
-	fftime_local(&tz);
-	fftime_storelocal(&tz);
+	fftime_local(&g->conf.tz);
+	fftime_storelocal(&g->conf.tz);
 	fftime_init();
 
 	if (0 != set_rootdir(argv))
@@ -341,7 +340,8 @@ fail:
 
 static int setconf(fcom_conf *conf)
 {
-	ffmem_copyT(&g->conf, conf, fcom_conf);
+	g->conf.loglev = conf->loglev;
+	g->conf.workers = conf->workers;
 	return 0;
 }
 

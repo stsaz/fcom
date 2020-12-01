@@ -183,7 +183,7 @@ static void dnscl_complete(void *udata, const ffdnscl_result *res)
 {
 	dnscl *c = udata;
 	if (res->status != 0) {
-		errlog("dnscl", "result: %d (%s)", res->status, ffdns_errstr(res->status));
+		errlog("dnscl", "result: %d (%s)", res->status, ffdns_rcode_str(res->status));
 		return;
 	}
 
