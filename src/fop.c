@@ -21,6 +21,8 @@ Copyright (c) 2017 Simon Zolin
 const fcom_core *core;
 const fcom_command *com;
 
+#include <hex-print.h>
+
 // MODULE
 static int f_sig(uint signo);
 static const void* f_iface(const char *name);
@@ -106,6 +108,7 @@ static const fcom_filter wregfind_filt;
 #endif
 extern const fcom_filter txcnt_filt;
 extern const fcom_filter utf8_filt;
+extern const fcom_filter hexprint_filt;
 
 static const struct oper cmds[] = {
 	{ "copy", "file.copy", &f_copy_filt },
@@ -113,6 +116,7 @@ static const struct oper cmds[] = {
 	{ "rename", "file.rename", &f_rename_filt },
 	{ "textcount", "file.textcount", &txcnt_filt },
 	{ "utf8", "file.utf8", &utf8_filt },
+	{ "hexprint", "file.hexprint", &hexprint_filt },
 	{ "crc", "file.crc", &f_crc_filt },
 #ifdef FF_WIN
 	{ "wregfind", "file.wregfind", &wregfind_filt },

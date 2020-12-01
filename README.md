@@ -22,6 +22,7 @@ FEATURES
 	* `fcom peinfo` - Show PE format information
 	* `fcom encrypt` - encrypt files
 	* `fcom decrypt` - decrypt files
+	* `fcom hexprint` - print data in hexadecimal/text format
 * Text files
 	* `fcom textcount` - show information about text files
 	* `fcom utf8` - convert text files to UTF-8
@@ -106,6 +107,9 @@ Decrypt all .crypto files and create the output files with .txt extension:
 
 	fcom decrypt --password=123 *.crypto -o .txt
 
+#### fcom hexprint - print data in hexadecimal/text format
+
+	fcom hexprint *.data
 
 ### Text files
 
