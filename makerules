@@ -12,6 +12,7 @@ all: ff $(BINS)
 include $(FF)/makerules
 include $(FF3PT)/makerules
 FF_O := $(FFOS_OBJ) $(FF_OBJ) $(FF_OBJ_DIR)/ffutf8.o
+FF_HDR += $(FFPACK)/ffpack/*.h
 
 $(OBJ_DIR)/%.o: $(SRCDIR)/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
@@ -199,7 +200,7 @@ endif
 	chmod 755 $(INSTDIR)/mod
 	$(CP) \
 		*.$(SO) \
-		$(FF3PTLIB)/libz-ff.$(SO) $(FF3PTLIB)/liblzma-ff.$(SO) \
+		$(FFPACK)/zlib/libz-ff.$(SO) $(FFPACK)/lzma/liblzma-ff.$(SO) \
 		$(FF3PTLIB)/libjpeg-ff.$(SO) $(FF3PTLIB)/libpng-ff.$(SO) \
 		$(INSTDIR)/mod
 	chmod 644 $(INSTDIR)/mod/*

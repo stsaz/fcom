@@ -56,6 +56,8 @@ ARCHIVE READING
  --show             Show contents
 
 ARCHIVE WRITING
+ --compression-method=STR
+                        Use specific compression method: store, deflate
  --deflate-level=INT    Set compression level for Deflate algorithm (1..9)
 
 TEXT PROCESSING

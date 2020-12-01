@@ -41,11 +41,13 @@ struct cmdconf {
 	byte recurse;
 	byte show;
 	byte skip_errors;
-	byte deflate_level;
 	byte jpeg_quality;
 	byte png_comp;
 	byte preserve_date;
 	byte colors;
+
+	byte deflate_level;
+	byte comp_method;
 
 	byte debug;
 	byte verbose;
@@ -146,6 +148,20 @@ static int arg_help(ffparser_schem *p, void *obj);
 static int arg_date(ffparser_schem *p, void *obj, const ffstr *val);
 static int arg_replace(ffparser_schem *p, void *obj, const ffstr *val);
 static int arg_crop(ffparser_schem *p, void *obj, const ffstr *val);
+static int arg_comp_method(ffparser_schem *p, void *obj, const ffstr *val)
+{
+	struct cmdconf *c = obj;
+	static const ffstr methods[] = {
+		FFSTR_INIT("store"), FFSTR_INIT("deflate"), FFSTR_INIT("lzma"),
+	};
+	ffslice s;
+	ffslice_set(&s, methods, FF_COUNT(methods));
+	int i = ffslicestr_find(&s, val);
+	if (i < 0)
+		return FFPARS_EBADVAL;
+	c->comp_method = i;
+	return 0;
+}
 
 
 #define OFF(member)  FFPARS_DSTOFF(struct cmdconf, member)
@@ -164,6 +180,7 @@ static const ffpars_arg cmdline_args[] = {
 
 	// ARCHIVE WRITING
 	{ "deflate-level",	FFPARS_TINT8, OFF(deflate_level) },
+	{ "compression-method",	FFPARS_TSTR | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_comp_method) },
 
 	// TEXT PROCESSING
 	{ "replace",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_replace) },
@@ -589,6 +606,7 @@ static void cmd_add(void *param)
 	cmd.out_overwrite = c->conf.force;
 	cmd.skip_err = c->conf.skip_errors;
 	cmd.deflate_level = c->conf.deflate_level;
+	cmd.comp_method = c->conf.comp_method;
 	cmd.jpeg_quality = c->conf.jpeg_quality;
 	cmd.png_comp = c->conf.png_comp;
 	cmd.pic_colors = c->conf.colors;
@@ -683,6 +701,7 @@ int main(int argc, char **argv, char **env)
 	ffchain_init(&g->in_list);
 	g->in_next = ffchain_sentl(&g->in_list);
 	g->conf.deflate_level = 255;
+	g->conf.comp_method = 255;
 	g->conf.jpeg_quality = 255;
 	g->conf.png_comp = 255;
 	g->conf.colors = 255;

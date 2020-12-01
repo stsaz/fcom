@@ -36,6 +36,7 @@ extern const fcom_filter iso_filt;
 extern const fcom_filter uniso_filt;
 extern const fcom_filter un7z_filt;
 extern const fcom_filter icoi_filt;
+extern const fcom_filter unzip1_filt;
 
 // UNPACK
 static void* unpack_open(fcom_cmd *cmd);
@@ -67,6 +68,7 @@ static const struct cmd cmds[] = {
 	{ "untar", "arc.untar", &untar_filt },
 	{ "zip", "arc.zip", &zip_filt },
 	{ "unzip", "arc.unzip", &unzip_filt },
+	{ "unzip1", NULL, &unzip1_filt },
 	{ "un7z", "arc.un7z", &un7z_filt },
 	{ "iso", "arc.iso", &iso_filt },
 	{ "uniso", "arc.uniso", &uniso_filt },

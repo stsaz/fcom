@@ -40,7 +40,7 @@ FF3PTLIB := $(FF3PT)-bin/$(OS)-$(ARCH)
 CFLAGS += -Wall -Wextra -Werror -Wno-unused-parameter -Wno-missing-field-initializers \
 	-I$(SRCDIR) -I$(FFBASE) -I$(FFPACK) -I$(FF) -I$(FFOS) -I$(FF3PT)
 
-LDFLAGS += -L$(FF3PTLIB)
+LDFLAGS += -L$(FFPACK)/zlib -L$(FFPACK)/lzma -L$(FF3PTLIB)
 
 include $(PROJDIR)/makerules
 
