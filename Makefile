@@ -31,7 +31,7 @@ ifeq ($(OPT),0)
 endif
 # CFLAGS += -fsanitize=address
 # LDFLAGS += -fsanitize=address -ldl
-CFLAGS += -DFFBASE_HAVE_FFERR_STR
+CFLAGS += -DFFBASE_HAVE_FFERR_STR $(CFLAGS_OPT)
 FFOS_CFLAGS := $(CFLAGS) $(CFLAGS_OPT)
 FF_CFLAGS := $(CFLAGS) $(CFLAGS_OPT)
 FF3PT_CFLAGS := $(CFLAGS) $(CFLAGS_OPT)

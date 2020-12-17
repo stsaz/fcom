@@ -157,7 +157,7 @@ static int set_rootdir(char **argv)
 		return -1;
 	if (NULL == ffpath_split2(p, ffsz_len(p), &path, NULL))
 		return -1;
-	if (NULL == ffstr_copy(&g->rootdir, path.ptr, path.len + FFSLEN("/")))
+	if (NULL == ffstr_dup(&g->rootdir, path.ptr, path.len + FFSLEN("/")))
 		return -1;
 	return 0;
 }

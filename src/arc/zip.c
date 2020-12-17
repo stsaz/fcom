@@ -67,7 +67,7 @@ static int zip_process(void *p, fcom_cmd *cmd)
 {
 	zip *z = p;
 	int r;
-	enum E { W_NEXT, W_NEWFILE, W_DATA, W_EOF };
+	enum E { W_NEXT, W_NEWFILE, W_DATA, W_EOF, W_FIN, };
 
 	switch ((enum E)z->state) {
 
@@ -79,7 +79,7 @@ static int zip_process(void *p, fcom_cmd *cmd)
 	case W_NEXT:
 		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0))) {
 			ffzipwrite_finish(&z->zip);
-			z->state = W_DATA;
+			z->state = W_FIN;
 			break;
 		}
 		if (0 == com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd)))
@@ -118,17 +118,22 @@ static int zip_process(void *p, fcom_cmd *cmd)
 			return FCOM_ERR;
 		}
 		z->state = W_DATA;
-		//fall through
 	}
+		//fall through
 
 	case W_DATA:
+		if (cmd->flags & FCOM_CMD_FWD) {
+			if (cmd->in_last)
+				ffzipwrite_filefinish(&z->zip);
+			z->in = cmd->in;
+		}
 		break;
-	}
 
-	if (cmd->flags & FCOM_CMD_FWD) {
-		if (cmd->in_last)
-			ffzipwrite_filefinish(&z->zip);
-		z->in = cmd->in;
+	case W_FIN:
+		if (cmd->flags & FCOM_CMD_FWD) {
+			return FCOM_ERR;
+		}
+		break;
 	}
 
 	for (;;) {
@@ -175,12 +180,18 @@ static void unzip_close(void *p, fcom_cmd *cmd)
 {
 }
 
+static void task_onfinish(fcom_cmd *cmd, uint sig, void *param)
+{
+	com->ctrl(param, FCOM_CMD_RUNASYNC);
+}
+
 static int unzip_process(void *p, fcom_cmd *cmd)
 {
-	if (NULL == (cmd->input.fn = com->arg_next(cmd, 0)))
+	const char *ifn;
+	if (NULL == (ifn = com->arg_next(cmd, 0)))
 		return FCOM_DONE;
 
-	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_IN(cmd));
-	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, "arc.unzip1");
-	return FCOM_NEXTDONE;
+	if (FCOM_DONE != task_create_run(cmd, NULL, "arc.unzip1", ifn, task_onfinish, cmd))
+		return FCOM_ERR;
+	return FCOM_ASYNC;
 }

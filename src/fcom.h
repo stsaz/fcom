@@ -370,7 +370,8 @@ struct fcom_cmd_mon {
 /** Associate monitor interface with a command. */
 #define fcom_cmd_monitor(cmd, mon)  ctrl(cmd, FCOM_CMD_MONITOR, mon)
 
-/** Associate monitor function with a command */
+/** Associate monitor function with a command
+func: void onfinish(fcom_cmd *cmd, uint sig, void *param) */
 #define fcom_cmd_monitor_func(cmd, func, param)  ctrl(cmd, FCOM_CMD_MONITOR_FUNC, func, param)
 
 

@@ -76,3 +76,5 @@ if test "$param" = "all" ; then
 	sh $0 unpack
 	sh $0 crypt
 fi
+
+echo DONE

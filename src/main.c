@@ -749,6 +749,7 @@ int main(int argc, char **argv, char **env)
 	r = g->retcode;
 
 done:
+	dbglog(0, "return code: %d", r);
 	if (core != NULL) {
 		g->core_free();
 	}
