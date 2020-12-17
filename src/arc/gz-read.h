@@ -38,19 +38,10 @@ static int ungz1_process(void *p, fcom_cmd *cmd)
 {
 	ungz *g = p;
 	int r;
-	enum E { R_FIRST, R_INIT, R_DATA, R_EOF, };
+	enum E { R_INIT, R_DATA, R_EOF, };
 
 again:
 	switch ((enum E)g->state) {
-	case R_FIRST:
-	if (cmd->in.len == 0) {
-		g->state = R_INIT;
-		/* chain: file.in -> ungz -> untar
-		. untar returns MORE
-		. ungz must return MORE because file.in isn't yet initialized */
-		return FCOM_MORE;
-	}
-	//fall through
 
 	case R_INIT: {
 		ffint64 fsize = cmd->input.size;

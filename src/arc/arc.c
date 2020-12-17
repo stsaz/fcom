@@ -37,6 +37,7 @@ extern const fcom_filter uniso_filt;
 extern const fcom_filter un7z_filt;
 extern const fcom_filter icoi_filt;
 extern const fcom_filter unzip1_filt;
+extern const fcom_filter untar1_filt;
 
 // UNPACK
 static void* unpack_open(fcom_cmd *cmd);
@@ -69,6 +70,7 @@ static const struct cmd cmds[] = {
 	{ "zip", "arc.zip", &zip_filt },
 	{ "unzip", "arc.unzip", &unzip_filt },
 	{ "unzip1", NULL, &unzip1_filt },
+	{ "untar1", NULL, &untar1_filt },
 	{ "un7z", "arc.un7z", &un7z_filt },
 	{ "iso", "arc.iso", &iso_filt },
 	{ "uniso", "arc.uniso", &uniso_filt },
@@ -139,40 +141,44 @@ int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf)
 }
 
 /** Create hard link. */
-int out_hlink(fcom_cmd *cmd, const char *target, const char *linkname)
+int out_hlink(fcom_cmd *cmd, ffstr target, const char *linkname)
 {
 	int r = FCOM_ERR;
+	char *tgt = ffsz_dupn(target.ptr, target.len);
 
-	if (0 != fffile_hardlink(target, linkname)) {
+	if (0 != fffile_hardlink(tgt, linkname)) {
 		fcom_syserrlog("arc", "fffile_hardlink(): %s -> %s"
-			, linkname, target);
+			, linkname, tgt);
 		if (!cmd->skip_err)
 			goto end;
 	} else
 		fcom_dbglog(0, "arc", "created hard link: %s -> %s"
-			, linkname, target);
+			, linkname, tgt);
 
 	r = FCOM_DONE;
 end:
+	ffmem_free(tgt);
 	return r;
 }
 
 /** Create symbolic link. */
-int out_slink(fcom_cmd *cmd, const char *target, const char *linkname)
+int out_slink(fcom_cmd *cmd, ffstr target, const char *linkname)
 {
 	int r = FCOM_ERR;
+	char *tgt = ffsz_dupn(target.ptr, target.len);
 
-	if (0 != fffile_symlink(target, linkname)) {
+	if (0 != fffile_symlink(tgt, linkname)) {
 		fcom_syserrlog("arc", "fffile_symlink(): %s -> %s"
-			, linkname, target);
+			, linkname, tgt);
 		if (!cmd->skip_err)
 			goto end;
 	} else
 		fcom_dbglog(0, "arc", "created symbolic link: %s -> %s"
-			, linkname, target);
+			, linkname, tgt);
 
 	r = FCOM_DONE;
 end:
+	ffmem_free(tgt);
 	return r;
 }
 
