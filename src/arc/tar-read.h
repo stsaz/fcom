@@ -9,6 +9,7 @@
 #include <FF/time.h>
 
 #define dbglog0(...)  fcom_dbglog(0, FILT_NAME, __VA_ARGS__)
+#define warnlog(...)  fcom_warnlog(FILT_NAME, __VA_ARGS__)
 #define errlog(...)  fcom_errlog(FILT_NAME, __VA_ARGS__)
 
 struct untar;
@@ -166,8 +167,13 @@ again:
 		case FFTARREAD_MORE:
 			return FCOM_MORE;
 
+		case FFTARREAD_WARNING:
+			warnlog("%s near offset %U"
+				, fftarread_error(&t->tar), fftarread_offset(&t->tar));
+			break;
 		case FFTARREAD_ERROR:
-			errlog("%s", fftarread_error(&t->tar));
+			errlog("%s near offset %U"
+				, fftarread_error(&t->tar), fftarread_offset(&t->tar));
 			return FCOM_ERR;
 		}
 	}
