@@ -8,6 +8,15 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.15 - Dec 28, 2020
+
+ + fcom hexprint - print data in hexadecimal/text format
+ + zip write: --compression-method=STR (store, deflate)
+ * archive unpack: win1252 -> utf8
+ * tar: read archives with minor header corruption
+ *! sync-snapshot: use decimal for 'size'; 'mtime' as string
+
+
 fcom v0.14 - Oct 7, 2020
 
  + fcom encrypt, fcom decrypt: encrypt-decrypt files

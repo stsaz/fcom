@@ -16,6 +16,7 @@ OPERATION
  gsync
  disk
  mount DISKNAME -o DIR
+ hexprint FILE...
 
 Pack files (.gz, .tar, .zip, .iso):
  gz FILE... [--out=FILE] [--deflate-level=INT]
