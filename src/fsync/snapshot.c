@@ -44,7 +44,7 @@ static int ss_d_f(ffparser_schem *p, void *obj, ffstr *v)
 		ssl->fcur->name = ffsz_alcopystr(v);
 		break;
 	case 1:
-		if (!ffstr_toint(v, &i8, FFS_INT64 | FFS_INTHEX))
+		if (!ffstr_toint(v, &i8, FFS_INT64))
 			return FFPARS_EBADVAL;
 		ssl->fcur->size = i8;
 		break;
@@ -56,11 +56,14 @@ static int ss_d_f(ffparser_schem *p, void *obj, ffstr *v)
 	case 3:
 	case 4:
 		break;
-	case 5:
-		if (!ffstr_toint(v, &i4, FFS_INT32 | FFS_INTHEX))
+	case 5: {
+		ffdatetime dt;
+		if (v->len != fftime_fromstr1(&dt, v->ptr, v->len, FFTIME_YMD))
 			return FFPARS_EBADVAL;
-		ssl->fcur->mtime.sec = i4;
+		fftime_join1(&ssl->fcur->mtime, &dt);
+		ssl->fcur->mtime.sec -= FFTIME_1970_SECONDS;
 		break;
+	}
 	case 6:
 		dbglog(0, "added %s/%s", fsync_if.get(FSYNC_DIRNAME, ssl->fcur), ssl->fcur->name);
 		break;
@@ -161,10 +164,18 @@ void snapshot_writefile(ffconfw *cw, const struct file *f)
 {
 	ffconf_write(cw, "f", FFCONF_STRZ, FFCONF_TKEY);
 	ffconf_write(cw, f->name, FFCONF_STRZ, FFCONF_TVAL);
-	ffconf_writeint(cw, f->size, FFINT_HEXLOW, FFCONF_TVAL);
+	ffconf_writeint(cw, f->size, 0, FFCONF_TVAL);
 	ffconf_writeint(cw, f->attr, FFINT_HEXLOW, FFCONF_TVAL);
 	ffconf_writeint(cw, 0, FFINT_HEXLOW, FFCONF_TVAL);
 	ffconf_writeint(cw, 0, FFINT_HEXLOW, FFCONF_TVAL);
-	ffconf_writeint(cw, f->mtime.sec, FFINT_HEXLOW, FFCONF_TVAL);
+
+	char buf[128];
+	fftime mt = f->mtime;
+	ffdatetime dt;
+	mt.sec += FFTIME_1970_SECONDS;
+	fftime_split1(&dt, &mt);
+	int n = fftime_tostr1(&dt, buf, sizeof(buf), FFTIME_YMD);
+	ffconf_write(cw, buf, n, FFCONF_TVAL);
+
 	ffconf_write(cw, "0", FFCONF_STRZ, FFCONF_TVAL);
 }
