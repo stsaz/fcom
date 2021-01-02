@@ -20,8 +20,6 @@ static const fcom_mod arc_mod = {
 	.name = "Archiver", .desc = "Pack/unpack archives .gz, .xz, .tar, .zip, .7z, .iso, .ico",
 };
 
-int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf);
-
 extern const fcom_filter gzip_filt;
 extern const fcom_filter gzip1_filt;
 extern const fcom_filter ungz_filt;
@@ -130,7 +128,18 @@ int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf)
 		p = ffs_copyz(p, end, cmd->outdir);
 		p = ffs_copyc(p, end, '/');
 	}
-	if (0 == (n = ffpath_norm(p, end - p, input->ptr, input->len, FFPATH_NOWINDOWS | FFPATH_FORCESLASH | FFPATH_TOREL | FFPATH_MERGEDOTS)))
+
+	ffstr in = *input;
+	if (!ffutf8_valid(in.ptr, in.len)) {
+		ffssize r = ffutf8_from_cp(p, end - p, in.ptr, in.len, FFUNICODE_WIN1252);
+		if (r < 0) {
+			fcom_errlog("arc.unpack", "ffutf8_from_cp");
+			return FCOM_ERR;
+		}
+		ffstr_set(&in, p, r);
+	}
+
+	if (0 == (n = ffpath_norm(p, end - p, in.ptr, in.len, FFPATH_NOWINDOWS | FFPATH_FORCESLASH | FFPATH_TOREL | FFPATH_MERGEDOTS)))
 		return FCOM_ERR;
 
 	n = ffpath_makefn_full(p, end - p, p, n, '_');
