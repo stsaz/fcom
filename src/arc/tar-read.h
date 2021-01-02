@@ -56,7 +56,7 @@ static int untar1_process(void *p, fcom_cmd *cmd)
 	untar *t = p;
 	int r;
 	fftarread_fileinfo_t *f;
-	enum E { R_DATA1, R_DATA, R_EOF, };
+	enum E { R_DATA1, R_DATA, R_FDONE, R_EOF, };
 
 	if (cmd->flags & FCOM_CMD_FWD) {
 		t->in = cmd->in;
@@ -71,6 +71,11 @@ again:
 		// fallthrough
 
 	case R_DATA:
+		break;
+
+	case R_FDONE:
+		FF_CMPSET(&cmd->output.fn, t->fn.ptr, NULL);
+		t->state = R_DATA;
 		break;
 
 	case R_EOF:
@@ -150,8 +155,7 @@ again:
 			return FCOM_DATA;
 
 		case FFTARREAD_FILEDONE:
-			t->state = R_DATA;
-			FF_CMPSET(&cmd->output.fn, t->fn.ptr, NULL);
+			t->state = R_FDONE;
 			if (t->skipfile) {
 				t->skipfile = 0;
 				goto again;

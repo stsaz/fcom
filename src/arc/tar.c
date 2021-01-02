@@ -97,7 +97,8 @@ static int tar_process(void *p, fcom_cmd *cmd)
 #else
 		f.attr_unix = (fffile_isdir(cmd->input.attr)) ? FFUNIX_FILE_DIR | 0755 : 0644;
 #endif
-		f.size = cmd->input.size;
+		if (!fffile_isdir(cmd->input.attr))
+			f.size = cmd->input.size;
 		f.mtime = cmd->input.mtime;
 		if (0 != fftarwrite_fileadd(&t->tar, &f)) {
 			fcom_errlog(FILT_NAME, "%s: %s", cmd->input.fn, fftarwrite_error(&t->tar));

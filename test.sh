@@ -9,21 +9,22 @@ param=$1
 
 if test "$param" = "pack" ; then
 	rm -rf $TESTDIR
-	$FCOM gz ./README.txt -o $TESTDIR/fcom-gz.gz
-	cat $TESTDIR/fcom-gz.gz $TESTDIR/fcom-gz.gz > $TESTDIR/fcom-gz-double.gz
-	$FCOM tar ./README.txt ./CHANGES.txt -o $TESTDIR/fcom-tar.tar
-	$FCOM tar ./README.txt ./CHANGES.txt -o $TESTDIR/fcom-tar.tar.gz
-	$FCOM zip ./README.txt ./CHANGES.txt -o $TESTDIR/fcom-zip.zip
-	$FCOM iso ./README.txt ./CHANGES.txt -o $TESTDIR/fcom-iso.iso
+	$FCOM gz ./README.txt -o $TESTDIR/test.gz
+	cat $TESTDIR/test.gz $TESTDIR/test.gz > $TESTDIR/test-double.gz
+	mkdir -p emptydir
+	$FCOM tar emptydir ./README.txt ./CHANGES.txt -o $TESTDIR/test.tar
+	$FCOM tar emptydir ./README.txt ./CHANGES.txt -o $TESTDIR/test.tar.gz
+	$FCOM zip emptydir ./README.txt ./CHANGES.txt -o $TESTDIR/test.zip
+	$FCOM iso emptydir ./README.txt ./CHANGES.txt -o $TESTDIR/test.iso
 fi
 
 if test "$param" = "unpack" ; then
 	rm -f $TESTDIR/*.txt
-	$FCOM ungz $TESTDIR/fcom-gz.gz -C $TESTDIR
+	$FCOM ungz $TESTDIR/test.gz -C $TESTDIR
 	diff ./README.txt $TESTDIR/README.txt
 
 	rm -f $TESTDIR/*.txt
-	$FCOM ungz $TESTDIR/fcom-gz-double.gz -C $TESTDIR
+	$FCOM ungz $TESTDIR/test-double.gz -C $TESTDIR
 	cat ./README.txt ./README.txt > $TESTDIR/README.double.txt
 	diff $TESTDIR/README.double.txt $TESTDIR/README.txt
 
@@ -32,37 +33,37 @@ if test "$param" = "unpack" ; then
 	# diff ./README.txt $TESTDIR/README.txt
 
 	rm -f $TESTDIR/*.txt
-	$FCOM untar $TESTDIR/fcom-tar.tar -C $TESTDIR
+	$FCOM untar $TESTDIR/test.tar -C $TESTDIR
 	diff ./README.txt $TESTDIR/README.txt
 	diff ./CHANGES.txt $TESTDIR/CHANGES.txt
 
 	rm -f $TESTDIR/*.txt
-	$FCOM untar $TESTDIR/fcom-tar.tar.gz -C $TESTDIR
+	$FCOM untar $TESTDIR/test.tar.gz -C $TESTDIR
 	diff ./README.txt $TESTDIR/README.txt
 	diff ./CHANGES.txt $TESTDIR/CHANGES.txt
 
 	rm -f $TESTDIR/*.txt
-	$FCOM unzip $TESTDIR/fcom-zip.zip -C $TESTDIR
+	$FCOM unzip $TESTDIR/test.zip -C $TESTDIR
 	diff ./README.txt $TESTDIR/README.txt
 	diff ./CHANGES.txt $TESTDIR/CHANGES.txt
 
 	rm -f $TESTDIR/*.txt
-	$FCOM uniso $TESTDIR/fcom-iso.iso -C $TESTDIR
+	$FCOM uniso $TESTDIR/test.iso -C $TESTDIR
 	diff ./README.txt $TESTDIR/README.txt
 	diff ./CHANGES.txt $TESTDIR/CHANGES.txt
 
 	rm -f $TESTDIR/*.txt
-	$FCOM unpack $TESTDIR/fcom-gz.gz -C $TESTDIR
+	$FCOM unpack $TESTDIR/test.gz -C $TESTDIR
 	# rm -f $TESTDIR/*.txt
 	# $FCOM unpack ./fcom-xz.xz -C $TESTDIR
 	rm -f $TESTDIR/*.txt
-	$FCOM unpack $TESTDIR/fcom-tar.tar -C $TESTDIR
+	$FCOM unpack $TESTDIR/test.tar -C $TESTDIR
 	rm -f $TESTDIR/*.txt
-	$FCOM unpack $TESTDIR/fcom-tar.tar.gz -C $TESTDIR
+	$FCOM unpack $TESTDIR/test.tar.gz -C $TESTDIR
 	rm -f $TESTDIR/*.txt
-	$FCOM unpack $TESTDIR/fcom-zip.zip -C $TESTDIR
+	$FCOM unpack $TESTDIR/test.zip -C $TESTDIR
 	rm -f $TESTDIR/*.txt
-	$FCOM unpack $TESTDIR/fcom-iso.iso -C $TESTDIR
+	$FCOM unpack $TESTDIR/test.iso -C $TESTDIR
 fi
 
 if test "$param" = "crypt" ; then
