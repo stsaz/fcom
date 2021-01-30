@@ -104,7 +104,6 @@ ARC_O := $(OBJ_DIR)/arc.o \
 	$(OBJ_DIR)/iso.o \
 	$(OBJ_DIR)/ico.o \
 	$(FF_OBJ_DIR)/crc.o \
-	$(FF_OBJ_DIR)/ff7z.o $(FF_OBJ_DIR)/ff7z-fmt.o \
 	$(FF_OBJ_DIR)/ffico.o \
 	$(FF_OBJ_DIR)/ffparse.o \
 	$(FF_O)

@@ -4,7 +4,8 @@ Copyright (c) 2019 Simon Zolin
 
 #include <fcom.h>
 #include <arc/arc.h>
-#include <FF/pack/7z.h>
+#include <ffpack/7zread.h>
+#include <FF/time.h>
 
 
 extern const fcom_core *core;
@@ -19,7 +20,7 @@ static int un7z_process(void *p, fcom_cmd *cmd);
 const fcom_filter un7z_filt = { &un7z_open, &un7z_close, &un7z_process };
 
 struct un7z;
-static void un7z_showinfo(struct un7z *z, const ff7zfile *f);
+static void un7z_showinfo(struct un7z *z, const ff7zread_fileinfo *f);
 
 
 #define FILT_NAME  "arc.un7z"
@@ -30,10 +31,11 @@ enum {
 
 typedef struct un7z {
 	uint state;
-	ff7z z;
+	ff7zread z;
+	ffstr in;
 	ffarr fn;
 	ffarr buf;
-	const ff7zfile *curfile;
+	const ff7zread_fileinfo *curfile;
 } un7z;
 
 static void* un7z_open(fcom_cmd *cmd)
@@ -60,7 +62,7 @@ static void un7z_close(void *p, fcom_cmd *cmd)
 	un7z *z = p;
 	ffarr_free(&z->fn);
 	ffarr_free(&z->buf);
-	ff7z_close(&z->z);
+	ff7zread_close(&z->z);
 	ffmem_free(z);
 }
 
@@ -72,7 +74,7 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 
 	switch ((enum E)z->state) {
 	case R_EOF:
-		ff7z_close(&z->z);
+		ff7zread_close(&z->z);
 		ffmem_tzero(&z->z);
 		z->state = R_FIRST;
 		//fall through
@@ -81,7 +83,7 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0)))
 			return FCOM_DONE;
 		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
-		ff7z_open(&z->z);
+		ff7zread_open(&z->z);
 		z->state = R_DATA;
 		return FCOM_MORE;
 
@@ -95,25 +97,23 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 	}
 
 	if (cmd->flags & FCOM_CMD_FWD) {
-		ff7z_input(&z->z, cmd->in.ptr, cmd->in.len);
+		ffstr_set2(&z->in, &cmd->in);
 	}
 
 	for (;;) {
 
-	r = ff7z_read(&z->z);
+	r = ff7zread_process(&z->z, &z->in, &cmd->out);
 	switch (r) {
 
-	case FF7Z_FILEHDR:
+	case FF7ZREAD_FILEHEADER:
 		for (;;) {
-			const ff7zfile *f;
-			if (NULL == (f = ff7z_nextfile(&z->z))) {
+			const ff7zread_fileinfo *f;
+			if (NULL == (f = ff7zread_nextfile(&z->z))) {
 				z->state = R_EOF;
 				return FCOM_MORE;
 			}
 
-			ffstr fn;
-			ffstr_setz(&fn, f->name);
-			if (!arc_need_member(&cmd->members, 0, &fn)) {
+			if (!arc_need_member(&cmd->members, 0, &f->name)) {
 				continue;
 			}
 
@@ -128,9 +128,7 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 				fcom_warnlog(FILT_NAME, "directory %s has non-zero size", f->name);
 
 			if (cmd->output.fn == NULL) {
-				ffstr name;
-				ffstr_setz(&name, f->name);
-				if (FCOM_DATA != (r = fn_out(cmd, &name, &z->fn)))
+				if (FCOM_DATA != (r = fn_out(cmd, &f->name, &z->fn)))
 					return r;
 				cmd->output.fn = z->fn.ptr;
 			}
@@ -145,32 +143,31 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 		}
 		break;
 
-	case FF7Z_DATA:
-		cmd->out = z->z.out;
+	case FF7ZREAD_DATA:
 		return FCOM_DATA;
 
-	case FF7Z_FILEDONE:
+	case FF7ZREAD_FILEDONE:
 		z->state = R_NEXT;
 		return FCOM_NEXTDONE;
 
-	case FF7Z_MORE:
+	case FF7ZREAD_MORE:
 		return FCOM_MORE;
 
-	case FF7Z_SEEK:
-		cmd->input.offset = ff7z_offset(&z->z);
+	case FF7ZREAD_SEEK:
+		cmd->input.offset = ff7zread_offset(&z->z);
 		cmd->in_seek = 1;
 		return FCOM_MORE;
 
-	case FF7Z_ERR:
+	case FF7ZREAD_ERROR:
 		fcom_errlog_ctx(cmd, FILT_NAME, "%s: %s"
-			, (z->curfile != NULL) ? z->curfile->name : "", ff7z_errstr(&z->z));
+			, (z->curfile != NULL) ? z->curfile->name.ptr : "", ff7zread_error(&z->z));
 		return FCOM_ERR;
 	}
 	}
 }
 
 /* "size date name" */
-static void un7z_showinfo(un7z *z, const ff7zfile *f)
+static void un7z_showinfo(un7z *z, const ff7zread_fileinfo *f)
 {
 	char *p = z->fn.ptr, *end = ffarr_edge(&z->fn);
 
@@ -185,7 +182,7 @@ static void un7z_showinfo(un7z *z, const ff7zfile *f)
 	p += fftime_tostr(&dt, p, end - p, FFTIME_DATE_YMD | FFTIME_HMS);
 	p = ffs_copyc(p, end, ' ');
 
-	p = ffs_copyz(p, end, f->name);
+	p = ffs_copyz(p, end, f->name.ptr);
 
 	fcom_verblog(FILT_NAME, "%*s", p - z->fn.ptr, z->fn.ptr);
 }
