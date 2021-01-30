@@ -38,6 +38,7 @@ struct cmdconf {
 	uint crop_height;
 
 	byte recurse;
+	byte del_source;
 	byte show;
 	byte skip_errors;
 	byte jpeg_quality;
@@ -264,6 +265,7 @@ static void cmd_add(void *param)
 	cmd.search = c->conf.search;
 	cmd.replace = c->conf.replace;
 	cmd.recurse = c->conf.recurse;
+	cmd.del_source = c->conf.del_source;
 
 	cmd.crop.width = c->conf.crop_width;
 	cmd.crop.height = c->conf.crop_height;

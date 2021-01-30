@@ -232,6 +232,7 @@ static const ffpars_arg cmdline_args[] = {
 	{ "exclude",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_finclude) },
 	{ "servers",	FFPARS_TSTR | FFPARS_FCOPY | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_servers) },
 	{ "recurse",	FFPARS_SETVAL('R') | FFPARS_TBOOL8 | FFPARS_FALONE, OFF(recurse) },
+	{ "delete-source",	FFPARS_TBOOL8 | FFPARS_FALONE, OFF(del_source) },
 
 	// ARCHIVE READING
 	{ "member",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&arg_member) },

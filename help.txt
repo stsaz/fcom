@@ -50,6 +50,7 @@ INPUT
  --exclude='WILDCARD[;WILDCARD]'
                     Exclude files & directories matching a pattern (full path or wildcard) (case-insensitive)
  --recurse, -R      Recurse into sub-directories
+ --delete-source    Delete source file after successful operation
 
 ARCHIVE READING
  --member='WILDCARD[;WILDCARD]'

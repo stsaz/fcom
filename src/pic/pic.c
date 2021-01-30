@@ -265,6 +265,14 @@ static const struct fcom_cmd_mon picconv_mon_iface = { &picconv_task_done };
 static void picconv_task_done(fcom_cmd *cmd, uint sig)
 {
 	struct piconv *c = (void*)com->ctrl(cmd, FCOM_CMD_UDATA);
+
+	if (cmd->del_source) {
+		char *newfn = ffsz_allocfmt("%s.deleted", cmd->input.fn);
+		if (0 != fffile_rename(cmd->input.fn, newfn))
+			fcom_syserrlog(FILT_NAME, "file rename: %s -> %s", cmd->input.fn, newfn);
+		ffmem_free(newfn);
+	}
+
 	if (0 == ffatom_decret(&c->nsubtasks) && c->close) {
 		piconv_close(c, NULL);
 		return;
