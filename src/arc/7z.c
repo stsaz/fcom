@@ -20,7 +20,7 @@ static int un7z_process(void *p, fcom_cmd *cmd);
 const fcom_filter un7z_filt = { &un7z_open, &un7z_close, &un7z_process };
 
 struct un7z;
-static void un7z_showinfo(struct un7z *z, const ff7zread_fileinfo *f);
+static void un7z_showinfo(struct un7z *z, const ff7zread_fileinfo *f, fcom_cmd *cmd);
 
 
 #define FILT_NAME  "arc.un7z"
@@ -120,7 +120,7 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 			z->curfile = f;
 
 			if (fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
-				un7z_showinfo(z, f);
+				un7z_showinfo(z, f, cmd);
 			if (cmd->show)
 				continue;
 
@@ -167,7 +167,7 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 }
 
 /* "size date name" */
-static void un7z_showinfo(un7z *z, const ff7zread_fileinfo *f)
+static void un7z_showinfo(un7z *z, const ff7zread_fileinfo *f, fcom_cmd *cmd)
 {
 	char *p = z->fn.ptr, *end = ffarr_edge(&z->fn);
 
@@ -182,7 +182,15 @@ static void un7z_showinfo(un7z *z, const ff7zread_fileinfo *f)
 	p += fftime_tostr(&dt, p, end - p, FFTIME_DATE_YMD | FFTIME_HMS);
 	p = ffs_copyc(p, end, ' ');
 
-	p = ffs_copyz(p, end, f->name.ptr);
+	if (!ffutf8_valid(f->name.ptr, f->name.len)) {
+		ffssize r = ffutf8_from_cp(p, end - p, f->name.ptr, f->name.len, core->conf->codepage);
+		if (r < 0) {
+			fcom_errlog_ctx(cmd, "arc.un7z", "ffutf8_from_cp: %S", &f->name);
+			return;
+		}
+	} else {
+		p = ffs_copystr(p, end, &f->name);
+	}
 
 	fcom_verblog(FILT_NAME, "%*s", p - z->fn.ptr, z->fn.ptr);
 }

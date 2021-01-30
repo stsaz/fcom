@@ -131,8 +131,22 @@ int conf_workers(ffparser_schem *p, struct fcom_conf *conf, int64 *val)
 		conf->workers = *val;
 	return 0;
 }
+int conf_codepage(ffparser_schem *p, struct fcom_conf *conf, const ffstr *val)
+{
+	static const char *const cp_str[] = {
+		"win1251", // FFUNICODE_WIN1251
+		"win1252", // FFUNICODE_WIN1252
+		"win866", // FFUNICODE_WIN866
+	};
+	int cp = ffszarr_ifindsorted(cp_str, FF_COUNT(cp_str), val->ptr, val->len);
+	if (cp < 0)
+		return FFPARS_EBADVAL;
+	conf->codepage = cp + _FFUNICODE_CP_BEGIN;
+	return 0;
+}
 
 static const ffpars_arg conf_args[] = {
+	{ "codepage",  FFPARS_TSTR, FFPARS_DST(conf_codepage) },
 	{ "workers",  FFPARS_TINT8, FFPARS_DST(conf_workers) },
 	{ "mod_conf",	FFPARS_TOBJ | FFPARS_FOBJ1 | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&conf_modconf) },
 	{ "mod",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&conf_mod) },

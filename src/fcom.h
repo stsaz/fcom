@@ -43,6 +43,7 @@ typedef struct fcom_conf {
 	uint loglev;
 	byte workers;
 	fftime_zone tz;
+	ffuint codepage; // enum FFUNICODE_CP
 } fcom_conf;
 
 enum FCOM_TASK {

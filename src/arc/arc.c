@@ -131,7 +131,7 @@ int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf)
 
 	ffstr in = *input;
 	if (!ffutf8_valid(in.ptr, in.len)) {
-		ffssize r = ffutf8_from_cp(p, end - p, in.ptr, in.len, FFUNICODE_WIN1252);
+		ffssize r = ffutf8_from_cp(p, end - p, in.ptr, in.len, core->conf->codepage);
 		if (r < 0) {
 			fcom_errlog_ctx(cmd, "arc.unpack", "ffutf8_from_cp");
 			return FCOM_ERR;
