@@ -90,6 +90,7 @@ static const char* const cmds[] = {
 	"A_SWAP",
 	"A_FILTER",
 	"A_ONCHECK",
+	"A_EXEC",
 	"A_OPENDIR",
 	"A_OPENDIR_RIGHT",
 	"A_CLIPCOPY",
@@ -252,6 +253,7 @@ static void wsync_action(ffui_wnd *wnd, int id)
 		ffui_view_selall(&gg->wsync.vlist);
 		break;
 
+	case A_EXEC:
 	case A_OPENDIR:
 	case A_OPENDIR_RIGHT:
 	case A_CLIPCOPY:
@@ -763,11 +765,16 @@ static void gsync_fnop(uint id)
 		c = list_getobj(i);
 
 		switch (id) {
+		case A_EXEC:
+			obj = (c->left != NULL) ? c->left : c->right;
+			break;
+
 		case A_CLIPFN:
 		case A_OPENDIR:
 		case A_CLIPCOPY:
 			obj = c->left;
 			break;
+
 		case A_OPENDIR_RIGHT:
 		case A_CLIPFN_RIGHT:
 			obj = c->right;
@@ -779,6 +786,12 @@ static void gsync_fnop(uint id)
 		fullname = fsync->get(FSYNC_FULLNAME, obj);
 
 		switch (id) {
+
+		case A_EXEC:
+			if (0 != ffui_shellexec(fullname, SW_SHOWNORMAL)) {
+				fcom_syserrlog("gsync", "ffui_shellexec: %s", fullname);
+			}
+			break;
 
 		case A_CLIPFN:
 		case A_CLIPFN_RIGHT:

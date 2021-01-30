@@ -43,6 +43,9 @@ menu mcmd {
 }
 
 menu mfile {
+	item "Execute File" {
+		action A_EXEC
+	}
 	item "Show File in Explorer (Source)" {
 		action A_OPENDIR
 	}
@@ -113,6 +116,7 @@ window wsync {
 		position 200 0 100 100
 		style checkboxes explorer_theme grid_lines multi_select visible
 		popupmenu mfile
+		dblclick A_EXEC
 		oncheck A_ONCHECK
 		column "Action" {
 		}
