@@ -82,14 +82,20 @@ static struct fcom *g;
 // CORE
 static int core_cmd(uint cmd, ...);
 static void core_log(uint flags, const char *fmt, ...);
+static void core_logex(uint flags, void *ctx, const char *fmt, ...);
 static char* core_getpath(const char *name, size_t len);
 static char* core_env_expand(char *dst, size_t cap, const char *src);
 static const void* core_iface(const char *name);
 static void core_task(uint cmd, fftask *tsk);
 static int core_timer(fftmrq_entry *tmr, int interval, uint flags);
 static fcom_core gcore = {
-	.cmd = &core_cmd, .log = &core_log, .getpath = &core_getpath, .env_expand = &core_env_expand,
-	.iface = &core_iface, .task = &core_task, .timer = &core_timer,
+	.cmd = core_cmd,
+	.log = core_log, .logex = core_logex,
+	.getpath = core_getpath,
+	.env_expand = core_env_expand,
+	.iface = core_iface,
+	.task = core_task,
+	.timer = core_timer,
 };
 fcom_core *core = &gcore;
 
@@ -256,6 +262,17 @@ void core_free(void)
 	ffmem_free0(g);
 }
 
+static void core_logex(uint flags, void *ctx, const char *fmt, ...)
+{
+	if (!fcom_logchk(g->conf.loglev, flags))
+		return;
+
+	va_list va;
+	va_start(va, fmt);
+	g->log(flags, ctx, fmt, va);
+	va_end(va);
+}
+
 static void core_log(uint flags, const char *fmt, ...)
 {
 	if (!fcom_logchk(g->conf.loglev, flags))
@@ -263,7 +280,7 @@ static void core_log(uint flags, const char *fmt, ...)
 
 	va_list va;
 	va_start(va, fmt);
-	g->log(flags, fmt, va);
+	g->log(flags, NULL, fmt, va);
 	va_end(va);
 }
 

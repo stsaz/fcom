@@ -95,6 +95,7 @@ struct fcom_core {
 	/**
 	@flags: enum FCOM_LOGLEV */
 	void (*log)(uint flags, const char *fmt, ...);
+	void (*logex)(uint flags, void *ctx, const char *fmt, ...);
 
 	/** Return NULL on error. */
 	char* (*getpath)(const char *name, size_t len);
@@ -151,7 +152,7 @@ typedef const fcom_mod* (*fcom_getmod_t)(const fcom_core *core);
 module -> fcom_core.log() -> logger()
 */
 
-typedef int (*fcom_log)(uint flags, const char *fmt, va_list va);
+typedef int (*fcom_log)(uint flags, void *ctx, const char *fmt, va_list va);
 
 #define fcom_logchk(level, lev)  (((level) & _FCOM_LEVMASK) >= ((lev) & _FCOM_LEVMASK))
 
@@ -167,6 +168,9 @@ do { \
 #define fcom_errlog(mod, fmt, ...)  (core)->log(FCOM_LOGERR, mod ": " fmt, ##__VA_ARGS__)
 #define fcom_syswarnlog(mod, fmt, ...)  (core)->log(FCOM_LOGWARN | FCOM_LOGSYS, mod ": " fmt, __VA_ARGS__)
 #define fcom_syserrlog(mod, fmt, ...)  (core)->log(FCOM_LOGERR | FCOM_LOGSYS, mod ": " fmt, __VA_ARGS__)
+
+#define fcom_errlog_ctx(ctx, mod, fmt, ...)  (core)->logex(FCOM_LOGERR, ctx, mod ": " fmt, ##__VA_ARGS__)
+#define fcom_warnlog_ctx(ctx, mod, fmt, ...)  (core)->logex(FCOM_LOGWARN, ctx, mod ": " fmt, ##__VA_ARGS__)
 
 #define fcom_userlog(fmt, ...)  (core)->log(FCOM_LOGINFO | FCOM_LOGNOPFX, fmt, __VA_ARGS__)
 

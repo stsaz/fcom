@@ -166,7 +166,7 @@ static int icoi_process(void *p, fcom_cmd *cmd)
 		return FCOM_MORE;
 
 	case FFICO_ERR:
-		fcom_errlog(FILT_NAME, "ffico_read(): (%u) %s"
+		fcom_errlog_ctx(cmd, FILT_NAME, "ffico_read(): (%u) %s"
 			, c->ico.err, "");
 		return FCOM_ERR;
 	}

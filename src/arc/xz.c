@@ -171,7 +171,7 @@ again:
 		return FCOM_MORE;
 
 	case FFXZREAD_ERROR:
-		fcom_errlog(FILT_NAME, "%s  offset:0x%xU", ffxzread_error(&x->xz), cmd->input.offset);
+		fcom_errlog_ctx(cmd, FILT_NAME, "%s  offset:0x%xU", ffxzread_error(&x->xz), cmd->input.offset);
 		return FCOM_ERR;
 	}
 	}

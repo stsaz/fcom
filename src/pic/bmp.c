@@ -85,7 +85,7 @@ static int bmpi_process(void *p, fcom_cmd *cmd)
 		return FCOM_OUTPUTDONE;
 
 	case FFBMP_ERR:
-		fcom_errlog(FILT_NAME, "ffbmp_read(): %s", ffbmp_errstr(&b->bmp));
+		fcom_errlog_ctx(cmd, FILT_NAME, "ffbmp_read(): %s", ffbmp_errstr(&b->bmp));
 		return FCOM_ERR;
 	}
 	}

@@ -172,11 +172,11 @@ again:
 			return FCOM_MORE;
 
 		case FFTARREAD_WARNING:
-			warnlog("%s near offset %U"
+			fcom_warnlog_ctx(cmd, FILT_NAME, "%s near offset %U"
 				, fftarread_error(&t->tar), fftarread_offset(&t->tar));
 			break;
 		case FFTARREAD_ERROR:
-			errlog("%s near offset %U"
+			fcom_errlog_ctx(cmd, FILT_NAME, "%s near offset %U"
 				, fftarread_error(&t->tar), fftarread_offset(&t->tar));
 			return FCOM_ERR;
 		}

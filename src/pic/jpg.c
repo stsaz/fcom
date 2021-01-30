@@ -83,7 +83,7 @@ static int jpgi_process(void *p, fcom_cmd *cmd)
 		return FCOM_OUTPUTDONE;
 
 	case FFJPEG_ERR:
-		fcom_errlog(FILT_NAME, "ffjpeg_read(): %s", ffjpeg_errstr(&j->jpeg));
+		fcom_errlog_ctx(cmd, FILT_NAME, "ffjpeg_read(): %s", ffjpeg_errstr(&j->jpeg));
 		return FCOM_ERR;
 	}
 	}

@@ -198,7 +198,7 @@ again:
 
 		case FFZIPREAD_WARNING:
 		case FFZIPREAD_ERROR:
-			fcom_errlog(FILT_NAME, "%s", ffzipread_error(&z->zip));
+			fcom_errlog_ctx(cmd, FILT_NAME, "%s", ffzipread_error(&z->zip));
 			return FCOM_ERR;
 		}
 	}

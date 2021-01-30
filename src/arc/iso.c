@@ -336,7 +336,7 @@ again:
 		return FCOM_MORE;
 
 	case FFISO_ERR:
-		fcom_errlog(FILT_NAME, "%s  offset:0x%xU", ffiso_errstr(&o->iso), cmd->input.offset);
+		fcom_errlog_ctx(cmd, FILT_NAME, "%s  offset:0x%xU", ffiso_errstr(&o->iso), cmd->input.offset);
 		return FCOM_ERR;
 
 	default:

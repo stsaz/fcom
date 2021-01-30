@@ -133,7 +133,7 @@ int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf)
 	if (!ffutf8_valid(in.ptr, in.len)) {
 		ffssize r = ffutf8_from_cp(p, end - p, in.ptr, in.len, FFUNICODE_WIN1252);
 		if (r < 0) {
-			fcom_errlog("arc.unpack", "ffutf8_from_cp");
+			fcom_errlog_ctx(cmd, "arc.unpack", "ffutf8_from_cp");
 			return FCOM_ERR;
 		}
 		ffstr_set(&in, p, r);
@@ -314,12 +314,12 @@ again:
 		ffstr_setz(&nm, cmd->input.fn);
 		ffpath_split3(nm.ptr, nm.len, NULL, &nm, &ext);
 		if (0 > (r = ffcharr_findsorted(arc_exts, FFCNT(arc_exts), sizeof(arc_exts[0]), ext.ptr, ext.len))) {
-			fcom_errlog("arc.unpack", "unknown archive file extension .%S", &ext);
+			fcom_errlog_ctx(cmd, "arc.unpack", "unknown archive file extension .%S", &ext);
 			return FCOM_ERR;
 		}
 
 		if (!ffstr_ieqcz(&ext, "ico")) {
-			fcom_errlog("arc.unpack", "unsupported: can't switch to another archive type", 0);
+			fcom_errlog_ctx(cmd, "arc.unpack", "unsupported: can't switch to another archive type", 0);
 			return FCOM_ERR;
 		}
 
@@ -334,7 +334,7 @@ again:
 		ffstr_setz(&ext, "tar");
 
 	if (0 > (r = ffcharr_findsorted(arc_exts, FFCNT(arc_exts), sizeof(arc_exts[0]), ext.ptr, ext.len))) {
-		fcom_errlog("arc.unpack", "unknown archive file extension .%S", &ext);
+		fcom_errlog_ctx(cmd, "arc.unpack", "unknown archive file extension .%S", &ext);
 		return FCOM_ERR;
 	}
 

@@ -84,7 +84,7 @@ static int pngi_process(void *_p, fcom_cmd *cmd)
 		return FCOM_OUTPUTDONE;
 
 	case FFPNG_ERR:
-		fcom_errlog(FILT_NAME, "ffpng_read(): %s", ffpng_errstr(&p->png));
+		fcom_errlog_ctx(cmd, FILT_NAME, "ffpng_read(): %s", ffpng_errstr(&p->png));
 		return FCOM_ERR;
 	}
 	}

@@ -162,7 +162,7 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 		return FCOM_MORE;
 
 	case FF7Z_ERR:
-		fcom_errlog(FILT_NAME, "%s: %s"
+		fcom_errlog_ctx(cmd, FILT_NAME, "%s: %s"
 			, (z->curfile != NULL) ? z->curfile->name : "", ff7z_errstr(&z->z));
 		return FCOM_ERR;
 	}
