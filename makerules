@@ -1,10 +1,10 @@
 
 OBJ_DIR := .
-BINS := $(BIN) core.$(SO) file.$(SO) fsync.$(SO) arc.$(SO) pic.$(SO) net.$(SO) crypto.$(SO)
+BINS := $(BIN) core.$(SO) file.$(SO) fsync.$(SO) arc.$(SO) pic.$(SO) net.$(SO) crypto.$(SO) gui.$(SO)
 
 ifeq ($(OS),win)
 RES := $(OBJ_DIR)/fcom.coff
-BINS += gui.$(SO) $(RES)
+BINS += $(RES)
 endif
 
 all: ff $(BINS)
@@ -20,7 +20,9 @@ $(OBJ_DIR)/%.o: $(SRCDIR)/arc/%.c $(SRCDIR)/arc/*.h $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
 $(OBJ_DIR)/%.o: $(SRCDIR)/pic/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
-$(OBJ_DIR)/%.o: $(SRCDIR)/gui/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+$(OBJ_DIR)/%.o: $(SRCDIR)/gui-gtk/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
+$(OBJ_DIR)/%.o: $(SRCDIR)/gui-winapi/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
 $(OBJ_DIR)/%.o: $(SRCDIR)/gui-fsync/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
@@ -136,6 +138,7 @@ net.$(SO): $(NET_O)
 	$(LD) -shared $(NET_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) $(LD_LWS2_32) -o$@
 
 
+ifeq ($(OS),win)
 GUI_O := $(OBJ_DIR)/gui.o \
 	$(OBJ_DIR)/scrshots.o \
 	$(OBJ_DIR)/gsync.o $(OBJ_DIR)/sync.o $(OBJ_DIR)/conf.o $(OBJ_DIR)/tree.o \
@@ -146,7 +149,16 @@ GUI_O := $(OBJ_DIR)/gui.o \
 	$(FF_O)
 gui.$(SO): $(GUI_O)
 	$(LD) -shared $(GUI_O) $(LDFLAGS) $(LD_LPTHREAD) -lshell32 -luxtheme -lcomctl32 -lcomdlg32 -lgdi32 -lole32 -luuid -o$@
+endif
 
+ifeq ($(OS),linux)
+GUI_O := $(OBJ_DIR)/gui-gtk.o \
+	$(FF_OBJ_DIR)/ffconf.o \
+	$(FF_OBJ_DIR)/ffparse.o \
+	$(FF_O)
+gui.$(SO): $(GUI_O)
+	$(LD) -shared $(GUI_O) $(LDFLAGS) -o$@
+endif
 
 TEST_O := $(OBJ_DIR)/tester.o \
 	$(OBJ_DIR)/com.o \

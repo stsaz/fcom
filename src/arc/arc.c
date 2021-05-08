@@ -139,8 +139,10 @@ int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf)
 		ffstr_set(&in, p, r);
 	}
 
-	if (0 == (n = ffpath_norm(p, end - p, in.ptr, in.len, FFPATH_NOWINDOWS | FFPATH_FORCESLASH | FFPATH_TOREL | FFPATH_MERGEDOTS)))
+	if (0 == (n = ffpath_norm(p, end - p, in.ptr, in.len, FFPATH_NOWINDOWS | FFPATH_FORCESLASH | FFPATH_TOREL | FFPATH_MERGEDOTS))) {
+		fcom_errlog_ctx(cmd, "arc.unpack", "ffpath_norm: %S", input);
 		return FCOM_ERR;
+	}
 
 	n = ffpath_makefn_full(p, end - p, p, n, '_');
 	p += n;
