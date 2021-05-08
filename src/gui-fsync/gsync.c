@@ -18,6 +18,7 @@ static void gsync_showresults(uint flags);
 static void gsync_check(void);
 static void gsync_fnop(uint id);
 static void list_setdata();
+void list_cols_read();
 
 struct ggui *gg;
 const fcom_fsync *fsync;
@@ -33,17 +34,26 @@ enum L_COLS {
 	L_ACTN,
 	L_SRCNAME,
 	L_SRCINFO,
+	L_SRCDATE,
 	L_STATUS,
 	L_DSTNAME,
 	L_DSTINFO,
+	L_DSTDATE,
+	_L_LAST,
 };
 
 static const ffui_ldr_ctl wsync_ctls[] = {
 	FFUI_LDR_CTL(struct wsync, wsync),
+	FFUI_LDR_CTL(struct wsync, e1),
+	FFUI_LDR_CTL(struct wsync, e2),
+	FFUI_LDR_CTL(struct wsync, cbeq),
+	FFUI_LDR_CTL(struct wsync, cbnew),
+	FFUI_LDR_CTL(struct wsync, cbmod),
+	FFUI_LDR_CTL(struct wsync, cbdel),
+	FFUI_LDR_CTL(struct wsync, cbmov),
 	FFUI_LDR_CTL(struct wsync, vopts),
 	FFUI_LDR_CTL(struct wsync, tdirs),
 	FFUI_LDR_CTL(struct wsync, vlist),
-	FFUI_LDR_CTL(struct wsync, pn),
 	FFUI_LDR_CTL(struct wsync, stbar),
 	FFUI_LDR_CTL(struct wsync, mm),
 	FFUI_LDR_CTL_END
@@ -99,6 +109,12 @@ static const char* const cmds[] = {
 	"A_CONF_EDIT",
 	"A_SELALL",
 	"A_EXIT",
+
+	"A_SHOWEQ",
+	"A_SHOWNEW",
+	"A_SHOWMOD",
+	"A_SHOWDEL",
+	"A_SHOWMOVE",
 
 	"A_TREE_ENTER",
 };
@@ -158,12 +174,27 @@ int gsync_create(void)
 	opts_load(&gg->opts);
 	opts_show(&gg->opts, &gg->wsync.vopts);
 
+	list_cols_read();
+
 	rc = 0;
 
 end:
 	ffui_ldr_fin(&ldr);
 	ffmem_safefree(path);
 	return rc;
+}
+
+void wsync_opts_show()
+{
+	struct wsync *w = &gg->wsync;
+	const struct opts *c = &gg->opts;
+	ffui_settextz(&w->e1, c->srcfn);
+	ffui_settextz(&w->e2, c->dstfn);
+	ffui_chbox_check(&w->cbeq, !!(c->showmask & (1<<FSYNC_ST_EQ)));
+	ffui_chbox_check(&w->cbnew, !!(c->showmask & (1<<FSYNC_ST_SRC)));
+	ffui_chbox_check(&w->cbdel, !!(c->showmask & (1<<FSYNC_ST_DEST)));
+	ffui_chbox_check(&w->cbmov, !!(c->showmask & (1<<FSYNC_ST_MOVED)));
+	ffui_chbox_check(&w->cbmod, !!(c->showmask & (1<<FSYNC_ST_NEQ)));
 }
 
 
@@ -198,10 +229,32 @@ static void snapload(void *udata)
 	ffmem_free(s);
 }
 
+void norm(ffstr *s)
+{
+	s->len = ffpath_normalize(s->ptr, s->len, s->ptr, s->len, FFPATH_FORCE_BACKSLASH);
+	if (s->len != 0 && *ffstr_last(s) == '\\')
+		s->len--;
+	s->ptr[s->len] = '\0';
+}
+
 static void wsync_action(ffui_wnd *wnd, int id)
 {
+	struct wsync *w = &gg->wsync;
+	int i, m;
+	ffstr ss = {};
+
 	switch (id) {
 	case A_CMP:
+		ffui_textstr(&w->e1, &ss);
+		norm(&ss);
+		gg->opts.srcfn = ss.ptr;
+		ffstr_null(&ss);
+
+		ffui_textstr(&w->e2, &ss);
+		norm(&ss);
+		gg->opts.dstfn = ss.ptr;
+		ffstr_null(&ss);
+
 		task_add(&gsync_scancmp);
 		break;
 	case A_SYNC:
@@ -277,6 +330,30 @@ static void wsync_action(ffui_wnd *wnd, int id)
 	case A_DISPINFO:
 		list_setdata();
 		break;
+
+	case A_SHOWEQ:
+		i = ffui_chbox_checked(&w->cbeq);
+		m = 1<<FSYNC_ST_EQ;
+		goto show;
+	case A_SHOWNEW:
+		i = ffui_chbox_checked(&w->cbnew);
+		m = 1<<FSYNC_ST_SRC;
+		goto show;
+	case A_SHOWMOD:
+		i = ffui_chbox_checked(&w->cbmod);
+		m = 1<<FSYNC_ST_NEQ;
+		goto show;
+	case A_SHOWDEL:
+		i = ffui_chbox_checked(&w->cbdel);
+		m = 1<<FSYNC_ST_DEST;
+		goto show;
+	case A_SHOWMOVE:
+		i = ffui_chbox_checked(&w->cbmov);
+		m = 1<<FSYNC_ST_MOVED;
+	show:
+		ffint_bitmask(&gg->opts.showmask, m, i);
+		gsync_showresults(SHOW_TREE_FILTER);
+		break;
 	}
 }
 
@@ -348,6 +425,49 @@ done:
 	return r;
 }
 
+struct nstat {
+	uint eq;
+	uint new;
+	uint mov;
+	uint mod;
+	uint del;
+};
+
+void nstat_add(struct nstat *n, struct fsync_cmp *cmp)
+{
+	int st = cmp->status & _FSYNC_ST_MASK;
+	if (st == FSYNC_ST_EQ)
+		n->eq++;
+	else if (st == FSYNC_ST_SRC)
+		n->new++;
+	else if (st == FSYNC_ST_DEST)
+		n->del++;
+	else if (st == FSYNC_ST_MOVED)
+		n->mov++;
+	else if (st == FSYNC_ST_NEQ)
+		n->mod++;
+}
+
+void nstat_fin(struct nstat *n)
+{
+	struct wsync *w = &gg->wsync;
+	char buf[64];
+	ffs_format(buf, sizeof(buf), "Eq (%u)%Z", n->eq);
+	ffui_settextz(&w->cbeq, buf);
+
+	ffs_format(buf, sizeof(buf), "New (%u)%Z", n->new);
+	ffui_settextz(&w->cbnew, buf);
+
+	ffs_format(buf, sizeof(buf), "Mod (%u)%Z", n->mod);
+	ffui_settextz(&w->cbmod, buf);
+
+	ffs_format(buf, sizeof(buf), "Mov (%u)%Z", n->mov);
+	ffui_settextz(&w->cbmov, buf);
+
+	ffs_format(buf, sizeof(buf), "Del (%u)%Z", n->del);
+	ffui_settextz(&w->cbdel, buf);
+}
+
 /** Scan source and target trees, compare and show results. */
 static void gsync_scancmp(void *udata)
 {
@@ -369,16 +489,25 @@ static void gsync_scancmp(void *udata)
 	ffint_bitmask(&f, FSYNC_CMP_MTIME, gg->opts.time_diff);
 	ffint_bitmask(&f, FSYNC_CMP_MTIME_SEC, gg->opts.time_diff_sec);
 	cmpctx = fsync->cmp_init(gg->src, gg->dst, f);
+
+	struct nstat n = {};
+
 	for (;;) {
 		if (0 != fsync->cmp_trees(cmpctx, &cmp))
 			break;
+
 		if ((cmp.status & _FSYNC_ST_MASK) == FSYNC_ST_MOVED
-			&& cmp.status & FSYNC_ST_MOVED_DST)
+			&& (cmp.status & FSYNC_ST_MOVED_DST))
 			continue;
+
+		nstat_add(&n, &cmp);
+
 		if (NULL == (c = ffarr_pushgrowT(&gg->cmptbl, 256 | FFARR_GROWQUARTER, struct fsync_cmp)))
 			goto end;
 		*c = cmp;
 	}
+
+	nstat_fin(&n);
 
 	gsync_showresults(SHOW_TREE_ADD);
 
@@ -391,22 +520,14 @@ end:
 /** Get file info as text. */
 static int gsync_finfo(const struct fsync_file *e, ffarr *buf)
 {
-	ffdtm dt;
-
 	if (isdir(e->attr)) {
-		if (0 == ffstr_catfmt(buf, "[DIR], "))
+		if (0 == ffstr_catfmt(buf, "[DIR]"))
 			return 1;
 
 	} else {
-		if (0 == ffstr_catfmt(buf, "%,U Bytes, "
-			, e->size))
+		if (0 == ffstr_catfmt(buf, "%,U", e->size))
 			return 1;
 	}
-
-	if (NULL == ffarr_grow(buf, 64, 0))
-		return 1;
-	fftime_split(&dt, &e->mtime, FFTIME_TZLOCAL);
-	buf->len += fftime_tostr(&dt, ffarr_end(buf), ffarr_unused(buf), FFTIME_DATE_MDY | FFTIME_HMS);
 	return 0;
 }
 
@@ -548,6 +669,16 @@ static ffbool cmpent_visible(const struct fsync_cmp *c)
 	return 1;
 }
 
+void modtime(ffarr *buf, struct fsync_file *e)
+{
+	ffarr_grow(buf, 64, 0);
+	ffdatetime dt = {};
+	fftime t = e->mtime;
+	t.sec += FFTIME_1970_SECONDS;
+	fftime_split1(&dt, &t);
+	buf->len += fftime_tostr1(&dt, ffarr_end(buf), ffarr_unused(buf), FFTIME_DATE_MDY | FFTIME_HMS);
+}
+
 /** Set data for a listview item. */
 static void list_setdata()
 {
@@ -600,6 +731,13 @@ static void list_setdata()
 		}
 		break;
 
+	case L_SRCDATE:
+		if (st != FSYNC_ST_DEST) {
+			modtime(&buf, e1);
+			ffstr_set2(&d, &buf);
+		}
+		break;
+
 	case L_STATUS:
 		if (NULL == ffarr_alloc(&buf, 64))
 			goto end;
@@ -620,6 +758,12 @@ static void list_setdata()
 			ffstr_set2(&d, &buf);
 		}
 		break;
+
+	case L_DSTDATE:
+		if (st != FSYNC_ST_SRC) {
+			modtime(&buf, e2);
+			ffstr_set2(&d, &buf);
+		}
 	}
 
 	if (d.len != 0)
@@ -847,4 +991,31 @@ end:
 	}
 	ffarr_free(&buf);
 	ffmem_safefree(fullname);
+}
+
+/** Write widths of list's columns to config */
+void list_cols_width_write(ffconfw *conf)
+{
+	struct wsync *w = &gg->wsync;
+	ffui_viewcol vc;
+	for (uint i = 0;  i != _L_LAST;  i++) {
+		ffui_viewcol_reset(&vc);
+		ffui_viewcol_setwidth(&vc, 0);
+		ffui_view_col(&w->vlist, i, &vc);
+		ffconf_writeint(conf, ffui_viewcol_width(&vc), 0, FFCONF_TVAL);
+	}
+}
+
+void list_cols_read()
+{
+	struct wsync *w = &gg->wsync;
+	int *it;
+	int i = 0;
+	FFSLICE_WALK(&gg->opts.list_col_width, it) {
+		ffui_viewcol vc;
+		ffui_viewcol_reset(&vc);
+		ffui_viewcol_setwidth(&vc, *it);
+		ffui_view_setcol(&w->vlist, i, &vc);
+		i++;
+	}
 }

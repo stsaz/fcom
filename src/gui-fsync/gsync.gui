@@ -75,8 +75,8 @@ dialog dlg {
 window wsync {
 	title "Synchronize Files"
 	position 100 100 600 400
-	borderstick 7
 	style visible
+	borderstick 7
 	font {
 		name Arial
 		height 10
@@ -91,12 +91,49 @@ window wsync {
 		}
 	}
 
+	editbox e1 {
+		size 400 25
+	}
+	editbox e2 {
+		size 400 25
+		style horizontal
+	}
+	checkbox cbeq {
+		size 100 25
+		text "Show Equal"
+		action A_SHOWEQ
+	}
+	checkbox cbnew {
+		size 100 25
+		style horizontal
+		text "Show New"
+		action A_SHOWNEW
+	}
+	checkbox cbmod {
+		size 100 25
+		style horizontal
+		text "Show Modified"
+		action A_SHOWMOD
+	}
+	checkbox cbmov {
+		size 100 25
+		style horizontal
+		text "Show Moved"
+		action A_SHOWMOVE
+	}
+	checkbox cbdel {
+		size 100 25
+		style horizontal
+		text "Show Deleted"
+		action A_SHOWDEL
+	}
+
 	listview vopts {
-		position 0 0 200 200
-		style explorer_theme edit_labels grid_lines visible
+		size 300 100
+		style explorer_theme edit_labels grid_lines
 		lclick A_CONF_EDIT
 		column "Setting" {
-			width 70
+			width 100
 		}
 		column "Value" {
 			width 70
@@ -107,14 +144,15 @@ window wsync {
 	}
 
 	treeview tdirs {
-		position 0 200 200 100
-		style explorer_theme has_buttons has_lines track_select visible
+		size 300 100
+		style horizontal explorer_theme has_buttons has_lines track_select
 		chsel A_FILTER
 	}
 
 	listview vlist {
-		position 200 0 100 100
-		style checkboxes explorer_theme grid_lines multi_select visible
+		size 100 100
+		resize cx cy
+		style checkboxes explorer_theme grid_lines multi_select
 		popupmenu mfile
 		dblclick A_EXEC
 		oncheck A_ONCHECK
@@ -122,27 +160,23 @@ window wsync {
 		}
 		column "Source Filename" {
 		}
-		column "Source Info" {
+		column "Source Size" {
+			align right
+		}
+		column "Source Modified" {
 		}
 		column "Status" {
 		}
 		column "Target Filename" {
 		}
-		column "Target Info" {
+		column "Target Size" {
+			align right
 		}
-	}
-
-	paned pn {
-		child tdirs {
-			resize cy
-		}
-		child vlist {
-			resize cx cy
+		column "Target Modified" {
 		}
 	}
 
 	statusbar stbar {
-		style visible
 	}
 }
 
@@ -157,17 +191,16 @@ window wtree {
 
 	treeview tdirs {
 		position 0 200 200 100
-		style explorer_theme has_buttons has_lines track_select visible
+		style explorer_theme has_buttons has_lines track_select
 	}
 
 	editbox eaddr {
 		position 200 0 100 20
-		style visible
 	}
 
 	listview vlist {
 		position 200 20 100 100
-		style explorer_theme grid_lines multi_select visible
+		style explorer_theme grid_lines multi_select
 		dblclick A_TREE_ENTER
 		column "Name" {
 			width 120

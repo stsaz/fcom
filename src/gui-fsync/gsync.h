@@ -33,6 +33,7 @@ struct opts {
 	byte time_diff;
 	byte time_diff_sec;
 	byte show_done;
+	ffvec list_col_width; // uint[]
 };
 
 enum VOPTS_COLUMNS {
@@ -47,13 +48,21 @@ int opts_load(struct opts *c);
 void opts_save(struct opts *c);
 void opts_show(const struct opts *c, ffui_view *v);
 int opts_set(struct opts *c, ffui_view *v, uint sub);
+void list_cols_width_write(ffconfw *conf);
+void wsync_opts_show();
 
 struct wsync {
 	ffui_wnd wsync;
+	ffui_edit e1;
+	ffui_edit e2;
+	ffui_checkbox cbeq;
+	ffui_checkbox cbnew;
+	ffui_checkbox cbmod;
+	ffui_checkbox cbdel;
+	ffui_checkbox cbmov;
 	ffui_view vopts;
 	ffui_view tdirs;
 	ffui_view vlist;
-	ffui_paned pn;
 	ffui_stbar stbar;
 	ffui_menu mm;
 };
@@ -111,6 +120,12 @@ enum CMDS {
 	A_CONF_EDIT,
 	A_SELALL,
 	A_EXIT,
+
+	A_SHOWEQ,
+	A_SHOWNEW,
+	A_SHOWMOD,
+	A_SHOWDEL,
+	A_SHOWMOVE,
 
 	A_TREE_ENTER,
 };

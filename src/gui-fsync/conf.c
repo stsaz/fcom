@@ -9,6 +9,24 @@ Copyright (c) 2019 Simon Zolin
 
 #define OFF(m)  FFPARS_DSTOFF(struct opts, m)
 static const ffpars_arg opts_args[] = {
+	{ "Compare: Time Diff",	FFPARS_TINT8, OFF(time_diff) },
+	{ "Compare: Time Diff in Seconds",	FFPARS_TINT8, OFF(time_diff_sec) },
+
+	{ "Filter Name",	FFPARS_TSTR | FFPARS_FRECOPY, OFF(filter_name) },
+	{ "Filter",	FFPARS_TSTR | FFPARS_FRECOPY, OFF(filter) },
+	{ "Show Modified by Date",	FFPARS_TINT | FFPARS_SETBIT(0), OFF(show_modmask) },
+	{ "Show Modified by Size",	FFPARS_TINT | FFPARS_SETBIT(1), OFF(show_modmask) },
+	{ "Show Modified by Attr",	FFPARS_TINT | FFPARS_SETBIT(2), OFF(show_modmask) },
+	{ "Show Directories",	FFPARS_TINT8, OFF(show_dirs) },
+	{ "Show Only Directories",	FFPARS_TINT8, OFF(show_dirs_only) },
+	{ "Show \"Done\"",	FFPARS_TINT8, OFF(show_done) },
+};
+int col_width(ffparser_schem *p, void *obj, const int64 *val)
+{
+	*ffvec_pushT(&gg->opts.list_col_width, int) = *val;
+	return 0;
+}
+static const ffpars_arg opts_args_conf[] = {
 	{ "Source path",	FFPARS_TCHARPTR | FFPARS_FRECOPY | FFPARS_FSTRZ, OFF(srcfn) },
 	{ "Target path",	FFPARS_TCHARPTR | FFPARS_FRECOPY | FFPARS_FSTRZ, OFF(dstfn) },
 	{ "Compare: Time Diff",	FFPARS_TINT8, OFF(time_diff) },
@@ -27,6 +45,7 @@ static const ffpars_arg opts_args[] = {
 	{ "Show Directories",	FFPARS_TINT8, OFF(show_dirs) },
 	{ "Show Only Directories",	FFPARS_TINT8, OFF(show_dirs_only) },
 	{ "Show \"Done\"",	FFPARS_TINT8, OFF(show_done) },
+	{ "Column Width",	FFPARS_TINT16 | FFPARS_FLIST, FFPARS_DST(col_width) },
 };
 #undef OFF
 
@@ -46,6 +65,7 @@ void opts_destroy(struct opts *o)
 	ffmem_safefree0(o->dstfn);
 	ffstr_free(&o->filter_name);
 	ffstr_free(&o->filter);
+	ffvec_free(&o->list_col_width);
 }
 
 /** Load options from file. */
@@ -56,8 +76,8 @@ int opts_load(struct opts *c)
 		return -1;
 	conf.fn = c->fn;
 	conf.obj = c;
-	conf.args = opts_args;
-	conf.nargs = FFCNT(opts_args);
+	conf.args = opts_args_conf;
+	conf.nargs = FFCNT(opts_args_conf);
 	dbglog(0, "reading %s", conf.fn);
 	int r = ffconf_loadfile(&conf);
 	if (r != 0 && !fferr_nofile(fferr_last())) {
@@ -75,11 +95,17 @@ void opts_save(struct opts *c)
 	const ffpars_arg *a;
 	ffstr s;
 	ffconf_winit(&conf, NULL, 0);
-	FFARRS_FOREACH(opts_args, a) {
+	FFARRS_FOREACH(opts_args_conf, a) {
+		if (ffsz_eq(a->name, "Column Width"))
+			continue;
 		ffconf_write(&conf, a->name, ffsz_len(a->name), FFCONF_TKEY);
 		ffpars_scheme_write(buf, a, c, &s);
 		ffconf_write(&conf, s.ptr, s.len, FFCONF_TVAL);
 	}
+
+	ffconf_writez(&conf, "Column Width", FFCONF_TKEY);
+	list_cols_width_write(&conf);
+
 	ffconf_write(&conf, NULL, 0, FFCONF_FIN);
 	ldr.confw = conf;
 	if (0 != ffui_ldr_write(&ldr, c->fn) && fferr_nofile(fferr_last())) {
@@ -105,6 +131,8 @@ void opts_show(const struct opts *c, ffui_view *v)
 	union ffpars_val u;
 	ffui_viewitem it = {0};
 	char buf[128];
+
+	wsync_opts_show();
 
 	for (uint i = 0;  i != FFCNT(opts_args);  i++) {
 
@@ -154,15 +182,7 @@ int opts_set(struct opts *c, ffui_view *v, uint sub)
 	if (ffpars_iserr(r))
 		return 0;
 
-	if (!ffsz_cmp(opts_args[i].name, "Source")) {
-		r = ffpath_norm(gg->opts.srcfn, ffsz_len(gg->opts.srcfn), gg->opts.srcfn, ffsz_len(gg->opts.srcfn), FFPATH_MERGESLASH | FFPATH_MERGEDOTS | FFPATH_FORCESLASH);
-		gg->opts.srcfn[r] = '\0';
-
-	} else if (!ffsz_cmp(opts_args[i].name, "Target")) {
-		r = ffpath_norm(gg->opts.dstfn, ffsz_len(gg->opts.dstfn), gg->opts.dstfn, ffsz_len(gg->opts.dstfn), FFPATH_MERGESLASH | FFPATH_MERGEDOTS | FFPATH_FORCESLASH);
-		gg->opts.dstfn[r] = '\0';
-
-	} else if (ffsz_matchz(opts_args[i].name, "Filter")
+	if (ffsz_matchz(opts_args[i].name, "Filter")
 		|| ffsz_match(opts_args[i].name, "Show ", 5))
 		ret = 1;
 

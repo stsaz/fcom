@@ -113,7 +113,7 @@ static char* dst_fn(const char *fnL)
 			return NULL;
 		}
 		ffstr_shift(&fn, dir_src.len + FFSLEN("/"));
-		return ffsz_alfmt("%S/%S", &dst, &fn);
+		return ffsz_alfmt("%S\\%S", &dst, &fn);
 	}
 
 	if (0 != ffs_wildcard(src.ptr, src.len, fn.ptr, fn.len, 0)) {
@@ -130,7 +130,7 @@ static char* dst_fn(const char *fnL)
 	const char *sl = ffpath_rfindslash(dst.ptr, dst.len);
 	dst.len = sl - dst.ptr;
 
-	return ffsz_alfmt("%S/%S", &dst, &fn);
+	return ffsz_alfmt("%S\\%S", &dst, &fn);
 }
 
 
