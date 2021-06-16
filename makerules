@@ -124,7 +124,7 @@ PIC_O := $(OBJ_DIR)/pic.o \
 	$(FF_OBJ_DIR)/ffparse.o \
 	$(FF_O)
 pic.$(SO): $(PIC_O)
-	$(LD) -shared $(PIC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) -ljpeg-ff -lpng-ff -o$@
+	$(LD) -shared $(PIC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) -ljpeg-turbo-ff -lpng-ff -o$@
 
 
 NET_O := $(OBJ_DIR)/dns.o \
@@ -208,7 +208,7 @@ endif
 	$(CP) \
 		*.$(SO) \
 		$(FFPACK)/zlib/libz-ff.$(SO) $(FFPACK)/lzma/liblzma-ff.$(SO) \
-		$(FF3PTLIB)/libjpeg-ff.$(SO) $(FF3PTLIB)/libpng-ff.$(SO) \
+		$(FF3PTLIB)/libjpeg-turbo-ff.$(SO) $(FF3PTLIB)/libpng-ff.$(SO) \
 		$(INSTDIR)/mod
 	chmod 644 $(INSTDIR)/mod/*
 
