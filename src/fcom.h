@@ -4,7 +4,7 @@ Copyright (c) 2017 Simon Zolin */
 #pragma once
 
 #include <FF/array.h>
-#include <FF/data/parse.h>
+#include <FF/data/conf2-scheme.h>
 #include <FF/sys/taskqueue.h>
 #include <FF/sys/timer-queue.h>
 #include <FFOS/file.h>
@@ -121,8 +121,8 @@ struct fcom_core {
 	cmd(FCOM_READCONF, (char*)(conffn))
 #define fcom_core_setconf(conf) \
 	cmd(FCOM_SETCONF, (fcom_conf*)(conf))
-#define fcom_core_modadd(name, confctx) \
-	cmd(FCOM_MODADD, (ffstr*)(name), (ffpars_ctx*)(confctx))
+#define fcom_core_modadd(name) \
+	cmd(FCOM_MODADD, (ffstr*)(name), NULL)
 
 enum FCOM_SIG {
 	FCOM_SIGINIT,
@@ -136,7 +136,7 @@ struct fcom_mod {
 	@signo: enum FCOM_SIG. */
 	int (*sig)(uint signo);
 	const void* (*iface)(const char *name);
-	int (*conf)(const char *name, ffpars_ctx *ctx);
+	int (*conf)(const char *name, ffconf_scheme *cs);
 
 	uint ver;
 	const char *name;

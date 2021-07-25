@@ -139,7 +139,7 @@ $(OBJ_DIR)/%.o: $(SRCDIR)/gui-scrshots/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
 GUI_O := $(OBJ_DIR)/gui.o \
 	$(OBJ_DIR)/scrshots.o \
-	$(OBJ_DIR)/gsync.o $(OBJ_DIR)/sync.o $(OBJ_DIR)/conf.o $(OBJ_DIR)/tree.o \
+	$(OBJ_DIR)/gsync.o \
 	$(FF_GUI_OBJ) \
 	$(FF_OBJ_DIR)/ffpic.o \
 	$(FF_OBJ_DIR)/ffconf.o \

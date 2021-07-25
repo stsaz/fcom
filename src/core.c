@@ -3,7 +3,6 @@ Copyright (c) 2017 Simon Zolin */
 
 #include <fcom.h>
 
-#include <FF/data/conf.h>
 #include <FF/path.h>
 #include <FF/time.h>
 #include <FFOS/dir.h>
@@ -25,7 +24,6 @@ extern const fcom_mod file_mod;
 
 enum {
 	KQ_EVS = 8,
-	CONF_MBUF = 4096,
 };
 
 #define FCOM_ASSERT(expr) \
@@ -103,7 +101,7 @@ fcom_core *core = &gcore;
 static const fcom_mod* coremod_getmod(const fcom_core *_core);
 static int coremod_sig(uint signo);
 static const void* coremod_iface(const char *name);
-static int coremod_conf(const char *name, ffpars_ctx *ctx);
+static int coremod_conf(const char *name, ffconf_scheme *cs);
 static const fcom_mod core_mod = {
 	.sig = &coremod_sig, .iface = &coremod_iface, .conf = &coremod_conf,
 };
@@ -117,21 +115,19 @@ static uint work_avail();
 static ffbool work_ismain(void);
 
 static int mods_sig(uint sig);
-static int mod_add(const ffstr *name, ffpars_ctx *ctx);
+static int mod_add(const ffstr *name, ffconf_scheme *cs);
 static struct mod* mod_find(const ffstr *soname);
 static struct mod* mod_load(const ffstr *soname);
 static void mods_destroy(void);
 static void on_posted(void *);
 
-static int conf_modconf(ffparser_schem *p, void *obj, ffpars_ctx *ctx);
-static int conf_mod(ffparser_schem *p, void *obj, const ffstr *val);
-int conf_workers(ffparser_schem *p, struct fcom_conf *conf, int64 *val)
+int conf_workers(ffconf_scheme *cs, struct fcom_conf *conf, int64 val)
 {
 	if (conf->workers == 0)
-		conf->workers = *val;
+		conf->workers = val;
 	return 0;
 }
-int conf_codepage(ffparser_schem *p, struct fcom_conf *conf, const ffstr *val)
+int conf_codepage(ffconf_scheme *cs, struct fcom_conf *conf, const ffstr *val)
 {
 	static const char *const cp_str[] = {
 		"win1251", // FFUNICODE_WIN1251
@@ -140,32 +136,30 @@ int conf_codepage(ffparser_schem *p, struct fcom_conf *conf, const ffstr *val)
 	};
 	int cp = ffszarr_ifindsorted(cp_str, FF_COUNT(cp_str), val->ptr, val->len);
 	if (cp < 0)
-		return FFPARS_EBADVAL;
+		return FFCONF_EBADVAL;
 	conf->codepage = cp + _FFUNICODE_CP_BEGIN;
 	return 0;
 }
-
-static const ffpars_arg conf_args[] = {
-	{ "codepage",  FFPARS_TSTR, FFPARS_DST(conf_codepage) },
-	{ "workers",  FFPARS_TINT8, FFPARS_DST(conf_workers) },
-	{ "mod_conf",	FFPARS_TOBJ | FFPARS_FOBJ1 | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&conf_modconf) },
-	{ "mod",	FFPARS_TSTR | FFPARS_FNOTEMPTY | FFPARS_FMULTI, FFPARS_DST(&conf_mod) },
-};
-
-static int conf_modconf(ffparser_schem *p, void *obj, ffpars_ctx *ctx)
-{
-	const ffstr *name = &p->vals[0];
-	if (0 != mod_add(name, ctx))
-		return FFPARS_ESYS;
-	return 0;
-}
-
-static int conf_mod(ffparser_schem *p, void *obj, const ffstr *val)
+static int conf_mod(ffconf_scheme *cs, void *obj, const ffstr *val)
 {
 	if (0 != mod_add(val, NULL))
-		return FFPARS_ESYS;
+		return FFCONF_EBADVAL;
 	return 0;
 }
+static int conf_modconf(ffconf_scheme *cs, void *obj)
+{
+	const ffstr *name = ffconf_scheme_objval(cs);
+	if (0 != mod_add(name, cs))
+		return FFCONF_EBADVAL;
+	return 0;
+}
+static const ffconf_arg conf_args[] = {
+	{ "codepage",	FFCONF_TSTR, (ffsize)conf_codepage },
+	{ "workers",	FFCONF_TINT32, (ffsize)conf_workers },
+	{ "mod_conf",	FFCONF_TOBJ | FFCONF_FNOTEMPTY | FFCONF_FMULTI, (ffsize)conf_modconf },
+	{ "mod",	FFCONF_TSTR | FFCONF_FNOTEMPTY | FFCONF_FMULTI, (ffsize)conf_mod },
+	{}
+};
 
 
 static int set_rootdir(char **argv)
@@ -300,71 +294,23 @@ static void core_log(uint flags, const char *fmt, ...)
 
 static int readconf(const char *fn)
 {
-	ffconf pconf;
-	ffparser_schem ps;
-	ffpars_ctx ctx = {0};
-	int r = FFPARS_ESYS;
-	ffstr s;
-	char *buf = NULL, *fullfn = NULL;
-	size_t n;
-	fffd f = FF_BADFD;
-
+	char *fullfn;
 	if (NULL == (fullfn = core_getpath(fn, ffsz_len(fn))))
-		goto fail;
-	fn = fullfn;
+		goto end;
 
-	ffpars_setargs(&ctx, &g->conf, conf_args, FFCNT(conf_args));
+	dbglog(0, "reading config file %s", fullfn);
 
-	ffconf_scheminit(&ps, &pconf, &ctx);
-	if (FF_BADFD == (f = fffile_open(fn, O_RDONLY))) {
-		syserrlog("%s: %s", fffile_open_S, fn);
-		goto fail;
-	}
-
-	dbglog(0, "reading config file %s", fn);
-
-	if (NULL == (buf = ffmem_alloc(CONF_MBUF))) {
-		goto err;
-	}
-
-	for (;;) {
-		n = fffile_read(f, buf, CONF_MBUF);
-		if (n == (size_t)-1) {
-			goto err;
-		} else if (n == 0)
-			break;
-		ffstr_set(&s, buf, n);
-
-		while (s.len != 0) {
-			r = ffconf_parsestr(&pconf, &s);
-			r = ffconf_schemrun(&ps);
-
-			if (ffpars_iserr(r))
-				goto err;
-		}
-	}
-
-	r = ffconf_schemfin(&ps);
-
-err:
-	if (ffpars_iserr(r)) {
-		const char *ser = ffpars_schemerrstr(&ps, r, NULL, 0);
-		errlog("parse config: %s: %u:%u: near \"%S\": \"%s\": %s"
-			, fn
-			, pconf.line, pconf.ch
-			, &pconf.val, (ps.curarg != NULL) ? ps.curarg->name : ""
-			, (r == FFPARS_ESYS) ? fferr_strp(fferr_last()) : ser);
-		goto fail;
+	ffstr errmsg = {};
+	int r = ffconf_parse_file(conf_args, &g->conf, fullfn, 0, &errmsg);
+	if (r != 0) {
+		errlog("parse config: %s: %S", fullfn, &errmsg);
+		goto end;
 	}
 
 	r = 0;
 
-fail:
-	ffconf_parseclose(&pconf);
-	ffpars_schemfree(&ps);
-	ffmem_safefree(buf);
-	if (f != FF_BADFD)
-		fffile_close(f);
+end:
+	ffstr_free(&errmsg);
 	ffmem_safefree(fullfn);
 	return r;
 }
@@ -498,7 +444,7 @@ fail:
 	return rc;
 }
 
-static int mod_add(const ffstr *name, ffpars_ctx *ctx)
+static int mod_add(const ffstr *name, ffconf_scheme *cs)
 {
 	ffstr soname, iface;
 	char fn[128];
@@ -519,10 +465,10 @@ static int mod_add(const ffstr *name, ffpars_ctx *ctx)
 	if (0 == ffs_fmt(fn, fn + sizeof(fn), "%S%Z", &iface))
 		goto fail;
 
-	if (ctx != NULL) {
+	if (cs != NULL) {
 		if (m->mod->conf == NULL)
 			goto fail;
-		if (0 != m->mod->conf(fn, ctx))
+		if (0 != m->mod->conf(fn, cs))
 			goto fail;
 	}
 
@@ -578,8 +524,7 @@ static int core_cmd(uint cmd, ...)
 
 	case FCOM_MODADD: {
 		ffstr *name = va_arg(va, ffstr*);
-		ffpars_ctx *ctx = va_arg(va, ffpars_ctx*);
-		r = mod_add(name, ctx);
+		r = mod_add(name, NULL);
 		break;
 	}
 
@@ -874,11 +819,11 @@ static const void* coremod_iface(const char *name)
 	return NULL;
 }
 
-static int coremod_conf(const char *name, ffpars_ctx *ctx)
+static int coremod_conf(const char *name, ffconf_scheme *cs)
 {
 	int r;
 
-	if (0 >= (r = file_mod.conf(name, ctx)))
+	if (0 >= (r = file_mod.conf(name, cs)))
 		return r;
 
 	return 0;

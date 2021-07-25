@@ -20,7 +20,6 @@ const fcom_filter pngi_filt = { &pngi_open, &pngi_close, &pngi_process };
 // PNG OUTPUT
 struct pngo_conf;
 struct pngo_conf *pngo_conf;
-int pngo_config(ffpars_ctx *ctx);
 static void* pngo_open(fcom_cmd *cmd);
 static void pngo_close(void *_p, fcom_cmd *cmd);
 static int pngo_process(void *_p, fcom_cmd *cmd);
@@ -103,18 +102,19 @@ struct pngo_conf {
 	uint compression;
 };
 
-#define OFF(member)  FFPARS_DSTOFF(struct pngo_conf, member)
-static const ffpars_arg pngo_conf_args[] = {
-	{ "compression",	FFPARS_TINT8,  OFF(compression) },
+#define OFF(member)  FF_OFF(struct pngo_conf, member)
+static const ffconf_arg pngo_conf_args[] = {
+	{ "compression",	FFCONF_TINT32,  OFF(compression) },
+	{}
 };
 #undef OFF
 
-int pngo_config(ffpars_ctx *ctx)
+int pngo_config(ffconf_scheme *cs)
 {
 	if (NULL == (pngo_conf = ffmem_new(struct pngo_conf)))
 		return -1;
 	pngo_conf->compression = 9;
-	ffpars_setargs(ctx, pngo_conf, pngo_conf_args, FFCNT(pngo_conf_args));
+	ffconf_scheme_addctx(cs, pngo_conf_args, pngo_conf);
 	return 0;
 }
 

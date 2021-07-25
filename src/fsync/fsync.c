@@ -17,9 +17,8 @@ static const fcom_command *com;
 // MODULE
 static int fsync_sig(uint signo);
 static const void* fsync_iface(const char *name);
-static int fsync_conf(const char *name, ffpars_ctx *ctx);
 static const fcom_mod fsync_mod = {
-	.sig = &fsync_sig, .iface = &fsync_iface, .conf = &fsync_conf,
+	.sig = &fsync_sig, .iface = &fsync_iface,
 	.ver = FCOM_VER,
 	.name = "fsync", .desc = "Synchronize files",
 };
@@ -106,11 +105,6 @@ static const void* fsync_iface(const char *name)
 			return cmd->iface;
 	}
 	return NULL;
-}
-
-static int fsync_conf(const char *name, ffpars_ctx *ctx)
-{
-	return 0;
 }
 
 
@@ -1004,8 +998,7 @@ static void* fsyncss_open(fcom_cmd *cmd)
 	struct fsyncss *f;
 	if (NULL == (f = ffmem_new(struct fsyncss)))
 		return FCOM_OPEN_SYSERR;
-	ffconf_winit(&f->cw, NULL, 0);
-	ffarr_alloc(&f->cw.buf, 4096);
+	ffconfw_init(&f->cw, 0);
 	return f;
 }
 
@@ -1013,7 +1006,7 @@ static void fsyncss_close(void *p, fcom_cmd *cmd)
 {
 	struct fsyncss *f = p;
 	tree_free(f->tree);
-	ffconf_wdestroy(&f->cw);
+	ffconfw_close(&f->cw);
 	ffmem_free(f);
 }
 
@@ -1040,7 +1033,7 @@ static int fsyncss_process(void *p, fcom_cmd *cmd)
 
 		cur_init(&f->cur, f->tree);
 
-		ffconf_write(&f->cw, "fcom file tree snapshot", FFCONF_STRZ, FFCONF_TCOMMENTSHARP);
+		ffconfw_addlinez(&f->cw, "# fcom file tree snapshot");
 		f->curdir = NULL;
 	}
 	// fall through
@@ -1062,7 +1055,7 @@ static int fsyncss_process(void *p, fcom_cmd *cmd)
 			snapshot_writefile(&f->cw, fl);
 
 			ffstr s;
-			ffconf_output(&f->cw, &s);
+			ffconfw_output(&f->cw, &s);
 			if (s.len >= 64 * 1024) {
 				cmd->out = s;
 				f->state = 2;
@@ -1072,7 +1065,7 @@ static int fsyncss_process(void *p, fcom_cmd *cmd)
 		break;
 
 	case 2:
-		ffconf_clear(&f->cw);
+		ffconfw_clear(&f->cw);
 		f->state = 1;
 		continue;
 	}
@@ -1080,10 +1073,10 @@ static int fsyncss_process(void *p, fcom_cmd *cmd)
 	break;
 	}
 
-	ffconf_write(&f->cw, NULL, FFCONF_CLOSE, FFCONF_TOBJ);
-	if (0 == ffconf_write(&f->cw, NULL, 0, FFCONF_FIN))
-		errlog("ffconf_write", 0);
-	ffconf_output(&f->cw, &cmd->out);
+	ffconfw_addobj(&f->cw, 0);
+	if (0 != ffconfw_fin(&f->cw))
+		errlog("config write", 0);
+	ffconfw_output(&f->cw, &cmd->out);
 	return FCOM_DONE;
 }
 

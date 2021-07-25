@@ -2,7 +2,6 @@
 Copyright (c) 2019 Simon Zolin
 */
 
-#include <gui-fsync/gsync.h>
 #include <FF/path.h>
 
 

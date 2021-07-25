@@ -27,7 +27,7 @@ VER :=
 
 FF_OBJ_DIR := ./ff-obj
 ifeq ($(OPT),0)
-	CFLAGS_OPT += -DFF_DEBUG
+	CFLAGS_OPT += -DFF_DEBUG -Werror
 endif
 # CFLAGS += -fsanitize=address
 # LDFLAGS += -fsanitize=address -ldl
@@ -37,8 +37,7 @@ FF_CFLAGS := $(CFLAGS) $(CFLAGS_OPT)
 FF3PT_CFLAGS := $(CFLAGS) $(CFLAGS_OPT)
 FF3PTLIB := $(FF3PT)-bin/$(OS)-$(ARCH)
 
-CFLAGS += -Wall -Wextra -Werror -Wno-unused-parameter -Wno-missing-field-initializers \
-	-Wno-stringop-overflow \
+CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-stringop-overflow \
 	-I$(SRCDIR) -I$(FFBASE) -I$(FFPACK) -I$(FF) -I$(FFOS) -I$(FF3PT)
 
 LDFLAGS += -Wno-stringop-overflow \

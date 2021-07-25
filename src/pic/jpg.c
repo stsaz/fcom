@@ -20,7 +20,6 @@ const fcom_filter jpgi_filt = { &jpgi_open, &jpgi_close, &jpgi_process };
 // JPEG OUTPUT
 struct jpgo_conf;
 struct jpgo_conf *jpgo_conf;
-int jpgo_config(ffpars_ctx *ctx);
 static void* jpgo_open(fcom_cmd *cmd);
 static void jpgo_close(void *p, fcom_cmd *cmd);
 static int jpgo_process(void *p, fcom_cmd *cmd);
@@ -104,18 +103,17 @@ struct jpgo_conf {
 	uint quality;
 };
 
-#define OFF(member)  FFPARS_DSTOFF(struct jpgo_conf, member)
-static const ffpars_arg jpgo_conf_args[] = {
-	{ "quality",	FFPARS_TINT8,  OFF(quality) },
+static const ffconf_arg jpgo_conf_args[] = {
+	{ "quality",	FFCONF_TINT32,  FF_OFF(struct jpgo_conf, quality) },
+	{}
 };
-#undef OFF
 
-int jpgo_config(ffpars_ctx *ctx)
+int jpgo_config(ffconf_scheme *cs)
 {
 	if (NULL == (jpgo_conf = ffmem_new(struct jpgo_conf)))
 		return -1;
 	jpgo_conf->quality = 90;
-	ffpars_setargs(ctx, jpgo_conf, jpgo_conf_args, FFCNT(jpgo_conf_args));
+	ffconf_scheme_addctx(cs, jpgo_conf_args, jpgo_conf);
 	return 0;
 }
 

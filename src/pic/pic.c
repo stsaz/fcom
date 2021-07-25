@@ -14,7 +14,7 @@ const fcom_command *com;
 // MODULE
 static int pic_sig(uint signo);
 static const void* pic_iface(const char *name);
-static int pic_conf(const char *name, ffpars_ctx *ctx);
+static int pic_conf(const char *name, ffconf_scheme *cs);
 static const fcom_mod pic_mod = {
 	.sig = &pic_sig, .iface = &pic_iface, .conf = &pic_conf,
 	.ver = FCOM_VER,
@@ -45,12 +45,12 @@ extern const fcom_filter bmpo_filt;
 extern const fcom_filter jpgi_filt;
 extern const fcom_filter jpgo_filt;
 extern struct jpgo_conf *jpgo_conf;
-extern int jpgo_config(ffpars_ctx *ctx);
+extern int jpgo_config(ffconf_scheme *cs);
 
 extern const fcom_filter pngi_filt;
 extern const fcom_filter pngo_filt;
 extern struct pngo_conf *pngo_conf;
-extern int pngo_config(ffpars_ctx *ctx);
+extern int pngo_config(ffconf_scheme *cs);
 
 FF_EXP const fcom_mod* fcom_getmod(const fcom_core *_core)
 {
@@ -110,12 +110,12 @@ static const void* pic_iface(const char *name)
 	return NULL;
 }
 
-static int pic_conf(const char *name, ffpars_ctx *ctx)
+static int pic_conf(const char *name, ffconf_scheme *cs)
 {
 	if (ffsz_eq(name, "jpg-out"))
-		return jpgo_config(ctx);
+		return jpgo_config(cs);
 	else if (ffsz_eq(name, "png-out"))
-		return pngo_config(ctx);
+		return pngo_config(cs);
 	return 1;
 }
 

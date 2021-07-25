@@ -7,7 +7,7 @@ Copyright (c) 2017 Simon Zolin
 #include <FF/gui/loader.h>
 #include <FF/gui/winapi.h>
 #include <FF/pic/bmp.h>
-#include <FF/data/conf.h>
+#include <FF/data/parse.h>
 #include <FF/time.h>
 #include <FF/path.h>
 
@@ -51,9 +51,9 @@ struct opts {
 	char *path;
 	char *key;
 	ffui_hotkey hk;
-	byte mode; //enum OPT_MODE
-	byte jpeg_quality;
-	byte png_compression;
+	uint mode; //enum OPT_MODE
+	int jpeg_quality;
+	int png_compression;
 	uint max_width;
 	uint max_height;
 };
@@ -412,19 +412,20 @@ static const char* const opts_desc[] = {
 	"0:desktop, 1:active window, 2:active window (client area)",
 	"",
 	"",
-	"-1:default",
-	"-1:default",
+	"",
+	"",
 };
 
-#define OFF(m)  FFPARS_DSTOFF(struct opts, m)
-static const ffpars_arg opts_args[] = {
-	{ "Target path",	FFPARS_TCHARPTR | FFPARS_FRECOPY | FFPARS_FSTRZ, OFF(path) },
-	{ "Global Key",	FFPARS_TCHARPTR | FFPARS_FRECOPY | FFPARS_FSTRZ, OFF(key) },
-	{ "Mode",	FFPARS_TINT8, OFF(mode) },
-	{ "Max Width",	FFPARS_TINT, OFF(max_width) },
-	{ "Max Height",	FFPARS_TINT, OFF(max_height) },
-	{ "JPEG Quality",	FFPARS_TINT8 | FFPARS_FSIGN, OFF(jpeg_quality) },
-	{ "PNG Compression",	FFPARS_TINT8 | FFPARS_FSIGN, OFF(png_compression) },
+#define OFF(m)  FF_OFF(struct opts, m)
+static const ffconf_arg opts_args[] = {
+	{ "Target path",	FFCONF_TSTRZ, OFF(path) },
+	{ "Global Key",	FFCONF_TSTRZ, OFF(key) },
+	{ "Mode",	FFCONF_TINT32, OFF(mode) },
+	{ "Max Width",	FFCONF_TINT32, OFF(max_width) },
+	{ "Max Height",	FFCONF_TINT32, OFF(max_height) },
+	{ "JPEG Quality",	FFCONF_TINT32 | FFCONF_FSIGN, OFF(jpeg_quality) },
+	{ "PNG Compression",	FFCONF_TINT32 | FFCONF_FSIGN, OFF(png_compression) },
+	{}
 };
 #undef OFF
 
@@ -444,66 +445,78 @@ static int opts_init(struct opts *c)
 /** Load options from a file. */
 static int opts_load(struct opts *c)
 {
-	struct ffconf_loadfile conf = {0};
 	if (NULL == (c->fn = core->env_expand(NULL, 0, "%APPDATA%\\fcom\\screenshots.conf")))
 		return -1;
-	conf.fn = c->fn;
-	conf.obj = c;
-	conf.args = opts_args;
-	conf.nargs = FFCNT(opts_args);
-	dbglog(0, "reading %s", conf.fn);
-	int r = ffconf_loadfile(&conf);
+	dbglog(0, "reading %s", c->fn);
+	ffstr errmsg = {};
+	int r = ffconf_parse_file(opts_args, c, c->fn, 0, &errmsg);
 	if (r != 0 && !fferr_nofile(fferr_last())) {
-		errlog("%s", conf.errstr);
+		errlog("%S", &errmsg);
 	}
+	ffstr_free(&errmsg);
 	return r;
 }
 
 /** Save options to a file. */
 static void opts_save(struct opts *c)
 {
-	char buf[64];
-	ffconfw conf;
-	ffui_loaderw ldr = {0};
-	const ffpars_arg *a;
-	ffstr s;
-	ffconf_winit(&conf, NULL, 0);
+	ffconfw conf = {};
+	const ffconf_arg *a;
+	ffconfw_init(&conf, FFCONFW_FCRLF);
 	FFARRS_FOREACH(opts_args, a) {
-		ffconf_write(&conf, a->name, ffsz_len(a->name), FFCONF_TKEY);
-		ffpars_scheme_write(buf, a, c, &s);
-		ffconf_write(&conf, s.ptr, s.len, FFCONF_TVAL);
+		if (a->name == NULL)
+			break;
+		ffconfw_addkeyz(&conf, a->name);
+		void *ptr = FF_PTR(c, a->dst);
+		switch (a->flags & 0x0f) {
+		case FFCONF_TSTRZ:
+			ffconfw_addstrz(&conf, *(char**)ptr);
+			break;
+		case _FFCONF_TINT:
+			if (a->flags & FFCONF_FSIGN)
+				ffconfw_addint(&conf, *(int*)ptr);
+			else
+				ffconfw_addint(&conf, *(uint*)ptr);
+			break;
+		default:
+			FF_ASSERT(0);
+		}
 	}
-	ffconf_write(&conf, NULL, 0, FFCONF_FIN);
-	ldr.confw = conf;
-	ffui_ldr_write(&ldr, c->fn);
-	ffui_ldrw_fin(&ldr);
+	ffconfw_fin(&conf);
+	ffstr buf;
+	ffconfw_output(&conf, &buf);
+	fffile_writeall(c->fn, buf.ptr, buf.len, 0);
 	dbglog(0, "saved settings to %s", c->fn);
 }
 
 /* struct opts -> GUI */
 static void opts_show(const struct opts *c, ffui_view *v)
 {
-	union ffpars_val u;
 	ffui_viewitem it = {0};
 	char buf[128];
 
 	for (uint i = 0;  i != FFCNT(opts_args);  i++) {
+		const ffconf_arg *a = &opts_args[i];
+		if (a->name == NULL)
+			break;
 
-		const ffpars_arg *a = &opts_args[i];
-		u.b = ffpars_arg_ptr(a, (void*)c);
+		void *ptr = FF_PTR(c, a->dst);
 
 		ffui_view_settextz(&it, a->name);
 		ffui_view_append(v, &it);
 
-		switch (a->flags & FFPARS_FTYPEMASK) {
-		case FFPARS_TCHARPTR:
-			ffui_view_settextz(&it, *u.charptr);
+		switch (a->flags & 0x0f) {
+		case FFCONF_TSTRZ:
+			ffui_view_settextz(&it, *(char**)ptr);
 			break;
-		case FFPARS_TINT: {
-			int64 val = ffpars_getint(a, u);
-			uint f;
-			f = (a->flags & FFINT_SIGNED) ? FFINT_SIGNED : 0;
-			uint n = ffs_fromint(val, buf, sizeof(buf), f);
+		case _FFCONF_TINT: {
+			uint f = 0;
+			ffuint64 k = *(uint*)ptr;
+			if (a->flags & FFCONF_FSIGN) {
+				f = FFS_INTSIGN;
+				k = *(int*)ptr;
+			}
+			uint n = ffs_fromint(k, buf, sizeof(buf), f);
 			ffui_view_settext(&it, buf, n);
 			break;
 		}
@@ -542,16 +555,27 @@ static int opts_hotkey_assign(struct opts *c)
 static void opts_set(struct opts *c, ffui_view *v, uint sub)
 {
 	int i = ffui_view_focused(v);
-	int r;
 	FF_ASSERT(i >= 0);
-
 	ffstr text;
-	ffstr_setz(&text, v->text);
-	r = ffpars_arg_process(&opts_args[i], &text, c, NULL);
-	if (ffpars_iserr(r))
-		return;
 
-	if (ffsz_eq(opts_args[i].name, "Global Key")) {
+	const ffconf_arg *a = &opts_args[i];
+	void *ptr = FF_PTR(c, a->dst);
+	switch (a->flags & 0x0f) {
+	case FFCONF_TSTRZ:
+		*(char**)ptr = ffsz_dup(v->text);
+		break;
+	case _FFCONF_TINT:
+		ffstr_setz(&text, v->text);
+		if (a->flags & FFCONF_FSIGN)
+			(void)ffstr_to_int32(&text, (uint*)ptr);
+		else
+			(void)ffstr_to_uint32(&text, (uint*)ptr);
+		break;
+	default:
+		FF_ASSERT(0);
+	}
+
+	if (ffsz_eq(a->name, "Global Key")) {
 		ffui_wnd_ghotkey_unreg(&gg->wscrshot.wscrshot);
 		if (0 != opts_hotkey_assign(c))
 			return;

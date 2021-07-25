@@ -3,6 +3,9 @@ Copyright (c) 2018 Simon Zolin
 */
 
 #include <gui-fsync/gsync.h>
+#include <gui-fsync/conf.h>
+#include <gui-fsync/sync.h>
+#include <gui-fsync/tree.h>
 
 #include <FF/time.h>
 #include <FF/sys/dir.h>
@@ -173,6 +176,7 @@ int gsync_create(void)
 		goto end;
 	opts_load(&gg->opts);
 	opts_show(&gg->opts, &gg->wsync.vopts);
+	wsync_opts_show();
 
 	list_cols_read();
 
@@ -1002,7 +1006,7 @@ void list_cols_width_write(ffconfw *conf)
 		ffui_viewcol_reset(&vc);
 		ffui_viewcol_setwidth(&vc, 0);
 		ffui_view_col(&w->vlist, i, &vc);
-		ffconf_writeint(conf, ffui_viewcol_width(&vc), 0, FFCONF_TVAL);
+		ffconfw_addint(conf, ffui_viewcol_width(&vc));
 	}
 }
 

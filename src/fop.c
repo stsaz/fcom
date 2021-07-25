@@ -26,9 +26,8 @@ const fcom_command *com;
 // MODULE
 static int f_sig(uint signo);
 static const void* f_iface(const char *name);
-static int f_conf(const char *name, ffpars_ctx *ctx);
 static const fcom_mod f_mod = {
-	.sig = &f_sig, .iface = &f_iface, .conf = &f_conf,
+	.sig = &f_sig, .iface = &f_iface,
 };
 
 // QUICK FILE OPS
@@ -137,11 +136,6 @@ static const void* f_iface(const char *name)
 			return op->iface;
 	}
 	return NULL;
-}
-
-static int f_conf(const char *name, ffpars_ctx *ctx)
-{
-	return 1;
 }
 
 static int f_sig(uint signo)

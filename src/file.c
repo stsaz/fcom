@@ -32,13 +32,13 @@ static ffthpool* thpool_create();
 // MODULE
 static int file_sig(uint signo);
 static const void* file_iface(const char *name);
-static int file_conf(const char *name, ffpars_ctx *ctx);
+static int file_conf(const char *name, ffconf_scheme *cs);
 const fcom_mod file_mod = {
 	.sig = &file_sig, .iface = &file_iface, .conf = &file_conf,
 };
 
 // INPUT
-static int fi_conf(ffpars_ctx *ctx);
+static int fi_conf(ffconf_scheme *cs);
 static void* fi_open(fcom_cmd *cmd);
 static void fi_close(void *p, fcom_cmd *cmd);
 static int fi_process(void *p, fcom_cmd *cmd);
@@ -52,7 +52,7 @@ static void fi_log(void *p, uint level, ffstr msg);
 static void fi_onread(void *p);
 
 // OUTPUT
-static int fo_conf(ffpars_ctx *ctx);
+static int fo_conf(ffconf_scheme *cs);
 static void* fo_open(fcom_cmd *cmd);
 static void fo_close(void *p, fcom_cmd *cmd);
 static int fo_adddata(void *p, fcom_cmd *cmd);
@@ -96,12 +96,12 @@ static const void* file_iface(const char *name)
 	return NULL;
 }
 
-static int file_conf(const char *name, ffpars_ctx *ctx)
+static int file_conf(const char *name, ffconf_scheme *cs)
 {
 	if (ffsz_eq(name, "file-in"))
-		return fi_conf(ctx);
+		return fi_conf(cs);
 	else if (ffsz_eq(name, "file-out"))
-		return fo_conf(ctx);
+		return fo_conf(cs);
 	return 1;
 }
 
@@ -143,13 +143,14 @@ struct inconf {
 	byte use_thread_pool;
 };
 
-#define OFF(member)  FFPARS_DSTOFF(struct inconf, member)
-static const ffpars_arg fi_conf_args[] = {
-	{ "bufsize",	FFPARS_TSIZE | FFPARS_FNOTZERO,  OFF(bufsize) },
-	{ "nbufs",	FFPARS_TINT8 | FFPARS_FNOTZERO,  OFF(nbufs) },
-	{ "readahead",	FFPARS_TBOOL8,  OFF(readahead) },
-	{ "use_thread_pool",	FFPARS_TBOOL8,  OFF(use_thread_pool) },
-	{ "direct_io",	FFPARS_TBOOL8,  OFF(directio) },
+#define OFF(member)  FF_OFF(struct inconf, member)
+static const ffconf_arg fi_conf_args[] = {
+	{ "bufsize",	FFCONF_TSIZE32 | FFCONF_FNOTZERO,  OFF(bufsize) },
+	{ "nbufs",	FFCONF_TINT32 | FFCONF_FNOTZERO,  OFF(nbufs) },
+	{ "readahead",	FFCONF_TBOOL8,  OFF(readahead) },
+	{ "use_thread_pool",	FFCONF_TBOOL8,  OFF(use_thread_pool) },
+	{ "direct_io",	FFCONF_TBOOL8,  OFF(directio) },
+	{}
 };
 #undef OFF
 
@@ -162,7 +163,7 @@ struct file {
 	uint nseek;
 };
 
-static int fi_conf(ffpars_ctx *ctx)
+static int fi_conf(ffconf_scheme *cs)
 {
 	if (NULL == (inconf = ffmem_new(struct inconf)))
 		return -1;
@@ -172,7 +173,7 @@ static int fi_conf(ffpars_ctx *ctx)
 	inconf->use_thread_pool = 1;
 	inconf->directio = 0;
 	inconf->readahead = 1;
-	ffpars_setargs(ctx, inconf, fi_conf_args, FFCNT(fi_conf_args));
+	ffconf_scheme_addctx(cs, fi_conf_args, inconf);
 	return 0;
 }
 
@@ -325,18 +326,19 @@ struct outconf {
 	byte use_thread_pool;
 };
 
-#define OFF(member)  FFPARS_DSTOFF(struct outconf, member)
-static const ffpars_arg fo_conf_args[] = {
-	{ "bufsize",	FFPARS_TSIZE | FFPARS_FNOTZERO,  OFF(bufsize) },
-	{ "prealloc",	FFPARS_TSIZE | FFPARS_FNOTZERO,  OFF(prealloc) },
-	{ "prealloc_grow",	FFPARS_TBOOL8,  OFF(prealloc_grow) },
-	{ "mkpath",	FFPARS_TBOOL8,  OFF(mkpath) },
-	{ "del_on_err",	FFPARS_TBOOL8,  OFF(del_on_err) },
-	{ "use_thread_pool",	FFPARS_TBOOL8,  OFF(use_thread_pool) },
+#define OFF(member)  FF_OFF(struct outconf, member)
+static const ffconf_arg fo_conf_args[] = {
+	{ "bufsize",	FFCONF_TSIZE32 | FFCONF_FNOTZERO,  OFF(bufsize) },
+	{ "prealloc",	FFCONF_TSIZE32 | FFCONF_FNOTZERO,  OFF(prealloc) },
+	{ "prealloc_grow",	FFCONF_TBOOL8,  OFF(prealloc_grow) },
+	{ "mkpath",	FFCONF_TBOOL8,  OFF(mkpath) },
+	{ "del_on_err",	FFCONF_TBOOL8,  OFF(del_on_err) },
+	{ "use_thread_pool",	FFCONF_TBOOL8,  OFF(use_thread_pool) },
+	{}
 };
 #undef OFF
 
-static int fo_conf(ffpars_ctx *ctx)
+static int fo_conf(ffconf_scheme *cs)
 {
 	if (NULL == (outconf = ffmem_new(struct outconf)))
 		return -1;
@@ -346,7 +348,7 @@ static int fo_conf(ffpars_ctx *ctx)
 	outconf->mkpath = 1;
 	outconf->del_on_err = 1;
 	outconf->use_thread_pool = 1;
-	ffpars_setargs(ctx, outconf, fo_conf_args, FFCNT(fo_conf_args));
+	ffconf_scheme_addctx(cs, fo_conf_args, outconf);
 	return 0;
 }
 

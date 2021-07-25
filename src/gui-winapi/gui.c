@@ -15,9 +15,8 @@ const fcom_command *com;
 // MODULE
 static int gui_sig(uint signo);
 static const void* gui_iface(const char *name);
-static int gui_conf(const char *name, ffpars_ctx *ctx);
 static const fcom_mod gui_mod = {
-	.sig = &gui_sig, .iface = &gui_iface, .conf = &gui_conf,
+	.sig = &gui_sig, .iface = &gui_iface,
 	.ver = FCOM_VER,
 	.name = "GUI", .desc = "GUI",
 };
@@ -86,11 +85,6 @@ static const void* gui_iface(const char *name)
 	return NULL;
 }
 
-static int gui_conf(const char *name, ffpars_ctx *ctx)
-{
-	return 0;
-}
-
 
 /** Global GUI context. */
 struct ggui {
@@ -147,6 +141,7 @@ static void gui_destroy(void)
 /** GUI thread. */
 static FFTHDCALL int gui_run_thd(void *param)
 {
+	fcom_dbglog(0, "gui", "ui thread enter", 0);
 	ffui_init();
 	ffui_wnd_initstyle();
 
@@ -160,6 +155,7 @@ done:
 
 	gg->tsk.handler = &gui_exit;
 	core->task(FCOM_TASK_ADD, &gg->tsk);
+	fcom_dbglog(0, "gui", "ui thread leave", 0);
 	return 0;
 }
 

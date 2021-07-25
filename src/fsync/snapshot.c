@@ -21,22 +21,23 @@ struct ssloader {
 	struct dir *top;
 	struct dir *dcur;
 	struct file *fcur;
+	ffuint list_idx;
 };
 
-static int ss_d_v(ffparser_schem *p, void *obj, int64 *v)
+static int ss_d_v(ffconf_scheme *cs, void *obj, int64 v)
 {
-	if (*v != 0)
-		return FFPARS_EBADVAL;
+	if (v != 0)
+		return FFCONF_EBADVAL;
 	return 0;
 }
 // name size attr uid gid mtime crc
-static int ss_d_f(ffparser_schem *p, void *obj, ffstr *v)
+static int ss_d_f(ffconf_scheme *cs, void *obj, ffstr *v)
 {
 	struct ssloader *ssl = obj;
 	uint64 i8;
 	uint i4;
 
-	switch (p->list_idx) {
+	switch (ssl->list_idx++) {
 	case 0:
 		ssl->fcur = dir_newfile(ssl->dcur);
 		ffmem_tzero(ssl->fcur);
@@ -45,12 +46,12 @@ static int ss_d_f(ffparser_schem *p, void *obj, ffstr *v)
 		break;
 	case 1:
 		if (!ffstr_toint(v, &i8, FFS_INT64))
-			return FFPARS_EBADVAL;
+			return FFCONF_EBADVAL;
 		ssl->fcur->size = i8;
 		break;
 	case 2:
 		if (!ffstr_toint(v, &i4, FFS_INT32 | FFS_INTHEX))
-			return FFPARS_EBADVAL;
+			return FFCONF_EBADVAL;
 		ssl->fcur->attr = i4;
 		break;
 	case 3:
@@ -59,7 +60,7 @@ static int ss_d_f(ffparser_schem *p, void *obj, ffstr *v)
 	case 5: {
 		ffdatetime dt;
 		if (v->len != fftime_fromstr1(&dt, v->ptr, v->len, FFTIME_YMD))
-			return FFPARS_EBADVAL;
+			return FFCONF_EBADVAL;
 		fftime_join1(&ssl->fcur->mtime, &dt);
 		ssl->fcur->mtime.sec -= FFTIME_1970_SECONDS;
 		break;
@@ -68,22 +69,23 @@ static int ss_d_f(ffparser_schem *p, void *obj, ffstr *v)
 		dbglog(0, "added %s/%s", fsync_if.get(FSYNC_DIRNAME, ssl->fcur), ssl->fcur->name);
 		break;
 	default:
-		return FFPARS_EBADVAL;
+		return FFCONF_EBADVAL;
 	}
 	return 0;
 }
-static const ffpars_arg ss_d_args[] = {
-	{ "v",	FFPARS_TINT, FFPARS_DST(&ss_d_v) },
-	{ "f",	FFPARS_TSTR | FFPARS_FLIST | FFPARS_FMULTI, FFPARS_DST(&ss_d_f) },
+static const ffconf_arg ss_d_args[] = {
+	{ "v",	FFCONF_TINT32, (ffsize)ss_d_v },
+	{ "f",	FFCONF_TSTR | FFCONF_FLIST | FFCONF_FMULTI, (ffsize)ss_d_f },
+	{}
 };
 
-static int ss_d(ffparser_schem *p, void *obj, ffpars_ctx *ctx)
+static int ss_d(ffconf_scheme *cs, void *obj)
 {
 	struct ssloader *ssl = obj;
 	struct dir *d;
-	ffstr *name = ffpars_ctxname(p);
+	ffstr *name = ffconf_scheme_objval(cs);
 	if (NULL == (d = dir_new(name)))
-		return FFPARS_ESYS;
+		return FFCONF_ESYS;
 	if (ssl->top == NULL)
 		ssl->top = d;
 	else {
@@ -91,56 +93,36 @@ static int ss_d(ffparser_schem *p, void *obj, ffpars_ctx *ctx)
 		if (f == NULL) {
 			fsync_if.tree_free(d);
 			warnlog("skipping entry %S", name);
-			ffpars_ctx_skip(ctx);
+			ffconf_scheme_skipctx(cs);
 			return 0;
 		}
 		f->dir = d;
 	}
 	ssl->dcur = d;
-	ffpars_setargs(ctx, ssl, ss_d_args, FFCNT(ss_d_args));
+	ssl->list_idx = 0;
+	ffconf_scheme_addctx(cs, ss_d_args, ssl);
 	return 0;
 }
-static const ffpars_arg ss_args[] = {
-	{ "d",	FFPARS_TOBJ | FFPARS_FOBJ1 | FFPARS_FMULTI, FFPARS_DST(&ss_d) },
+static const ffconf_arg ss_args[] = {
+	{ "d",	FFCONF_TOBJ | FFCONF_FNOTEMPTY | FFCONF_FMULTI, (ffsize)ss_d },
+	{}
 };
 
 struct dir* snapshot_load(const char *name, uint flags)
 {
-	ffarr data = {};
 	struct ssloader ssl = {};
-	ffparser_schem ps;
-	ffconf c;
-	ffpars_ctx ctx;
-	int r;
 	void *rc = NULL;
 
-	ffpars_setargs(&ctx, &ssl, ss_args, FFCNT(ss_args));
-	ffconf_scheminit(&ps, &c, &ctx);
-
-	if (0 != fffile_readall(&data, name, 100 * 1024 * 1024))
-		goto err;
-
-	ffstr s;
-	ffstr_set2(&s, &data);
-	while (s.len != 0) {
-		ffconf_parsestr(&c, &s);
-		r = ffconf_schemrun(&ps);
-		if (ffpars_iserr(r)) {
-			errlog("conf parse: %s", ffpars_errstr(r));
-			goto err;
-		}
-	}
-
-	if (0 != (r = ffconf_schemfin(&ps))) {
-		errlog("conf parse: %s", ffpars_errstr(r));
+	ffstr errmsg = {};
+	int r = ffconf_parse_file(ss_args, &ssl, name, 0, &errmsg);
+	if (r != 0) {
+		errlog("conf parse: %s: %S", name, &errmsg);
 		goto err;
 	}
 	rc = ssl.top;
 
 err:
-	ffarr_free(&data);
-	ffconf_parseclose(&c);
-	ffpars_schemfree(&ps);
+	ffstr_free(&errmsg);
 	if (rc == NULL)
 		fsync_if.tree_free(ssl.top);
 	return rc;
@@ -151,23 +133,23 @@ err:
 void snapshot_writedir(ffconfw *cw, struct dir *d, ffbool close)
 {
 	if (close)
-		ffconf_write(cw, NULL, FFCONF_CLOSE, FFCONF_TOBJ);
-	ffconf_write(cw, "d", FFCONF_STRZ, FFCONF_TKEY);
-	ffconf_write(cw, dir_path(d), FFCONF_STRZ, FFCONF_TVAL);
-	ffconf_write(cw, NULL, FFCONF_OPEN, FFCONF_TOBJ);
-	ffconf_write(cw, "v", FFCONF_STRZ, FFCONF_TKEY);
-	ffconf_write(cw, "0", FFCONF_STRZ, FFCONF_TVAL);
+		ffconfw_addobj(cw, 0);
+	ffconfw_addkeyz(cw, "d");
+	ffconfw_addstrz(cw, dir_path(d));
+	ffconfw_addobj(cw, 1);
+	ffconfw_addkeyz(cw, "v");
+	ffconfw_addstrz(cw, "0");
 }
 
 /** Write file info into snapshot. */
 void snapshot_writefile(ffconfw *cw, const struct file *f)
 {
-	ffconf_write(cw, "f", FFCONF_STRZ, FFCONF_TKEY);
-	ffconf_write(cw, f->name, FFCONF_STRZ, FFCONF_TVAL);
-	ffconf_writeint(cw, f->size, 0, FFCONF_TVAL);
-	ffconf_writeint(cw, f->attr, FFINT_HEXLOW, FFCONF_TVAL);
-	ffconf_writeint(cw, 0, FFINT_HEXLOW, FFCONF_TVAL);
-	ffconf_writeint(cw, 0, FFINT_HEXLOW, FFCONF_TVAL);
+	ffconfw_addkeyz(cw, "f");
+	ffconfw_addstrz(cw, f->name);
+	ffconfw_addint(cw, f->size);
+	ffconfw_addintf(cw, f->attr, FFINT_HEXLOW);
+	ffconfw_addintf(cw, 0, FFINT_HEXLOW);
+	ffconfw_addintf(cw, 0, FFINT_HEXLOW);
 
 	char buf[128];
 	fftime mt = f->mtime;
@@ -175,7 +157,9 @@ void snapshot_writefile(ffconfw *cw, const struct file *f)
 	mt.sec += FFTIME_1970_SECONDS;
 	fftime_split1(&dt, &mt);
 	int n = fftime_tostr1(&dt, buf, sizeof(buf), FFTIME_YMD);
-	ffconf_write(cw, buf, n, FFCONF_TVAL);
+	ffstr s;
+	ffstr_set(&s, buf, n);
+	ffconfw_addstr(cw, &s);
 
-	ffconf_write(cw, "0", FFCONF_STRZ, FFCONF_TVAL);
+	ffconfw_addstrz(cw, "0");
 }

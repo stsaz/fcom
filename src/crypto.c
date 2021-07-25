@@ -19,9 +19,8 @@ static const fcom_command *com;
 // MODULE
 static int crypto_sig(uint signo);
 static const void* crypto_iface(const char *name);
-static int crypto_conf(const char *name, ffpars_ctx *ctx);
 static const fcom_mod crypto_mod = {
-	.sig = &crypto_sig, .iface = &crypto_iface, .conf = &crypto_conf,
+	.sig = &crypto_sig, .iface = &crypto_iface,
 };
 
 // ENCRYPT/DECRYPT
@@ -70,11 +69,6 @@ static const void* crypto_iface(const char *name)
 			return op->iface;
 	}
 	return NULL;
-}
-
-static int crypto_conf(const char *name, ffpars_ctx *ctx)
-{
-	return 1;
 }
 
 static int crypto_sig(uint signo)

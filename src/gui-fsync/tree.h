@@ -1,7 +1,6 @@
 /** Show file tree.
 Copyright (c) 2019 Simon Zolin */
 
-#include <gui-fsync/gsync.h>
 #include <FF/time.h>
 
 

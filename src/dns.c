@@ -18,9 +18,8 @@ static const fcom_command *com;
 // MODULE
 static int dns_sig(uint signo);
 static const void* dns_iface(const char *name);
-static int dns_conf(const char *name, ffpars_ctx *ctx);
 static const fcom_mod dns_mod = {
-	.sig = &dns_sig, .iface = &dns_iface, .conf = &dns_conf,
+	.sig = &dns_sig, .iface = &dns_iface,
 };
 
 // DNS
@@ -54,11 +53,6 @@ static const void* dns_iface(const char *name)
 			return op->iface;
 	}
 	return NULL;
-}
-
-static int dns_conf(const char *name, ffpars_ctx *ctx)
-{
-	return 1;
 }
 
 static int dns_sig(uint signo)

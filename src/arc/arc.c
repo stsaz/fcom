@@ -13,9 +13,8 @@ const fcom_command *com;
 // MODULE
 static int arc_sig(uint signo);
 static const void* arc_iface(const char *name);
-static int arc_conf(const char *name, ffpars_ctx *ctx);
 static const fcom_mod arc_mod = {
-	.sig = &arc_sig, .iface = &arc_iface, .conf = &arc_conf,
+	.sig = &arc_sig, .iface = &arc_iface,
 	.ver = FCOM_VER,
 	.name = "Archiver", .desc = "Pack/unpack archives .gz, .xz, .tar, .zip, .7z, .iso, .ico",
 };
@@ -103,11 +102,6 @@ static const void* arc_iface(const char *name)
 			return cmd->iface;
 	}
 	return NULL;
-}
-
-static int arc_conf(const char *name, ffpars_ctx *ctx)
-{
-	return 0;
 }
 
 

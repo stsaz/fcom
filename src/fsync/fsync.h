@@ -2,7 +2,7 @@
 Copyright (c) 2019 Simon Zolin */
 
 #include <fcom.h>
-#include <FF/data/conf.h>
+#include <FF/data/conf2-writer.h>
 
 
 struct dir;

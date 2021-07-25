@@ -79,13 +79,8 @@ const void* gui_iface(const char *name)
 	return NULL;
 }
 
-int gui_conf(const char *name, ffpars_ctx *ctx)
-{
-	return 0;
-}
-
 const fcom_mod gui_mod = {
-	.sig = gui_sig, .iface = gui_iface, .conf = gui_conf,
+	.sig = gui_sig, .iface = gui_iface,
 	.ver = FCOM_VER,
 	.name = "GUI", .desc = "GUI",
 };
