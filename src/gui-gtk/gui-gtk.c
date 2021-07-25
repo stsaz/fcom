@@ -3,6 +3,8 @@
 */
 
 #include <fcom.h>
+#include <FF/gui-gtk/gtk.h>
+#include <FFOS/thread.h>
 
 const fcom_core *core;
 const fcom_command *com;
@@ -13,11 +15,42 @@ void* gui_open(fcom_cmd *cmd)
 }
 
 void gui_close(void *p, fcom_cmd *cmd)
-{}
+{
+	ffui_uninit();
+}
+
+void wsync_init();
+void wsync_destroy();
+
+fftask tsk;
+
+/** GUI thread has exitted. */
+static void gui_exit(void *param)
+{
+	core->cmd(FCOM_STOP, 0);
+}
+
+int gui_loop(void *param)
+{
+	wsync_init();
+	ffui_run();
+	wsync_destroy();
+	tsk.handler = gui_exit;
+	core->task(FCOM_TASK_ADD, &tsk);
+	return 0;
+}
 
 int gui_process(void *p, fcom_cmd *cmd)
 {
-	return FCOM_DONE;
+	ffui_init();
+	if (ffsz_eq(cmd->name, "gsync"))
+	{}
+	else
+		return FCOM_ERR;
+
+	ffthread th = ffthread_create(gui_loop, NULL, 0);
+	ffthread_detach(th);
+	return FCOM_ASYNC;
 }
 
 const fcom_filter gui_filter = { gui_open, gui_close, gui_process };

@@ -1,0 +1,79 @@
+# fcom gsync GUI
+
+
+menu mcmd {
+	item "Scan & Compare" {
+		hotkey "F5"
+		action A_CMP
+	}
+	item "Synchronize Selected Files" {
+		hotkey "F6"
+		action A_SYNC
+	}
+}
+
+window wsync {
+	title "Synchronize Files"
+	position 100 100 600 400
+
+	mainmenu mm {
+		item "_Command" {
+			submenu mcmd
+		}
+	}
+
+	editbox eleft {
+		style horizontal
+	}
+	editbox eright {
+	}
+	checkbox cbeq {
+		style horizontal
+		text "Show Equal"
+		action A_SHOWEQ
+	}
+	checkbox cbnew {
+		style horizontal
+		text "Show New"
+		action A_SHOWNEW
+	}
+	checkbox cbmod {
+		style horizontal
+		text "Show Modified"
+		action A_SHOWMOD
+	}
+	checkbox cbmov {
+		style horizontal
+		text "Show Moved"
+		action A_SHOWMOVE
+	}
+	checkbox cbdel {
+		style horizontal
+		text "Show Deleted"
+		action A_SHOWDEL
+	}
+
+	listview vlist {
+		style grid_lines multi_select
+		dblclick A_EXEC
+		column "Action" {
+		}
+		column "Source Filename" {
+		}
+		column "Source Size" {
+		}
+		column "Source Modified" {
+		}
+		column "Status" {
+		}
+		column "Target Filename" {
+		}
+		column "Target Size" {
+		}
+		column "Target Modified" {
+		}
+	}
+
+	statusbar stbar {
+	}
+}

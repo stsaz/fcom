@@ -20,14 +20,6 @@ $(OBJ_DIR)/%.o: $(SRCDIR)/arc/%.c $(SRCDIR)/arc/*.h $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
 $(OBJ_DIR)/%.o: $(SRCDIR)/pic/%.c $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
-$(OBJ_DIR)/%.o: $(SRCDIR)/gui-gtk/%.c $(SRCDIR)/fcom.h $(FF_HDR)
-	$(C)  $(CFLAGS) $<  -o$@
-$(OBJ_DIR)/%.o: $(SRCDIR)/gui-winapi/%.c $(SRCDIR)/fcom.h $(FF_HDR)
-	$(C)  $(CFLAGS) $<  -o$@
-$(OBJ_DIR)/%.o: $(SRCDIR)/gui-fsync/%.c $(SRCDIR)/fcom.h $(FF_HDR)
-	$(C)  $(CFLAGS) $<  -o$@
-$(OBJ_DIR)/%.o: $(SRCDIR)/gui-scrshots/%.c $(SRCDIR)/fcom.h $(FF_HDR)
-	$(C)  $(CFLAGS) $<  -o$@
 
 $(RES): $(PROJDIR)/res/fcom.rc $(PROJDIR)/res/fcom.exe.manifest $(PROJDIR)/res/fcom.ico
 	$(WINDRES) -I$(SRCDIR) -I$(FFBASE) -I$(FF) -I$(FFOS) $(PROJDIR)/res/fcom.rc $@
@@ -139,6 +131,12 @@ net.$(SO): $(NET_O)
 
 
 ifeq ($(OS),win)
+$(OBJ_DIR)/%.o: $(SRCDIR)/gui-winapi/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
+$(OBJ_DIR)/%.o: $(SRCDIR)/gui-fsync/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
+$(OBJ_DIR)/%.o: $(SRCDIR)/gui-scrshots/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
 GUI_O := $(OBJ_DIR)/gui.o \
 	$(OBJ_DIR)/scrshots.o \
 	$(OBJ_DIR)/gsync.o $(OBJ_DIR)/sync.o $(OBJ_DIR)/conf.o $(OBJ_DIR)/tree.o \
@@ -152,12 +150,22 @@ gui.$(SO): $(GUI_O)
 endif
 
 ifeq ($(OS),linux)
+CFLAGS_GTK := -I/usr/include/gtk-3.0 -I/usr/include/pango-1.0 -I/usr/include/glib-2.0 -I/usr/lib64/glib-2.0/include -I/usr/include/fribidi -I/usr/include/cairo -I/usr/include/pixman-1 -I/usr/include/freetype2 -I/usr/include/libpng16 -I/usr/include/uuid -I/usr/include/harfbuzz -I/usr/include/gdk-pixbuf-2.0 -I/usr/include/gio-unix-2.0/ -I/usr/include/libdrm -I/usr/include/valgrind -I/usr/include/atk-1.0 -I/usr/include/at-spi2-atk/2.0 -I/usr/include/at-spi-2.0 -I/usr/include/dbus-1.0 -I/usr/lib64/dbus-1.0/include
+LIBS_GTK := -lgtk-3 -lgdk-3 -lpangocairo-1.0 -lpango-1.0 -lfribidi -latk-1.0 -lcairo-gobject -lcairo -lgdk_pixbuf-2.0 -lgio-2.0 -lgobject-2.0 -lglib-2.0
+$(OBJ_DIR)/%.o: $(SRCDIR)/gui-gtk/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $(CFLAGS_GTK) $<  -o$@
+$(OBJ_DIR)/%.o: $(SRCDIR)/gui-fsync-gtk/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $(CFLAGS_GTK) $<  -o$@
 GUI_O := $(OBJ_DIR)/gui-gtk.o \
+	$(OBJ_DIR)/gsync.o \
+	$(FF_OBJ_DIR)/ffgui-gtk-loader.o \
+	$(FF_OBJ_DIR)/ffgui-gtk.o \
+	$(FF_OBJ_DIR)/ffurl.o \
 	$(FF_OBJ_DIR)/ffconf.o \
 	$(FF_OBJ_DIR)/ffparse.o \
 	$(FF_O)
 gui.$(SO): $(GUI_O)
-	$(LD) -shared $(GUI_O) $(LDFLAGS) -o$@
+	$(LD) -shared $(GUI_O) $(LDFLAGS) $(LIBS_GTK) -pthread -o$@
 endif
 
 TEST_O := $(OBJ_DIR)/tester.o \
@@ -198,6 +206,8 @@ install-only:
 ifeq ($(OS),win)
 	$(CP) $(PROJDIR)/src/gui-fsync/*.gui $(PROJDIR)/src/gui-scrshots/*.gui $(PROJDIR)/res/screenshots.ico $(INSTDIR)
 	unix2dos $(INSTDIR)/*.txt $(INSTDIR)/*.conf $(INSTDIR)/*.gui
+else
+	$(CP) $(PROJDIR)/src/gui-fsync-gtk/*.gui $(INSTDIR)
 endif
 
 	chmod 644 $(INSTDIR)/*.txt $(INSTDIR)/*.conf
