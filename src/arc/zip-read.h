@@ -79,7 +79,7 @@ static void unzip_showinfo(struct unzip1 *z, const ffzipread_fileinfo_t *f)
 
 	p = ffs_copystr(p, end, &f->name);
 
-	fcom_verblog(FILT_NAME, "%*s", p - z->fn.ptr, z->fn.ptr);
+	fcom_userlog("%*s", p - z->fn.ptr, z->fn.ptr);
 }
 
 static int unzip1_process(void *p, fcom_cmd *cmd)
@@ -135,7 +135,7 @@ again:
 			if (!arc_need_member(&cmd->members, 0, &f->name))
 				break;
 
-			if (fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
+			if (cmd->show || fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
 				unzip_showinfo(z, f);
 
 			if (cmd->show) {

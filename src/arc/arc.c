@@ -292,7 +292,7 @@ static const char *const arc_filts[] = {
 	"arc.unxz",
 	"arc.unzip",
 	"arc.unzip",
-	"arc.untar",
+	"arc.unzst",
 };
 
 /*

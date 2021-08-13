@@ -581,7 +581,7 @@ void compare()
 	status("Comparing...");
 	struct fsync_cmp cmp, *c;
 	uint f = FSYNC_CMP_DEFAULT;
-	// ffint_bitmask(&f, FSYNC_CMP_MTIME, gg->opts.time_diff);
+	// ffint_bitmask(&f, FSYNC_CMP_MTIME, w->time_diff);
 	ffint_bitmask(&f, FSYNC_CMP_MTIME_SEC, 1);
 	void *cmpctx = _fsync->cmp_init(w->src, w->dst, f);
 
@@ -1026,12 +1026,9 @@ void wsync_init()
 void cols_width_write(ffconfw *conf)
 {
 	struct wsync *w = gg->wsync;
-	ffui_viewcol vc = {};
 	for (uint i = 0;  i != _L_LAST;  i++) {
-		ffui_viewcol_setwidth(&vc, 0);
-		ffui_view_col(&w->vlist, i, &vc);
-		ffconfw_addint(conf, ffui_viewcol_width(&vc));
-		ffui_viewcol_reset(&vc);
+		int n = ffui_view_col_width(&w->vlist, i);
+		ffconfw_addint(conf, n);
 	}
 }
 
@@ -1053,10 +1050,7 @@ void cols_width_read()
 	int i = 0;
 	int *it;
 	FFSLICE_WALK(&w->col_width, it) {
-		ffui_viewcol vc = {};
-		ffui_viewcol_setwidth(&vc, *it);
-		ffui_view_setcol(&w->vlist, i, &vc);
-		ffui_viewcol_reset(&vc);
+		ffui_view_setcol_width(&w->vlist, i, *it);
 		i++;
 	}
 }

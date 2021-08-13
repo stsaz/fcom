@@ -28,11 +28,13 @@ FEATURES
 	* `fcom utf8` - convert text files to UTF-8
 * Archives (pack)
 	* `fcom gz` - pack files to .gz
+	* `fcom zst` - pack files to .zst
 	* `fcom tar` - pack files to .tar
 	* `fcom zip` - pack files to .zip
 	* `fcom iso` - create .iso image
 * Archives (unpack)
 	* `fcom ungz` - unpack .gz files
+	* `fcom unzst` - unpack .zst files
 	* `fcom unxz` - unpack .xz files
 	* `fcom untar` - unpack .tar files
 	* `fcom unzip` - unpack .zip files
@@ -46,9 +48,10 @@ FEATURES
 	* `fcom dns` - resolve host address
 * Windows-only
 	* `fcom wregfind` - search within Windows system registry
-	* `fcom gsync` - show GUI to synchronize files
 	* `fcom disk` - list available disk volumes
 	* `fcom mount` - mount disk to a directory
+* Other
+	* `fcom gsync` - show GUI for synchronizing file trees
 
 ### Files
 
@@ -216,14 +219,6 @@ Search "sometext" in HKEY_CURRENT_USER:
 
 	fcom wregfind sometext --member=HKCU
 
-#### fcom gsync - show GUI to synchronize files (Windows)
-
-How to use:
-1. Select directory for "Source path" and "Target path"
-2. Command -> Compare
-3. Select checkboxes near the files you wish to synchronize
-4. Command -> Synchronize
-
 #### fcom disk - list available disk volumes
 
 	fcom disk
@@ -237,6 +232,18 @@ Create a mount point:
 Delete a mount point:
 
 	fcom mount "" -o c:\mount\
+
+
+### Other
+
+#### fcom gsync - show GUI for synchronizing file trees
+
+How to use:
+1. Select directory for "Source path" and "Target path"
+2. Command -> Compare
+3. Select checkboxes near the files you wish to synchronize (Windows)
+3. Select the files you wish to synchronize (Linux)
+4. Command -> Synchronize
 
 
 ---------------

@@ -198,7 +198,7 @@ copy-bins:
 
 install-only:
 	mkdir -vp $(INSTDIR)
-	$(CP) $(BIN) \
+	$(CP) \
 		$(PROJDIR)/fcom.conf \
 		$(PROJDIR)/help.txt $(PROJDIR)/CHANGES.txt \
 		$(INSTDIR)/
@@ -211,19 +211,21 @@ else
 	$(CP) $(PROJDIR)/src/gui-fsync-gtk/*.gui $(INSTDIR)
 endif
 
-	chmod 644 $(INSTDIR)/*.txt $(INSTDIR)/*.conf
-	chmod 755 $(INSTDIR)/$(BIN)
-
+	$(CP) $(BIN) $(INSTDIR)/
 	mkdir -vp $(INSTDIR)/mod
-	chmod 755 $(INSTDIR)/mod
 	$(CP) \
 		*.$(SO) \
 		$(FFPACK)/zlib/libz-ff.$(SO) $(FFPACK)/lzma/liblzma-ff.$(SO) \
 		$(FFPACK)/zstd/libzstd-ffpack.$(SO) \
 		$(FF3PTLIB)/libjpeg-turbo-ff.$(SO) $(FF3PTLIB)/libpng-ff.$(SO) \
 		$(INSTDIR)/mod
-	chmod 644 $(INSTDIR)/mod/*
 
+ifneq ($(OS),win)
+	chmod 644 $(INSTDIR)/*.txt $(INSTDIR)/*.conf
+	chmod 755 $(INSTDIR)/$(BIN)
+	chmod 755 $(INSTDIR)/mod
+	chmod 644 $(INSTDIR)/mod/*
+endif
 
 installd: all
 	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) install-only

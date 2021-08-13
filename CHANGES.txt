@@ -8,6 +8,23 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.16 - Aug 11, 2021
+
+ + Linux: fcom gsync
+ + zstandard compression: .zst, .tar.zst, .zip(zstd) read/write
+ + --zstd-level, --zstd-workers
+ + --delete-source
+ + gsync: new display options;  new popupmenu commands;  delete = move to Trash
+ * core: fdopendir() instead of opendir() if possible;  FCOM_CMD_ARG_USECURFILE
+ * use libjpeg-turbo-ff
+ * .tar, .zip write: decrease N of calls to stat() while processing input file tree
+ * .tar/.zip write: don't add "" file names
+ * .iso read: full --member support
+ - .iso write fix
+ - .xz read fix
+ - .gz read: fix hanging after warning
+
+
 fcom v0.15 - Dec 28, 2020
 
  + fcom hexprint - print data in hexadecimal/text format

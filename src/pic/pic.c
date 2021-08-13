@@ -266,7 +266,7 @@ static void picconv_task_done(fcom_cmd *cmd, uint sig)
 {
 	struct piconv *c = (void*)com->ctrl(cmd, FCOM_CMD_UDATA);
 
-	if (cmd->del_source) {
+	if (cmd->del_source && !cmd->err) {
 		char *newfn = ffsz_allocfmt("%s.deleted", cmd->input.fn);
 		if (0 != fffile_rename(cmd->input.fn, newfn))
 			fcom_syserrlog(FILT_NAME, "file rename: %s -> %s", cmd->input.fn, newfn);

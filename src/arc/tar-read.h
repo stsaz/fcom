@@ -100,8 +100,9 @@ again:
 				continue;
 			}
 
-			if (fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
+			if (cmd->show || fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
 				untar_showinfo(t, f);
+
 			if (cmd->show) {
 				t->skipfile = 1;
 				continue;
@@ -202,7 +203,7 @@ static void untar_showinfo(untar *t, const fftarread_fileinfo_t *f)
 
 	p = ffs_copystr(p, end, &f->name);
 
-	fcom_verblog(FILT_NAME, "%*s", p - (char*)t->fn.ptr, t->fn.ptr);
+	fcom_userlog("%*s", p - (char*)t->fn.ptr, t->fn.ptr);
 }
 
 #undef FILT_NAME

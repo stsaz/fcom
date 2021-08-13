@@ -184,7 +184,7 @@ static void uniso_showinfo(struct uniso *o, const ffisoread_fileinfo_t *f, uint 
 	p = ffs_copystr(p, end, &f->name);
 
 	if (show)
-		fcom_infolog(FILT_NAME, "%*s", p - o->fn.ptr, o->fn.ptr);
+		fcom_userlog("%*s", p - o->fn.ptr, o->fn.ptr);
 	else
 		fcom_verblog(FILT_NAME, "%*s", p - o->fn.ptr, o->fn.ptr);
 }

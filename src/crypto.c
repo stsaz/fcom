@@ -261,6 +261,7 @@ struct crypto {
 	fcom_cmd *cmd;
 	ffvec fn;
 	uint close;
+	int err;
 };
 
 static void* crypt_open(fcom_cmd *cmd)
@@ -292,6 +293,7 @@ static void task_onfinish(fcom_cmd *cmd, uint sig, void *param)
 		return;
 	}
 
+	c->err |= cmd->err;
 	com->ctrl(c->cmd, FCOM_CMD_RUNASYNC);
 }
 
@@ -372,6 +374,10 @@ static int crypt_process(void *p, fcom_cmd *cmd)
 	struct crypto *c = p;
 	int r;
 	const char *fn;
+
+	if (c->err)
+		return FCOM_ERR;
+
 	for (;;) {
 		if (NULL == (fn = com->arg_next(cmd, FCOM_CMD_ARG_FILE))) {
 			if (0 != ffatomic_load(&c->nsubtasks))
