@@ -145,10 +145,9 @@ again:
 		return FCOM_DATA;
 
 	case FFISOWRITE_MORE:
-		if (cmd->flags & FCOM_CMD_FIRST) {
-			// 'file-in' filter has already returned the last block of data
+		if (cmd->in_last) {
 			iso->state = W_EOF;
-			goto again;
+			return FCOM_MORE;
 		}
 		if (cmd->flags & FCOM_CMD_FWD) {
 			if (cmd->in_last) {
