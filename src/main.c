@@ -47,6 +47,8 @@ struct cmdconf {
 	byte colors;
 
 	byte deflate_level;
+	char zstd_level;
+	byte zstd_workers;
 	byte comp_method;
 
 	byte debug;
@@ -276,6 +278,8 @@ static void cmd_add(void *param)
 	cmd.out_overwrite = c->conf.force;
 	cmd.skip_err = c->conf.skip_errors;
 	cmd.deflate_level = c->conf.deflate_level;
+	cmd.zstd_level = c->conf.zstd_level;
+	cmd.zstd_workers = c->conf.zstd_workers;
 	cmd.comp_method = c->conf.comp_method;
 	cmd.jpeg_quality = c->conf.jpeg_quality;
 	cmd.png_comp = c->conf.png_comp;

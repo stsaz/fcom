@@ -90,6 +90,7 @@ crypto.$(SO): $(OBJ_DIR)/crypto.o \
 
 
 ARC_O := $(OBJ_DIR)/arc.o \
+	$(OBJ_DIR)/zstd.o \
 	$(OBJ_DIR)/gz.o \
 	$(OBJ_DIR)/xz.o \
 	$(OBJ_DIR)/zip.o \
@@ -102,7 +103,7 @@ ARC_O := $(OBJ_DIR)/arc.o \
 	$(FF_OBJ_DIR)/ffparse.o \
 	$(FF_O)
 arc.$(SO): $(ARC_O)
-	$(LD) -shared $(ARC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) -lz-ff -llzma-ff -o$@
+	$(LD) -shared $(ARC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) -lz-ff -llzma-ff -lzstd-ffpack -o$@
 
 
 PIC_O := $(OBJ_DIR)/pic.o \
@@ -218,6 +219,7 @@ endif
 	$(CP) \
 		*.$(SO) \
 		$(FFPACK)/zlib/libz-ff.$(SO) $(FFPACK)/lzma/liblzma-ff.$(SO) \
+		$(FFPACK)/zstd/libzstd-ffpack.$(SO) \
 		$(FF3PTLIB)/libjpeg-turbo-ff.$(SO) $(FF3PTLIB)/libpng-ff.$(SO) \
 		$(INSTDIR)/mod
 	chmod 644 $(INSTDIR)/mod/*

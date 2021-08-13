@@ -19,10 +19,16 @@ static const fcom_mod arc_mod = {
 	.name = "Archiver", .desc = "Pack/unpack archives .gz, .xz, .tar, .zip, .7z, .iso, .ico",
 };
 
+extern const fcom_filter zstd1_filt;
+extern const fcom_filter unzstd1_filt;
+extern const fcom_filter unzstd_filt;
+extern const fcom_filter zstd_filt;
+
 extern const fcom_filter gzip_filt;
 extern const fcom_filter gzip1_filt;
 extern const fcom_filter ungz_filt;
 extern const fcom_filter ungz1_filt;
+
 extern const fcom_filter unxz_filt;
 extern const fcom_filter unxz1_filt;
 extern const fcom_filter tar_filt;
@@ -56,10 +62,16 @@ struct cmd {
 };
 
 static const struct cmd cmds[] = {
+	{ "zstd1", NULL, &zstd1_filt },
+	{ "unzstd1", NULL, &unzstd1_filt },
+	{ "zst", "arc.zst", &zstd_filt },
+	{ "unzst", "arc.unzst", &unzstd_filt },
+
 	{ "gz", "arc.gz", &gzip_filt },
 	{ "gz1", NULL, &gzip1_filt },
 	{ "ungz", "arc.ungz", &ungz_filt },
 	{ "ungz1", NULL, &ungz1_filt },
+
 	{ "unxz", "arc.unxz", &unxz_filt },
 	{ "unxz1", NULL, &unxz1_filt },
 	{ "tar", "arc.tar", &tar_filt },
@@ -266,6 +278,8 @@ static const char arc_exts[][4] = {
 	"txz",
 	"xz",
 	"zip",
+	"zipx",
+	"zst",
 };
 static const char *const arc_filts[] = {
 	"arc.un7z",
@@ -277,6 +291,8 @@ static const char *const arc_filts[] = {
 	"arc.untar",
 	"arc.unxz",
 	"arc.unzip",
+	"arc.unzip",
+	"arc.untar",
 };
 
 /*
@@ -325,7 +341,7 @@ again:
 		return FCOM_DONE;
 	}
 
-	if ((ffstr_ieqcz(&ext, "gz") || ffstr_ieqcz(&ext, "xz"))
+	if ((ffstr_ieqcz(&ext, "gz") || ffstr_ieqcz(&ext, "xz") || ffstr_ieqcz(&ext, "zst"))
 		&& ffstr_irmatchcz(&nm, ".tar"))
 		ffstr_setz(&ext, "tar");
 

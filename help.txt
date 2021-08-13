@@ -20,15 +20,17 @@ OPERATION
 
 Pack files (.gz, .tar, .zip, .iso):
  gz FILE... [--out=FILE] [--deflate-level=INT]
- tar FILE... --out=FILE(.tar | .tar.gz | .tgz) [--deflate-level=INT]
- zip FILE... --out=FILE [--deflate-level=INT]
+ zst FILE... [--out=FILE] [--zstd-level=INT] [--zstd-workers=INT]
+ tar FILE... --out=FILE(.tar | .tar.gz | .tgz | .tar.zst) [--deflate-level=INT] [--zstd-level=INT] [--zstd-workers=INT]
+ zip FILE... --out=FILE [--deflate-level=INT] [--zstd-level=INT] [--zstd-workers=INT]
  iso DIR --out=FILE
 
-Unpack archives (.gz, .xz, .tar, .zip, .7z, .iso, .ico):
+Unpack archives (.gz, .xz, .zst, .tar, .zip, .zipx, .7z, .iso, .ico):
  unpack FILE... [--out=FILE] [--member=FILE]... [--show]
  ungz FILE... [--out=FILE]
+ unzst FILE... [--out=FILE]
  unxz FILE... [--out=FILE]
- untar FILE(.tar | .tar.gz | .tgz)... [--out=FILE] [--member=FILE]... [--show]
+ untar FILE(.tar | .tar.gz | .tgz | .tar.zst)... [--out=FILE] [--member=FILE]... [--show]
  unzip FILE... [--out=FILE] [--member=WILDCARD]... [--show]
  un7z FILE... [--out=FILE] [--member=FILE]... [--show]
  uniso FILE... [--out=FILE] [--member=FILE]... [--show]
@@ -59,8 +61,10 @@ ARCHIVE READING
 
 ARCHIVE WRITING
  --compression-method=STR
-                        Use specific compression method: store, deflate
+                        Use specific compression method: store, deflate, zstd
  --deflate-level=INT    Set compression level for Deflate algorithm (1..9)
+ --zstd-level=INT       Set compression level for ZStandard algorithm (-7..22)
+ --zstd-workers=INT     Set max. number of worker threads for zstd compression
 
 TEXT PROCESSING
  --replace='SEARCH/REPLACE'

@@ -60,6 +60,7 @@ static int untar1_process(void *p, fcom_cmd *cmd)
 
 	if (cmd->flags & FCOM_CMD_FWD) {
 		t->in = cmd->in;
+		cmd->in.len = 0;
 	}
 
 again:
@@ -79,7 +80,7 @@ again:
 		break;
 
 	case R_EOF:
-		if (cmd->in.len != 0) {
+		if (t->in.len != 0) {
 			fcom_warnlog(FILT_NAME, "unprocessed data at offset 0x%xU", cmd->input.offset);
 			return FCOM_ERR;
 		}

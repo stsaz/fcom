@@ -28,6 +28,7 @@ typedef struct tar {
 	fftarwrite tar;
 	ffstr in;
 	const char *fn;
+	uint64 out_total;
 } tar;
 
 static void* tar_open(fcom_cmd *cmd)
@@ -44,8 +45,13 @@ static void* tar_open(fcom_cmd *cmd)
 	}
 	ffstr ext;
 	ffpath_split3(cmd->output.fn, ffsz_len(cmd->output.fn), NULL, NULL, &ext);
+	const char *comp_mod = NULL;
 	if (ffstr_ieqcz(&ext, "tgz") || ffstr_ieqcz(&ext, "gz"))
-		if (0 == com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, "arc.gz1"))
+		comp_mod = "arc.gz1";
+	else if (ffstr_ieqcz(&ext, "zst"))
+		comp_mod = "arc.zstd1";
+	if (comp_mod != NULL)
+		if (0 == com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, comp_mod))
 			goto end;
 
 	com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(cmd));
@@ -67,14 +73,18 @@ static int tar_process(void *p, fcom_cmd *cmd)
 {
 	tar *t = p;
 	int r;
-	enum E { W_NEXT, W_NEWFILE, W_DATA, W_EOF, W_FIN, };
+	enum E { W_NEXT, W_NEXT2, W_NEWFILE, W_DATA, W_EOF, W_FIN, };
 
+again:
 	switch ((enum E)t->state) {
 
 	case W_EOF:
-		FF_ASSERT(cmd->in.len == 0);
-		t->state = W_NEXT;
-		//fall through
+		t->state = W_NEXT2;
+		if (NULL == (cmd->input.fn = com->arg_next(cmd, FCOM_CMD_ARG_USECURFILE))) {
+			fftarwrite_finish(&t->tar);
+			t->state = W_FIN;
+		}
+		return FCOM_MORE; // close previous file.in filter
 
 	case W_NEXT:
 		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0))) {
@@ -82,6 +92,9 @@ static int tar_process(void *p, fcom_cmd *cmd)
 			t->state = W_FIN;
 			break;
 		}
+		// fallthrough
+
+	case W_NEXT2:
 		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
 
 		t->state = W_NEWFILE;
@@ -119,9 +132,6 @@ static int tar_process(void *p, fcom_cmd *cmd)
 		break;
 
 	case W_FIN:
-		if (cmd->flags & FCOM_CMD_FWD) {
-			return FCOM_ERR;
-		}
 		break;
 	}
 
@@ -131,12 +141,15 @@ static int tar_process(void *p, fcom_cmd *cmd)
 		switch (r) {
 
 		case FFTARWRITE_DATA:
+			t->out_total += cmd->out.len;
+			fcom_dbglog(0, "tar", "total:%U"
+				, t->out_total);
 			return FCOM_DATA;
 
 		case FFTARWRITE_FILEDONE:
 			fcom_verblog(FILT_NAME, "added %s: %U", t->fn, t->tar.fsize);
 			t->state = W_EOF;
-			return FCOM_MORE;
+			goto again;
 
 		case FFTARWRITE_MORE:
 			return FCOM_MORE;
@@ -179,6 +192,8 @@ static int untar_process(void *p, fcom_cmd *cmd)
 	const char *comp = NULL;
 	if (ffstr_ieqcz(&ext, "tgz") || ffstr_ieqcz(&ext, "gz"))
 		comp = "arc.ungz1";
+	else if (ffstr_ieqcz(&ext, "zst"))
+		comp = "arc.unzstd1";
 	else if (ffstr_ieqcz(&ext, "txz") || ffstr_ieqcz(&ext, "xz"))
 		comp = "arc.unxz1";
 	if (comp != NULL) {

@@ -211,8 +211,8 @@ static int arg_crop(ffparser_schem *p, void *obj, const ffstr *val)
 static int arg_comp_method(ffparser_schem *p, void *obj, const ffstr *val)
 {
 	struct cmdconf *c = obj;
-	static const ffstr methods[] = {
-		FFSTR_INIT("store"), FFSTR_INIT("deflate"), FFSTR_INIT("lzma"),
+	static const ffstr methods[] = { // sync with enum FCOM_COMP_METH
+		FFSTR_INITZ("store"), FFSTR_INITZ("deflate"), FFSTR_INITZ("lzma"), FFSTR_INITZ("zstd"),
 	};
 	ffslice s;
 	ffslice_set(&s, methods, FF_COUNT(methods));
@@ -240,6 +240,8 @@ static const ffpars_arg cmdline_args[] = {
 
 	// ARCHIVE WRITING
 	{ "deflate-level",	FFPARS_TINT8, OFF(deflate_level) },
+	{ "zstd-level",	FFPARS_TINT8 | FFPARS_FSIGN, OFF(zstd_level) },
+	{ "zstd-workers",	FFPARS_TINT8, OFF(zstd_workers) },
 	{ "compression-method",	FFPARS_TSTR | FFPARS_FNOTEMPTY, FFPARS_DST(&arg_comp_method) },
 
 	// TEXT PROCESSING

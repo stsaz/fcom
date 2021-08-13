@@ -38,10 +38,11 @@ FF3PT_CFLAGS := $(CFLAGS) $(CFLAGS_OPT)
 FF3PTLIB := $(FF3PT)-bin/$(OS)-$(ARCH)
 
 CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-stringop-overflow \
+	-Wno-maybe-uninitialized \
 	-I$(SRCDIR) -I$(FFBASE) -I$(FFPACK) -I$(FF) -I$(FFOS) -I$(FF3PT)
 
 LDFLAGS += -Wno-stringop-overflow \
-	-L$(FFPACK)/zlib -L$(FFPACK)/lzma -L$(FF3PTLIB)
+	-L$(FFPACK)/zlib -L$(FFPACK)/lzma -L$(FFPACK)/zstd -L$(FF3PTLIB)
 
 include $(PROJDIR)/makerules
 

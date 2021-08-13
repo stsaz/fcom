@@ -200,8 +200,13 @@ enum FCOM_CMD_F {
 
 enum FCOM_CMD_SORT {
 	FCOM_CMD_SORT_ALPHA,
-	FCOM_CMD_SORT_DIRS_FILES,
-	FCOM_CMD_SORT_FILES_DIRS,
+};
+
+enum FCOM_COMP_METH {
+	FCOM_COMP_STORE,
+	FCOM_COMP_DEFLATE,
+	FCOM_COMP_LZMA,
+	FCOM_COMP_ZSTD,
 };
 
 /** Configuration of a command, shared data between filters. */
@@ -246,10 +251,12 @@ typedef struct fcom_cmd {
 	fftime mtime;
 	byte fsort; //enum FCOM_CMD_SORT
 	byte deflate_level; //default:-1
-	byte comp_method; // 0:store, 1:deflate
+	byte comp_method; // enum FCOM_COMP_METH; default:-1
 	byte jpeg_quality; //default:-1
 	byte png_comp; //default:-1
 	byte pic_colors; //default:-1
+	char zstd_level;
+	byte zstd_workers;
 	uint err :1
 		, skip_err :1
 		, in_seek :1

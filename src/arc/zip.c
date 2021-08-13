@@ -67,14 +67,18 @@ static int zip_process(void *p, fcom_cmd *cmd)
 {
 	zip *z = p;
 	int r;
-	enum E { W_NEXT, W_NEWFILE, W_DATA, W_EOF, W_FIN, };
+	enum E { W_NEXT, W_NEXT2, W_NEWFILE, W_DATA, W_EOF, W_FIN, };
 
+again:
 	switch ((enum E)z->state) {
 
 	case W_EOF:
-		FF_ASSERT(cmd->in.len == 0);
-		z->state = W_NEXT;
-		//fall through
+		z->state = W_NEXT2;
+		if (NULL == (cmd->input.fn = com->arg_next(cmd, FCOM_CMD_ARG_USECURFILE))) {
+			ffzipwrite_finish(&z->zip);
+			z->state = W_FIN;
+		}
+		return FCOM_MORE; // close previous file.in filter
 
 	case W_NEXT:
 		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0))) {
@@ -82,6 +86,9 @@ static int zip_process(void *p, fcom_cmd *cmd)
 			z->state = W_FIN;
 			break;
 		}
+		// fallthrough
+
+	case W_NEXT2:
 		if (0 == com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd)))
 			return FCOM_ERR;
 
@@ -99,20 +106,26 @@ static int zip_process(void *p, fcom_cmd *cmd)
 		// conf.uid = ;
 		// conf.gid = ;
 #endif
-		conf.deflate_level = (cmd->deflate_level != 255) ? cmd->deflate_level : 6;
+		conf.deflate_level = (cmd->deflate_level != 255) ? cmd->deflate_level : 0;
+		conf.zstd_level = cmd->zstd_level;
+		conf.zstd_workers = cmd->zstd_workers;
+
 		switch (cmd->comp_method) {
+		case FCOM_COMP_STORE:
+			conf.compress_method = ZIP_STORED; break;
 		case 255:
-		case 0:
-		case 1:
-			break;
+		case FCOM_COMP_DEFLATE:
+			conf.compress_method = ZIP_DEFLATED;  break;
+		case FCOM_COMP_ZSTD:
+			conf.compress_method = ZIP_ZSTANDARD;  break;
 		default:
 			errlog("unsupported compression method");
 			return FCOM_ERR;
 		}
-		conf.compress_method = ZIP_DEFLATED;
-		if (cmd->comp_method == 0
-			|| cmd->input.size < MAX_STORED_SIZE)
+
+		if (cmd->input.size < MAX_STORED_SIZE)
 			conf.compress_method = ZIP_STORED;
+
 		if (0 != ffzipwrite_fileadd(&z->zip, &conf)) {
 			errlog("%s", ffzipwrite_error(&z->zip));
 			return FCOM_ERR;
@@ -130,9 +143,6 @@ static int zip_process(void *p, fcom_cmd *cmd)
 		break;
 
 	case W_FIN:
-		if (cmd->flags & FCOM_CMD_FWD) {
-			return FCOM_ERR;
-		}
 		break;
 	}
 
@@ -149,7 +159,7 @@ static int zip_process(void *p, fcom_cmd *cmd)
 			, cmd->input.fn, z->zip.file_rd, z->zip.file_wr
 			, (uint)FFINT_DIVSAFE(z->zip.file_wr * 100, z->zip.file_rd));
 		z->state = W_EOF;
-		return FCOM_MORE;
+		goto again;
 
 	case FFZIPWRITE_SEEK:
 		fcom_cmd_outseek(cmd, ffzipwrite_offset(&z->zip));

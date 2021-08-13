@@ -11,7 +11,7 @@
 struct file {
 	ffuint64 off;
 	ffuint attr_unix, attr_win;
-	ffuint64 uncompressed_size;
+	ffuint64 compressed_size, uncompressed_size;
 };
 
 struct unzip1 {
@@ -22,6 +22,7 @@ struct unzip1 {
 	ffarr fn;
 	ffstr in;
 	int skipfile;
+	uint64 total_comp, total_uncomp;
 };
 
 #define FILT_NAME  "unzip"
@@ -51,16 +52,21 @@ static void unzip1_close(void *p, fcom_cmd *cmd)
 	ffmem_free(z);
 }
 
-/* "size date name" */
+/* "size csize(%) date name" */
 static void unzip_showinfo(struct unzip1 *z, const ffzipread_fileinfo_t *f)
 {
 	char *p = z->fn.ptr, *end = ffarr_edge(&z->fn);
 	int isdir = (f->attr_unix & FFFILE_UNIX_DIR) || (f->attr_win & FFFILE_WIN_DIR);
 
-	if (isdir)
-		p = ffs_copy(p, end, "       <DIR>", 12);
-	else
-		p += ffs_fromint(f->uncompressed_size, p, end - p, FFINT_WIDTH(12));
+	if (isdir) {
+		p = ffs_copy(p, end, "       <DIR>                  ", 12+12+6);
+	} else {
+		ffuint percent = (f->uncompressed_size != 0)
+			? f->compressed_size * 100 / f->uncompressed_size
+			: 0;
+		p += ffs_format(p, end - p, "%12u%12u(%3u%%)"
+			, f->uncompressed_size, f->compressed_size, percent);
+	}
 	p = ffs_copyc(p, end, ' ');
 
 	ffdatetime dt;
@@ -93,10 +99,17 @@ again:
 	case I_NEXTFILE:
 		FF_CMPSET(&cmd->output.fn, z->fn.ptr, NULL);
 		if (z->ifile == z->files.len) {
+			if (cmd->show) {
+				ffuint percent = (z->total_uncomp != 0)
+					? z->total_comp * 100 / z->total_uncomp
+					: 0;
+				fcom_userlog("%12u%12u(%3u%%)"
+					, z->total_uncomp, z->total_comp, percent);
+			}
 			return FCOM_OUTPUTDONE;
 		}
 		struct file *of = ffslice_itemT(&z->files, z->ifile, struct file);
-		ffzipread_fileread(&z->zip, of->off, of->uncompressed_size);
+		ffzipread_fileread(&z->zip, of->off, of->compressed_size);
 		z->state = I_DATA;
 		break;
 
@@ -125,13 +138,17 @@ again:
 			if (fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
 				unzip_showinfo(z, f);
 
-			if (cmd->show)
+			if (cmd->show) {
+				z->total_comp += f->compressed_size;
+				z->total_uncomp += f->uncompressed_size;
 				break;
+			}
 
 			struct file *of = ffvec_pushT(&z->files, struct file);
 			of->attr_unix = f->attr_unix;
 			of->attr_win = f->attr_win;
 			of->uncompressed_size = f->uncompressed_size;
+			of->compressed_size = f->compressed_size;
 			of->off = f->hdr_offset;
 			break;
 		}
