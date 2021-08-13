@@ -3,6 +3,7 @@
 */
 
 #include <ffpack/isoread.h>
+#include <arc/arc.h>
 
 #define dbglog0(...)  fcom_dbglog(0, FILT_NAME, __VA_ARGS__)
 
@@ -91,11 +92,6 @@ again:
 			return FCOM_MORE;
 		}
 
-		if (cmd->members.len != 0) {
-			if (0 > ffs_findarrz((void*)cmd->members.ptr, cmd->members.len, f->name.ptr, f->name.len))
-				goto again;
-		}
-
 		if (cmd->output.fn == NULL) {
 			if (FCOM_DATA != (r = fn_out(cmd, &f->name, &o->fn)))
 				return r;
@@ -126,20 +122,8 @@ again:
 		case FFISOREAD_FILEMETA:
 			f = ffisoread_fileinfo(&o->iso);
 
-			if (cmd->members.len != 0) {
-				ffbool skip = 0;
-				if (0 > ffs_findarrz((void*)cmd->members.ptr, cmd->members.len, f->name.ptr, f->name.len))
-					skip = 1;
-				else {
-					if (cmd->show || fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
-						uniso_showinfo(o, f, cmd->show);
-				}
-				if (!skip || ffiso_file_isdir(f)) {
-					if (0 != ffisoread_storefile(&o->iso))
-						return FCOM_ERR;
-				}
+			if (!arc_need_member(&cmd->members, 0, &f->name))
 				continue;
-			}
 
 			if (cmd->show || fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
 				uniso_showinfo(o, f, cmd->show);
