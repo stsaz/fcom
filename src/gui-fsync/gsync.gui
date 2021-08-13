@@ -43,24 +43,40 @@ menu mcmd {
 }
 
 menu mfile {
-	item "Execute File" {
+	item "Execute (Source)" {
 		action A_EXEC
 	}
-	item "Show File in Explorer (Source)" {
+	item "Show in Explorer (Source)" {
 		action A_OPENDIR
 	}
-	item "Copy File To Clipboard (Source)" {
+	item "Copy To Clipboard (Source)" {
 		hotkey "Ctrl+Shift+C"
 		action A_CLIPCOPY
 	}
 	item "Copy Filename To Clipboard (Source)" {
 		action A_CLIPFN
 	}
-	item "Show File in Explorer (Target)" {
+	item "Delete (Source)" {
+		action A_DEL
+	}
+	item "-" {
+	}
+	item "Execute (Target)" {
+		action A_EXEC_RIGHT
+	}
+	item "Show in Explorer (Target)" {
 		action A_OPENDIR_RIGHT
+	}
+	item "Copy To Clipboard (Target)" {
+		action A_CLIPCOPY_RIGHT
 	}
 	item "Copy Filename To Clipboard (Target)" {
 		action A_CLIPFN_RIGHT
+	}
+	item "Delete (Target)" {
+		action A_DEL_RIGHT
+	}
+	item "-" {
 	}
 	item "Select All" {
 		hotkey "Ctrl+A"
@@ -126,6 +142,34 @@ window wsync {
 		style horizontal
 		text "Show Deleted"
 		action A_SHOWDEL
+	}
+	checkbox cbshowdirs {
+		size 100 25
+		style horizontal
+		text "Show Dirs"
+		action A_SHOW_DIRS
+	}
+	checkbox cbshowolder {
+		size 100 25
+		style horizontal
+		text "Show Older"
+		action A_SHOW_OLDER
+	}
+	checkbox cbshownewer {
+		size 100 25
+		style horizontal
+		text "Show Newer"
+		action A_SHOW_NEWER
+	}
+
+	editbox eexclude {
+		size 100 25
+		tooltip "Exclude words"
+	}
+	editbox einclude {
+		size 100 25
+		style horizontal
+		tooltip "Include only words"
 	}
 
 	listview vopts {

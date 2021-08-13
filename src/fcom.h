@@ -168,7 +168,7 @@ do { \
 #define fcom_warnlog(mod, fmt, ...)  (core)->log(FCOM_LOGWARN, mod ": " fmt, __VA_ARGS__)
 #define fcom_errlog(mod, fmt, ...)  (core)->log(FCOM_LOGERR, mod ": " fmt, ##__VA_ARGS__)
 #define fcom_syswarnlog(mod, fmt, ...)  (core)->log(FCOM_LOGWARN | FCOM_LOGSYS, mod ": " fmt, __VA_ARGS__)
-#define fcom_syserrlog(mod, fmt, ...)  (core)->log(FCOM_LOGERR | FCOM_LOGSYS, mod ": " fmt, __VA_ARGS__)
+#define fcom_syserrlog(mod, fmt, ...)  (core)->log(FCOM_LOGERR | FCOM_LOGSYS, mod ": " fmt, ##__VA_ARGS__)
 
 #define fcom_errlog_ctx(ctx, mod, fmt, ...)  (core)->logex(FCOM_LOGERR, ctx, mod ": " fmt, ##__VA_ARGS__)
 #define fcom_warnlog_ctx(ctx, mod, fmt, ...)  (core)->logex(FCOM_LOGWARN, ctx, mod ": " fmt, ##__VA_ARGS__)
@@ -428,7 +428,7 @@ enum FSYNC_CMP {
 	FSYNC_CMP_ATTR = 8,
 	FSYNC_CMP_MOVE = 0x10,
 	FSYNC_CMP_DEFAULT = FSYNC_CMP_SIZE | FSYNC_CMP_MTIME | FSYNC_CMP_MOVE,
-	FSYNC_CMP_MTIME_SEC = 0x20,
+	FSYNC_CMP_MTIME_SEC = 0x20, // ignore <1sec time difference
 };
 
 enum FSYNC_ST {

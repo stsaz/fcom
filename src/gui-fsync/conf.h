@@ -25,7 +25,6 @@ static const ffconf_arg opts_args_conf[] = {
 	// { "Show Modified by Date",	FFCONF_TINT | FFPARS_SETBIT(0), OFF(show_modmask) },
 	// { "Show Modified by Size",	FFCONF_TINT | FFPARS_SETBIT(1), OFF(show_modmask) },
 	// { "Show Modified by Attr",	FFCONF_TINT | FFPARS_SETBIT(2), OFF(show_modmask) },
-	{ "Show Directories",	FFCONF_TINT8, OFF(show_dirs) },
 	{ "Show Only Directories",	FFCONF_TINT8, OFF(show_dirs_only) },
 	{ "Show \"Done\"",	FFCONF_TINT8, OFF(show_done) },
 	{ "Column Width",	FFCONF_TINT16 | FFCONF_FLIST, (ffsize)(col_width) },
@@ -37,9 +36,9 @@ int opts_init(struct opts *c)
 {
 	c->srcfn = ffsz_alcopyz("");
 	c->dstfn = ffsz_alcopyz("");
-	c->showmask = (1<<FSYNC_ST_SRC) | (1<<FSYNC_ST_DEST) | (1<<FSYNC_ST_MOVED) | (1<<FSYNC_ST_NEQ);
+	c->showmask = (1<<FSYNC_ST_SRC) | (1<<FSYNC_ST_DEST) | (1<<FSYNC_ST_MOVED) | (1<<FSYNC_ST_NEQ)
+		| SHOWMASK_DIRS | SHOWMASK_OLDER | SHOWMASK_NEWER;
 	c->show_modmask = -1;
-	c->show_dirs = 1;
 	return 0;
 }
 
@@ -49,6 +48,8 @@ void opts_destroy(struct opts *o)
 	ffmem_safefree0(o->dstfn);
 	ffstr_free(&o->filter_name);
 	ffstr_free(&o->filter);
+	ffstr_free(&o->exclude);
+	ffstr_free(&o->include);
 	ffvec_free(&o->list_col_width);
 }
 

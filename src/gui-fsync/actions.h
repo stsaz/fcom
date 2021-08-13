@@ -1,0 +1,45 @@
+
+#ifndef ACTION_NAMES
+	#define A(id)  id
+#else
+	#define A(id)  #id
+#endif
+
+	A(A_NONE),
+	A(A_CMP),
+	A(A_SYNC),
+	A(A_SNAPSAVE),
+	A(A_SNAPLOAD),
+	A(A_SNAPLOAD_RIGHT),
+	A(A_SNAPSHOW),
+	A(A_SNAPSHOW_RIGHT),
+	A(A_SWAP),
+	A(A_FILTER),
+	A(A_ONCHECK),
+	A(A_CONF_EDIT),
+	A(A_EXIT),
+
+	A(A_EXEC),
+	A(A_EXEC_RIGHT),
+	A(A_OPENDIR),
+	A(A_OPENDIR_RIGHT),
+	A(A_CLIPCOPY),
+	A(A_CLIPCOPY_RIGHT),
+	A(A_CLIPFN),
+	A(A_CLIPFN_RIGHT),
+	A(A_DEL),
+	A(A_DEL_RIGHT),
+	A(A_SELALL),
+
+	A(A_SHOWEQ),
+	A(A_SHOWNEW),
+	A(A_SHOWMOD),
+	A(A_SHOWDEL),
+	A(A_SHOWMOVE),
+	A(A_SHOW_DIRS),
+	A(A_SHOW_OLDER),
+	A(A_SHOW_NEWER),
+
+	A(A_TREE_ENTER),
+
+#undef A

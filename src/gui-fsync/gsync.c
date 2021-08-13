@@ -29,7 +29,7 @@ const fcom_fops *fops;
 
 
 enum SHOW_F {
-	SHOW_TREE_ADD = 1, // add directories to tree
+	// SHOW_TREE_ADD = 1, // add directories to tree
 	SHOW_TREE_FILTER = 2, // filter by selected directory
 };
 
@@ -54,6 +54,11 @@ static const ffui_ldr_ctl wsync_ctls[] = {
 	FFUI_LDR_CTL(struct wsync, cbmod),
 	FFUI_LDR_CTL(struct wsync, cbdel),
 	FFUI_LDR_CTL(struct wsync, cbmov),
+	FFUI_LDR_CTL(struct wsync, cbshowdirs),
+	FFUI_LDR_CTL(struct wsync, cbshowolder),
+	FFUI_LDR_CTL(struct wsync, cbshownewer),
+	FFUI_LDR_CTL(struct wsync, eexclude),
+	FFUI_LDR_CTL(struct wsync, einclude),
 	FFUI_LDR_CTL(struct wsync, vopts),
 	FFUI_LDR_CTL(struct wsync, tdirs),
 	FFUI_LDR_CTL(struct wsync, vlist),
@@ -93,41 +98,17 @@ enum {
 };
 
 static const char* const cmds[] = {
-	"A_CMP",
-	"A_SYNC",
-	"A_SNAPSAVE",
-	"A_SNAPLOAD",
-	"A_SNAPLOAD_RIGHT",
-	"A_SNAPSHOW",
-	"A_SNAPSHOW_RIGHT",
-	"A_SWAP",
-	"A_FILTER",
-	"A_ONCHECK",
-	"A_EXEC",
-	"A_OPENDIR",
-	"A_OPENDIR_RIGHT",
-	"A_CLIPCOPY",
-	"A_CLIPFN",
-	"A_CLIPFN_RIGHT",
-	"A_CONF_EDIT",
-	"A_SELALL",
-	"A_EXIT",
-
-	"A_SHOWEQ",
-	"A_SHOWNEW",
-	"A_SHOWMOD",
-	"A_SHOWDEL",
-	"A_SHOWMOVE",
-
-	"A_TREE_ENTER",
+#define ACTION_NAMES
+#include "actions.h"
+#undef ACTION_NAMES
 };
 
 static int gsync_getcmd(void *udata, const ffstr *name)
 {
 	int r;
 	if (0 > (r = ffs_findarrz(cmds, FFCNT(cmds), name->ptr, name->len)))
-		return -1;
-	return r + 1;
+		return 0;
+	return r;
 }
 
 
@@ -149,11 +130,7 @@ int gsync_create(void)
 
 	char *path = NULL;
 	ffui_loader ldr;
-	ffui_ldr_init(&ldr);
-
-	ldr.getctl = &gsync_getctl;
-	ldr.getcmd = &gsync_getcmd;
-	ldr.udata = gg;
+	ffui_ldr_init2(&ldr, &gsync_getctl, &gsync_getcmd, gg);
 	if (NULL == (path = core->getpath(FFSTR("gsync.gui"))))
 		goto end;
 	if (0 != ffui_ldr_loadfile(&ldr, path)) {
@@ -194,11 +171,14 @@ void wsync_opts_show()
 	const struct opts *c = &gg->opts;
 	ffui_settextz(&w->e1, c->srcfn);
 	ffui_settextz(&w->e2, c->dstfn);
-	ffui_chbox_check(&w->cbeq, !!(c->showmask & (1<<FSYNC_ST_EQ)));
-	ffui_chbox_check(&w->cbnew, !!(c->showmask & (1<<FSYNC_ST_SRC)));
-	ffui_chbox_check(&w->cbdel, !!(c->showmask & (1<<FSYNC_ST_DEST)));
-	ffui_chbox_check(&w->cbmov, !!(c->showmask & (1<<FSYNC_ST_MOVED)));
-	ffui_chbox_check(&w->cbmod, !!(c->showmask & (1<<FSYNC_ST_NEQ)));
+	ffui_checkbox_check(&w->cbeq, !!(c->showmask & (1<<FSYNC_ST_EQ)));
+	ffui_checkbox_check(&w->cbnew, !!(c->showmask & (1<<FSYNC_ST_SRC)));
+	ffui_checkbox_check(&w->cbdel, !!(c->showmask & (1<<FSYNC_ST_DEST)));
+	ffui_checkbox_check(&w->cbmov, !!(c->showmask & (1<<FSYNC_ST_MOVED)));
+	ffui_checkbox_check(&w->cbmod, !!(c->showmask & (1<<FSYNC_ST_NEQ)));
+	ffui_checkbox_check(&w->cbshowdirs, !!(c->showmask & SHOWMASK_DIRS));
+	ffui_checkbox_check(&w->cbshowolder, !!(c->showmask & SHOWMASK_OLDER));
+	ffui_checkbox_check(&w->cbshownewer, !!(c->showmask & SHOWMASK_NEWER));
 }
 
 
@@ -246,6 +226,10 @@ static void wsync_action(ffui_wnd *wnd, int id)
 	struct wsync *w = &gg->wsync;
 	int i, m;
 	ffstr ss = {};
+	ffui_checkbox *pcb = NULL;
+
+	if ((uint)id < FF_COUNT(cmds))
+		fcom_dbglog(0, "gsync", "action: %s", cmds[id]);
 
 	switch (id) {
 	case A_CMP:
@@ -311,11 +295,15 @@ static void wsync_action(ffui_wnd *wnd, int id)
 		break;
 
 	case A_EXEC:
+	case A_EXEC_RIGHT:
 	case A_OPENDIR:
 	case A_OPENDIR_RIGHT:
 	case A_CLIPCOPY:
+	case A_CLIPCOPY_RIGHT:
 	case A_CLIPFN:
 	case A_CLIPFN_RIGHT:
+	case A_DEL:
+	case A_DEL_RIGHT:
 		gsync_fnop(id);
 		break;
 
@@ -336,25 +324,39 @@ static void wsync_action(ffui_wnd *wnd, int id)
 		break;
 
 	case A_SHOWEQ:
-		i = ffui_chbox_checked(&w->cbeq);
+		pcb = &w->cbeq;
 		m = 1<<FSYNC_ST_EQ;
 		goto show;
 	case A_SHOWNEW:
-		i = ffui_chbox_checked(&w->cbnew);
+		pcb = &w->cbnew;
 		m = 1<<FSYNC_ST_SRC;
 		goto show;
 	case A_SHOWMOD:
-		i = ffui_chbox_checked(&w->cbmod);
+		pcb = &w->cbmod;
 		m = 1<<FSYNC_ST_NEQ;
 		goto show;
 	case A_SHOWDEL:
-		i = ffui_chbox_checked(&w->cbdel);
+		pcb = &w->cbdel;
 		m = 1<<FSYNC_ST_DEST;
 		goto show;
 	case A_SHOWMOVE:
-		i = ffui_chbox_checked(&w->cbmov);
+		pcb = &w->cbmov;
 		m = 1<<FSYNC_ST_MOVED;
+		goto show;
+	case A_SHOW_DIRS:
+		pcb = &w->cbshowdirs;
+		m = SHOWMASK_DIRS;
+		goto show;
+	case A_SHOW_OLDER:
+		pcb = &w->cbshowolder;
+		m = SHOWMASK_OLDER;
+		goto show;
+	case A_SHOW_NEWER:
+		pcb = &w->cbshownewer;
+		m = SHOWMASK_NEWER;
+		goto show;
 	show:
+		i = ffui_chbox_checked(pcb);
 		ffint_bitmask(&gg->opts.showmask, m, i);
 		gsync_showresults(SHOW_TREE_FILTER);
 		break;
@@ -429,15 +431,17 @@ done:
 	return r;
 }
 
-struct nstat {
+struct cmpstat {
 	uint eq;
 	uint new;
 	uint mov;
 	uint mod;
 	uint del;
+	uint dir;
+	uint older, newer;
 };
 
-void nstat_add(struct nstat *n, struct fsync_cmp *cmp)
+void cmpstat_add(struct cmpstat *n, struct fsync_cmp *cmp)
 {
 	int st = cmp->status & _FSYNC_ST_MASK;
 	if (st == FSYNC_ST_EQ)
@@ -450,9 +454,18 @@ void nstat_add(struct nstat *n, struct fsync_cmp *cmp)
 		n->mov++;
 	else if (st == FSYNC_ST_NEQ)
 		n->mod++;
+
+	if ((cmp->left != NULL && isdir(fsfile(cmp->left)->attr))
+		|| (cmp->right != NULL && isdir(fsfile(cmp->right)->attr)))
+		n->dir++;
+
+	if (cmp->status & FSYNC_ST_OLDER)
+		n->older++;
+	else if (cmp->status & FSYNC_ST_NEWER)
+		n->newer++;
 }
 
-void nstat_fin(struct nstat *n)
+void cmpstat_fin(struct cmpstat *n)
 {
 	struct wsync *w = &gg->wsync;
 	char buf[64];
@@ -470,6 +483,15 @@ void nstat_fin(struct nstat *n)
 
 	ffs_format(buf, sizeof(buf), "Del (%u)%Z", n->del);
 	ffui_settextz(&w->cbdel, buf);
+
+	ffs_format(buf, sizeof(buf), "Dirs (%u)%Z", n->dir);
+	ffui_settextz(&w->cbshowdirs, buf);
+
+	ffs_format(buf, sizeof(buf), "Older (%u)%Z", n->older);
+	ffui_settextz(&w->cbshowolder, buf);
+
+	ffs_format(buf, sizeof(buf), "Newer (%u)%Z", n->newer);
+	ffui_settextz(&w->cbshownewer, buf);
 }
 
 /** Scan source and target trees, compare and show results. */
@@ -490,11 +512,10 @@ static void gsync_scancmp(void *udata)
 	gsync_status("Comparing...");
 	struct fsync_cmp cmp, *c;
 	uint f = FSYNC_CMP_DEFAULT;
-	ffint_bitmask(&f, FSYNC_CMP_MTIME, gg->opts.time_diff);
-	ffint_bitmask(&f, FSYNC_CMP_MTIME_SEC, gg->opts.time_diff_sec);
+	ffint_bitmask(&f, FSYNC_CMP_MTIME_SEC, 1);
 	cmpctx = fsync->cmp_init(gg->src, gg->dst, f);
 
-	struct nstat n = {};
+	struct cmpstat n = {};
 
 	for (;;) {
 		if (0 != fsync->cmp_trees(cmpctx, &cmp))
@@ -504,16 +525,16 @@ static void gsync_scancmp(void *udata)
 			&& (cmp.status & FSYNC_ST_MOVED_DST))
 			continue;
 
-		nstat_add(&n, &cmp);
+		cmpstat_add(&n, &cmp);
 
 		if (NULL == (c = ffarr_pushgrowT(&gg->cmptbl, 256 | FFARR_GROWQUARTER, struct fsync_cmp)))
 			goto end;
 		*c = cmp;
 	}
 
-	nstat_fin(&n);
+	cmpstat_fin(&n);
 
-	gsync_showresults(SHOW_TREE_ADD);
+	gsync_showresults(0);
 
 end:
 	if (cmpctx != NULL)
@@ -560,6 +581,14 @@ static const char* const cmp_sstatus_sz[] = {
 	"", "Smaller", "Larger"
 };
 
+static const char* const actionstr[] = {
+	"",
+	"Copy",
+	"Delete",
+	"Move",
+	"Overwrite",
+};
+
 /** Get file comparison status. */
 static const char* cmp_status_str(char *buf, size_t cap, const struct fsync_cmp *cmp)
 {
@@ -579,13 +608,54 @@ static const char* cmp_status_str(char *buf, size_t cap, const struct fsync_cmp 
 	return cmp_sstatus[st & _FSYNC_ST_MASK];
 }
 
-static const char* const actionstr[] = {
-	"",
-	"Copy",
-	"Delete",
-	"Move",
-	"Overwrite",
-};
+/** Apply exclude-include name filters */
+static ffbool excl_incl(const struct fsync_cmp *c)
+{
+	ffstr n1 = {}, n2 = {};
+	if (c->left != NULL) {
+		char *fullname = fsync->get(FSYNC_FULLNAME, c->left);
+		ffstr_setz(&n1, fullname);
+	}
+	if (c->right != NULL) {
+		char *fullname = fsync->get(FSYNC_FULLNAME, c->right);
+		ffstr_setz(&n2, fullname);
+	}
+
+	ffbool skip = 0;
+	ffstr strlist = gg->opts.exclude;
+	if (gg->opts.include.len != 0)
+		strlist = gg->opts.include;
+
+	while (strlist.len != 0) {
+		ffstr part;
+		ffstr_splitby(&strlist, ' ', &part, &strlist);
+		ffstr_trimwhite(&part);
+		if (part.len == 0)
+			continue;
+
+		if (ffstr_ifindstr(&n1, &part) >= 0
+			|| ffstr_ifindstr(&n2, &part) >= 0) {
+			// matched
+			if (gg->opts.include.len != 0) {
+				skip = 0;
+				goto fin;
+			}
+			skip = 1; // excluded
+			break;
+		} else {
+			// not matched
+			if (gg->opts.include.len != 0)
+				skip = 1; // not included
+		}
+	}
+
+fin:
+	ffmem_free(n1.ptr);
+	ffmem_free(n2.ptr);
+	if (skip)
+		return 0;
+	return 1;
+}
 
 /** Check whether we should show the entry:
 . Show [TYPE] settings
@@ -616,11 +686,13 @@ static ffbool cmpent_visible(const struct fsync_cmp *c)
 		if (((c->status & _FSYNC_ST_NMASK) & m) == 0)
 			return 0;
 
-		if (!gg->opts.show_dirs && st != FSYNC_ST_DEST && isdir(e1->attr))
+		if (!(gg->opts.showmask & SHOWMASK_OLDER) && (c->status & FSYNC_ST_OLDER))
+			return 0;
+		if (!(gg->opts.showmask & SHOWMASK_NEWER) && (c->status & FSYNC_ST_NEWER))
 			return 0;
 	}
 
-	if (!gg->opts.show_dirs
+	if (!(gg->opts.showmask & SHOWMASK_DIRS)
 		&& ((e1 != NULL && isdir(e1->attr))
 			|| (e2 != NULL && isdir(e2->attr))))
 		return 0;
@@ -646,6 +718,12 @@ static ffbool cmpent_visible(const struct fsync_cmp *c)
 			ffstr_setz(&n2, e2->name);
 		if (-1 == ffstr_ifindstr(&n1, &gg->opts.filter_name)
 			&& -1 == ffstr_ifindstr(&n2, &gg->opts.filter_name))
+			return 0;
+	}
+
+	if (gg->opts.exclude.len != 0
+		|| gg->opts.include.len != 0) {
+		if (0 == excl_incl(c))
 			return 0;
 	}
 
@@ -788,20 +866,31 @@ static void gsync_showresults(uint flags)
 	ffarr buf = {0};
 	char *fullname = NULL;
 	size_t n = 0;
-	void *troot;
+	// void *troot;
 
 	gg->cmptbl_filter.len = 0;
 	gg->nchecked = 0;
 	ffarr_alloc(&buf, 64);
 
-	if (flags & SHOW_TREE_ADD) {
+	ffstr ss = {};
+	ffui_textstr(&gg->wsync.eexclude, &ss);
+	ffstr_free(&gg->opts.exclude);
+	gg->opts.exclude = ss;
+	ffstr_null(&ss);
+
+	ffui_textstr(&gg->wsync.einclude, &ss);
+	ffstr_free(&gg->opts.include);
+	gg->opts.include = ss;
+	ffstr_null(&ss);
+
+	/*if (flags & SHOW_TREE_ADD) {
 		ffui_redraw(&gg->wsync.tdirs, 0);
 		ffui_tree_clear(&gg->wsync.tdirs);
 		ffui_tvitem it = {0};
 		ffui_tree_settextz(&it, gg->opts.srcfn);
 		ffui_tree_setexpand(&it, 1);
 		troot = ffui_tree_append(&gg->wsync.tdirs, NULL, &it);
-	}
+	}*/
 
 	if (flags & SHOW_TREE_FILTER) {
 		void *tsel;
@@ -820,17 +909,17 @@ static void gsync_showresults(uint flags)
 
 		c->status &= ~FSYNC_ST_CHECKED;
 
-		uint st = c->status & _FSYNC_ST_MASK;
+		// uint st = c->status & _FSYNC_ST_MASK;
 		e1 = fsfile(c->left);
 
-		if (st != FSYNC_ST_DEST && (flags & SHOW_TREE_ADD) && isdir(e1->attr)) {
+		/*if (st != FSYNC_ST_DEST && (flags & SHOW_TREE_ADD) && isdir(e1->attr)) {
 			ffmem_free(fullname);
 			fullname = fsync->get(FSYNC_FULLNAME, c->left);
 			ffui_tvitem it = {0};
 			ffui_tree_settextz(&it, fullname);
 			ffui_tree_setparam(&it, e1);
 			ffui_tree_append(&gg->wsync.tdirs, troot, &it);
-		}
+		}*/
 
 		if (!cmpent_visible(c))
 			continue;
@@ -843,8 +932,8 @@ static void gsync_showresults(uint flags)
 		n++;
 	}
 
-	if (flags & SHOW_TREE_ADD)
-		ffui_redraw(&gg->wsync.tdirs, 1);
+	// if (flags & SHOW_TREE_ADD)
+	// 	ffui_redraw(&gg->wsync.tdirs, 1);
 
 	ffui_view_setcount_redraw(&gg->wsync.vlist, n);
 
@@ -902,31 +991,24 @@ static void gsync_fnop(uint id)
 {
 	int i = -1;
 	struct fsync_cmp *c;
-	ffarr buf = {0}, b2 = {0};
+	ffarr buf = {};
+	ffvec vec = {};
 	char *fullname = NULL;
 	void *obj;
-	ffbool arr = 0;
 
 	for (;;) {
 		if (-1 == (i = ffui_view_selnext(&gg->wsync.vlist, i)))
 			break;
 		c = list_getobj(i);
 
+		obj = c->left;
 		switch (id) {
-		case A_EXEC:
-			obj = (c->left != NULL) ? c->left : c->right;
-			break;
-
-		case A_CLIPFN:
-		case A_OPENDIR:
-		case A_CLIPCOPY:
-			obj = c->left;
-			break;
-
+		case A_EXEC_RIGHT:
 		case A_OPENDIR_RIGHT:
 		case A_CLIPFN_RIGHT:
+		case A_CLIPCOPY_RIGHT:
+		case A_DEL_RIGHT:
 			obj = c->right;
-			break;
 		}
 		if (obj == NULL)
 			continue;
@@ -936,6 +1018,7 @@ static void gsync_fnop(uint id)
 		switch (id) {
 
 		case A_EXEC:
+		case A_EXEC_RIGHT:
 			if (0 != ffui_shellexec(fullname, SW_SHOWNORMAL)) {
 				fcom_syserrlog("gsync", "ffui_shellexec: %s", fullname);
 			}
@@ -949,50 +1032,56 @@ static void gsync_fnop(uint id)
 
 		case A_OPENDIR:
 		case A_OPENDIR_RIGHT:
-		case A_CLIPCOPY: {
-			char **s;
-			if (NULL == (s = ffarr_pushgrowT(&buf, 16, char*)))
-				goto end;
-			if (0 == ffstr_catfmt(&b2, "%s%Z", fullname))
-				goto end;
-			*s = b2.ptr;
-			ffarr_null(&b2);
+		case A_CLIPCOPY:
+		case A_CLIPCOPY_RIGHT:
+		case A_DEL:
+		case A_DEL_RIGHT: {
+			char **s = ffvec_pushT(&vec, char*);
+			*s = ffsz_dup(fullname);
 			break;
 		}
 		}
 	}
 
-	if (buf.len == 0)
+	if (buf.len == 0 && vec.len == 0)
 		goto end;
 
 	switch (id) {
 
 	case A_OPENDIR:
 	case A_OPENDIR_RIGHT:
-		ffui_openfolder((const char**)buf.ptr, buf.len);
-		arr = 1;
+		if (0 != ffui_openfolder((const char**)vec.ptr, vec.len))
+			fcom_syserrlog("gsync", "ffui_openfolder");
 		break;
 
 	case A_CLIPCOPY:
-		ffui_clipbd_setfile((const char**)buf.ptr, buf.len);
-		arr = 1;
+	case A_CLIPCOPY_RIGHT:
+		if (0 != ffui_clipbd_setfile((const char**)vec.ptr, vec.len))
+			fcom_syserrlog("gsync", "ffui_clipbd_setfile");
+		break;
+
+	case A_DEL:
+	case A_DEL_RIGHT:
+		fops->del_many((const char**)vec.ptr, vec.len, FOP_TRASH);
 		break;
 
 	case A_CLIPFN:
 	case A_CLIPFN_RIGHT:
 		if (buf.len != 0)
 			buf.len -= FFSLEN("\n");
-		ffui_clipbd_set(buf.ptr, buf.len);
+		if (0 != ffui_clipbd_set(buf.ptr, buf.len))
+			fcom_syserrlog("gsync", "ffui_clipbd_set");
 		break;
 	}
 
 end:
-	if (arr) {
+	{
 		char **s;
-		FFARR_WALKT(&buf, s, char*) {
+		FFSLICE_WALK(&vec, s) {
 			ffmem_free(*s);
 		}
 	}
+	ffvec_free(&vec);
 	ffarr_free(&buf);
 	ffmem_safefree(fullname);
 }
@@ -1001,12 +1090,8 @@ end:
 void list_cols_width_write(ffconfw *conf)
 {
 	struct wsync *w = &gg->wsync;
-	ffui_viewcol vc;
 	for (uint i = 0;  i != _L_LAST;  i++) {
-		ffui_viewcol_reset(&vc);
-		ffui_viewcol_setwidth(&vc, 0);
-		ffui_view_col(&w->vlist, i, &vc);
-		ffconfw_addint(conf, ffui_viewcol_width(&vc));
+		ffconfw_addint(conf, ffui_view_col_width(&w->vlist, i));
 	}
 }
 
@@ -1016,10 +1101,7 @@ void list_cols_read()
 	int *it;
 	int i = 0;
 	FFSLICE_WALK(&gg->opts.list_col_width, it) {
-		ffui_viewcol vc;
-		ffui_viewcol_reset(&vc);
-		ffui_viewcol_setwidth(&vc, *it);
-		ffui_view_setcol(&w->vlist, i, &vc);
+		ffui_view_setcol_width(&w->vlist, i, *it);
 		i++;
 	}
 }

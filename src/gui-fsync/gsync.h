@@ -16,6 +16,17 @@ enum {
 	FSYNC_ST_DONE = 1 << 31,
 };
 
+enum {
+	// 1<<FSYNC_ST_EQ
+	// 1<<FSYNC_ST_SRC
+	// 1<<FSYNC_ST_DEST
+	// 1<<FSYNC_ST_MOVED
+	// 1<<FSYNC_ST_NEQ
+	SHOWMASK_NEWER = 1<<28,
+	SHOWMASK_OLDER = 1<<29,
+	SHOWMASK_DIRS = 1<<30,
+};
+
 #define fsfile(/* struct file* */f)  ((struct fsync_file*)(f))
 #define isdir(a) !!((a) & FFUNIX_FILE_DIR)
 
@@ -26,9 +37,10 @@ struct opts {
 	char *dstfn;
 	ffstr filter_name;
 	ffstr filter;
+	ffstr exclude;
+	ffstr include;
 	uint showmask; //enum FSYNC_ST
 	uint show_modmask; //enum FSYNC_ST flags for FSYNC_ST_NEQ
-	byte show_dirs;
 	byte show_dirs_only;
 	byte time_diff;
 	byte time_diff_sec;
@@ -55,11 +67,9 @@ struct wsync {
 	ffui_wnd wsync;
 	ffui_edit e1;
 	ffui_edit e2;
-	ffui_checkbox cbeq;
-	ffui_checkbox cbnew;
-	ffui_checkbox cbmod;
-	ffui_checkbox cbdel;
-	ffui_checkbox cbmov;
+	ffui_checkbox cbeq, cbnew, cbmod, cbdel, cbmov;
+	ffui_checkbox cbshowdirs, cbshowolder, cbshownewer;
+	ffui_edit eexclude, einclude;
 	ffui_view vopts;
 	ffui_view tdirs;
 	ffui_view vlist;
@@ -101,33 +111,7 @@ struct ggui {
 	*ffarr_itemT(&gg->cmptbl_filter, i, struct fsync_cmp*)
 
 enum CMDS {
-	A_CMP = 1,
-	A_SYNC,
-	A_SNAPSAVE,
-	A_SNAPLOAD,
-	A_SNAPLOAD_RIGHT,
-	A_SNAPSHOW,
-	A_SNAPSHOW_RIGHT,
-	A_SWAP,
-	A_FILTER,
-	A_ONCHECK,
-	A_EXEC,
-	A_OPENDIR,
-	A_OPENDIR_RIGHT,
-	A_CLIPCOPY,
-	A_CLIPFN,
-	A_CLIPFN_RIGHT,
-	A_CONF_EDIT,
-	A_SELALL,
-	A_EXIT,
-
-	A_SHOWEQ,
-	A_SHOWNEW,
-	A_SHOWMOD,
-	A_SHOWDEL,
-	A_SHOWMOVE,
-
-	A_TREE_ENTER,
+#include "actions.h"
 };
 
 

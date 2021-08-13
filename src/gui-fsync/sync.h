@@ -217,7 +217,7 @@ static void sync(struct sync_ctx *sc)
 			sc->fnR = fsync->get(FSYNC_FULLNAME, cmp->right);
 			if (sc->fnR == NULL)
 				goto end;
-			r = fops->del(sc->fnR, FOP_DIR);
+			r = fops->del(sc->fnR, FOP_TRASH);
 			break;
 
 		default:
