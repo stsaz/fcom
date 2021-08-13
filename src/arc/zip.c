@@ -126,7 +126,11 @@ again:
 		if (cmd->input.size < MAX_STORED_SIZE)
 			conf.compress_method = ZIP_STORED;
 
-		if (0 != ffzipwrite_fileadd(&z->zip, &conf)) {
+		if (0 != (r = ffzipwrite_fileadd(&z->zip, &conf))) {
+			if (r == -2) {
+				z->state = W_EOF;
+				goto again;
+			}
 			errlog("%s", ffzipwrite_error(&z->zip));
 			return FCOM_ERR;
 		}

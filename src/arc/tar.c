@@ -113,7 +113,11 @@ again:
 		if (!fffile_isdir(cmd->input.attr))
 			f.size = cmd->input.size;
 		f.mtime = cmd->input.mtime;
-		if (0 != fftarwrite_fileadd(&t->tar, &f)) {
+		if (0 != (r = fftarwrite_fileadd(&t->tar, &f))) {
+			if (r == -2) {
+				t->state = W_EOF;
+				goto again;
+			}
 			fcom_errlog(FILT_NAME, "%s: %s", cmd->input.fn, fftarwrite_error(&t->tar));
 			return FCOM_ERR;
 		}
