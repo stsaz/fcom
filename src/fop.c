@@ -10,13 +10,16 @@ Copyright (c) 2017 Simon Zolin
 #include <FF/data/pe-fmt.h>
 #include <FFOS/dir.h>
 #include <FFOS/file.h>
+#include <FFOS/process.h>
+#ifdef FF_WIN
+#include <FF/gui/winapi.h>
+#endif
 
-
-#define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, __VA_ARGS__)
-#define infolog(dbglev, fmt, ...)  fcom_infolog(FILT_NAME, fmt, __VA_ARGS__)
-#define verblog(fmt, ...)  fcom_verblog(FILT_NAME, fmt, __VA_ARGS__)
-#define errlog(fmt, ...)  fcom_errlog(FILT_NAME, fmt, __VA_ARGS__)
-#define syserrlog(fmt, ...)  fcom_syserrlog(FILT_NAME, fmt, __VA_ARGS__)
+#define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, ##__VA_ARGS__)
+#define infolog(dbglev, fmt, ...)  fcom_infolog(FILT_NAME, fmt, ##__VA_ARGS__)
+#define verblog(fmt, ...)  fcom_verblog(FILT_NAME, fmt, ##__VA_ARGS__)
+#define errlog(fmt, ...)  fcom_errlog(FILT_NAME, fmt, ##__VA_ARGS__)
+#define syserrlog(fmt, ...)  fcom_syserrlog(FILT_NAME, fmt, ##__VA_ARGS__)
 
 const fcom_core *core;
 const fcom_command *com;
@@ -35,8 +38,9 @@ static int fop_mkdir(const char *fn, uint flags);
 static int fop_del(const char *fn, uint flags);
 static int fop_move(const char *src, const char *dst, uint flags);
 static int fop_time(const char *fn, const fftime *t, uint flags);
+int fop_del_many(const char **names, ffsize n, uint flags);
 static const fcom_fops f_ops_iface = {
-	&fop_mkdir, &fop_del, &fop_move, &fop_time,
+	&fop_mkdir, &fop_del, &fop_move, &fop_time, fop_del_many,
 };
 
 // COPY
@@ -187,6 +191,77 @@ err:
 #undef FILT_NAME
 
 #define FILT_NAME  "remove"
+
+/** Exec and wait
+Return exit code or -1 on error */
+static inline int ffps_exec_wait(const char *filename, const char **argv, const char **env)
+{
+	ffps_execinfo info = {};
+	info.argv = argv;
+	info.env = env;
+	ffps ps = ffps_exec_info(filename, &info);
+	if (ps == FFPS_NULL)
+		return -1;
+
+	int code;
+	if (0 != ffps_wait(ps, -1, &code))
+		return -1;
+
+	return code;
+}
+
+static inline int ffui_kde_trash(const char **fn, ffsize n)
+{
+	if (n == 0)
+		return 0;
+	ffvec v = {};
+	ffvec_allocT(&v, 4 + n, char*);
+	*ffvec_pushT(&v, char*) = "/usr/bin/kioclient5";
+	*ffvec_pushT(&v, char*) = "move";
+	for (ffsize i = 0;  i != n;  i++) {
+		*ffvec_pushT(&v, const char*) = fn[i];
+	}
+	*ffvec_pushT(&v, char*) = "trash:/";
+	*ffvec_pushT(&v, char*) = NULL;
+	return ffps_exec_wait(((char**)v.ptr)[0], (const char**)v.ptr, (const char**)environ);
+}
+
+/*static inline int ffui_gnome_trash(const char *fn)
+{
+	const char *args[] = {
+		"/usr/bin/gio",
+		"trash",
+		fn,
+		NULL,
+	};
+	return ffps_exec_wait(args[0], args, (const char**)environ);
+}*/
+
+int fop_del_many(const char **names, ffsize n, uint flags)
+{
+	if (flags & FOP_TEST)
+		goto done;
+
+	if (flags & FOP_TRASH) {
+#ifdef FF_WIN
+		if (0 != ffui_fop_del(names, n, FFUI_FOP_ALLOWUNDO))
+			goto err;
+#else
+		if (0 != ffui_kde_trash(names, n))
+			goto err;
+#endif
+		goto done;
+	}
+
+done:
+	verblog("fop_del_many: ok");
+	return 0;
+
+err:
+	syserrlog("fop_del_many");
+	return -1;
+}
+
 static int fop_del(const char *fn, uint flags)
 {
 	const char *serr = NULL;
@@ -194,23 +269,34 @@ static int fop_del(const char *fn, uint flags)
 	if (flags & FOP_TEST)
 		goto done;
 
+	if (flags & FOP_TRASH) {
+#ifdef FF_WIN
+		if (0 != ffui_fop_del(&fn, 1, FFUI_FOP_ALLOWUNDO))
+			goto err;
+#else
+		if (0 != ffui_kde_trash(&fn, 1))
+			goto err;
+#endif
+		goto done;
+	}
+
 	if (flags & FOP_DIR) {
 		fffileinfo fi;
-		if (0 != fffile_infofn(fn, &fi)) {
+		if (0 != fffile_info_path(fn, &fi)) {
 			serr = fffile_info_S;
 			goto err;
 		}
-		if (fffile_isdir(fffile_infoattr(&fi)))
+		if (fffile_isdir(fffileinfo_attr(&fi)))
 			flags |= FOP_DIRONLY;
 	}
 
 	if (flags & FOP_DIRONLY) {
-		if (0 != ffdir_rm(fn)) {
+		if (0 != ffdir_remove(fn)) {
 			serr = ffdir_rm_S;
 			goto err;
 		}
 	} else {
-		if (0 != fffile_rm(fn)) {
+		if (0 != fffile_remove(fn)) {
 			serr = fffile_rm_S;
 			goto err;
 		}

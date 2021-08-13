@@ -389,8 +389,9 @@ enum FOP_F {
 	// FOP_RESUME = 4,
 	FOP_KEEPDATE = 8,
 	FOP_RECURS = 0x10,
-	FOP_DIRONLY = 0x20,
-	FOP_DIR = 0x40,
+	FOP_DIRONLY = 0x20, // remove if only directory
+	FOP_DIR = 0x40, // also remove if directory
+	FOP_TRASH = 0x80, // move to Trash
 };
 
 typedef struct fcom_fops {
@@ -401,6 +402,9 @@ typedef struct fcom_fops {
 	int (*del)(const char *fn, uint flags);
 	int (*move)(const char *src, const char *dst, uint flags);
 	int (*time)(const char *fn, const fftime *t, uint flags);
+
+	/** FOP_TRASH only */
+	int (*del_many)(const char **names, ffsize n, uint flags);
 } fcom_fops;
 
 
