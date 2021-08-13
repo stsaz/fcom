@@ -268,6 +268,7 @@ typedef struct fcom_cmd {
 		, bmp_input_reverse :1 //input lines order is HEIGHT..1, as in .bmp
 		, del_source :1
 		;
+	fffd input_fd; // fd of input file
 } fcom_cmd;
 
 // enum FCOM_FILT_OPEN
@@ -327,7 +328,11 @@ enum FCOM_CMD_CTL {
 
 enum FCOM_CMD_ARG {
 	FCOM_CMD_ARG_PEEK = 1, // get next argument, but don't increment cursor
-	FCOM_CMD_ARG_FILE = 2, // get next input file, excluding directories
+	FCOM_CMD_ARG_FILE = 2, // get next input file, excluding directories (obsolete)
+
+	/** Use file attr from the currently opened input file.
+	This approach eliminates the need to call fffile_infofn() by 'com' module. */
+	FCOM_CMD_ARG_USECURFILE = 4,
 };
 
 /** Execute commands. */

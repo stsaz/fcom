@@ -208,6 +208,7 @@ static void* fi_open(fcom_cmd *cmd)
 	}
 	f->size = fffile_infosize(&fi);
 
+	cmd->input_fd = fffileread_fd(f->fr);
 	cmd->input.size = f->size;
 	cmd->input.offset = 0;
 	cmd->input.attr = fffile_infoattr(&fi);
@@ -235,7 +236,12 @@ static void fi_close(void *p, fcom_cmd *cmd)
 		fffileread_stat(f->fr, &stat);
 		dbglog(0, "cache-hit#:%u  read#:%u  async#:%u  seek#:%u"
 			, stat.ncached, stat.nread, stat.nasync, f->nseek);
-		fffileread_free(f->fr);
+		ffuint flags = 0;
+		if (cmd->input_fd == FFFILE_NULL)
+			flags = 1; // another module keeps the fd
+		else
+			cmd->input_fd = FFFILE_NULL;
+		fffileread_free_ex(f->fr, flags);
 	}
 
 	ffmem_free(f);

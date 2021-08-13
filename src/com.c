@@ -3,11 +3,13 @@ Copyright (c) 2017 Simon Zolin
 */
 
 #include <fcom.h>
+#include <com-dir.h>
 
 #include <FF/sys/dir.h>
 #include <FF/list.h>
 #include <FF/path.h>
 #include <FFOS/process.h>
+#include <FFOS/dirscan.h>
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, "com", fmt, __VA_ARGS__)
@@ -53,26 +55,21 @@ typedef struct {
 	const struct fcom_cmd_mon *mon;
 	struct fcom_cmd_mon mon_s;
 
-	ffchain in_list; //struct in_ent[]
-	ffchain_item *in_next;
+	ffvec dirs;
+	struct dir *curdir;
+	ffvec curname;
 
 	void *udata;
 	fftask tsk;
 } comm;
 
-struct in_ent {
-	ffchain_item sib;
-	char fn[0];
-};
-
+#include <com-arg.h>
 
 // COMMAND
 static void* com_create(fcom_cmd *cmd);
 static void com_close(void *p);
 static int com_run(void *p);
 static size_t com_ctrl(fcom_cmd *c, uint cmd, ...);
-static int com_arg_add(fcom_cmd *c, const ffstr *arg, uint flags);
-static char* com_arg_next(fcom_cmd *c, uint flags);
 static int com_reg(const char *op, const char *mod);
 const fcom_command core_com_iface = {
 	.create = &com_create, .close = &com_close, .run = &com_run, .ctrl = &com_ctrl,
@@ -84,8 +81,6 @@ static const char* getmod_bycmd(const char *cmdname);
 static filter* filt_add(comm *c, uint cmd, const char *name, filter *neigh);
 static int filt_call(comm *c, filter *f);
 static void filt_close(comm *c, filter *f);
-static ffbool file_matches(comm *c, const char *full_fn, ffbool dir);
-static int dir_scan(comm *c, char *name);
 static char* chain_print(comm *c, const ffchain_item *mark, char *buf, size_t cap);
 
 
@@ -125,10 +120,10 @@ static void* com_create(fcom_cmd *cmd)
 		return NULL;
 
 	ffmemcpy(&c->cmd, cmd, sizeof(fcom_cmd));
+	c->cmd.input_fd = FFFILE_NULL;
 	ffchain_init(&c->chain);
-	ffchain_init(&c->in_list);
-	c->in_next = ffchain_first(&c->in_list);
 	c->cur = ffchain_first(&c->chain);
+	*ffvec_pushT(&c->dirs, struct dir*) = c->curdir;
 
 	if (cmd->out_fn_copy && NULL == (c->cmd.output.fn = ffsz_alcopyz(cmd->output.fn)))
 		goto err;
@@ -192,12 +187,7 @@ static void com_close(void *p)
 	}
 	ffarr_free(&c->filters);
 
-	ffchain_item *it;
-	FFCHAIN_FOR(&c->in_list, it) {
-		struct in_ent *e = FF_GETPTR(struct in_ent, sib, it);
-		it = it->next;
-		ffmem_free(e);
-	}
+	args_free(c);
 
 	if (c->cmd.out_fn_copy)
 		ffmem_free((char*)c->cmd.output.fn);
@@ -466,224 +456,6 @@ static int com_reg(const char *op, const char *mod)
 	c->op = op;
 	c->mod = mod;
 	return 0;
-}
-
-/** Add an argument. */
-static int com_arg_add(fcom_cmd *_c, const ffstr *arg, uint flags)
-{
-	dbglog(0, "adding arg '%S'", arg);
-	comm *c = FF_GETPTR(comm, cmd, _c);
-	struct in_ent *e;
-
-	if (NULL == (e = ffmem_alloc(sizeof(struct in_ent) + arg->len + 1)))
-		return -1;
-
-	ffchain_add(&c->in_list, &e->sib);
-	if (c->in_next == ffchain_sentl(&c->in_list))
-		c->in_next = ffchain_first(&c->in_list);
-
-	ffsz_fcopy(e->fn, arg->ptr, arg->len);
-	return 0;
-}
-
-/** Get next argument. */
-static char* com_arg_next(fcom_cmd *_c, uint flags)
-{
-	comm *c = FF_GETPTR(comm, cmd, _c);
-	struct in_ent *e;
-	fffileinfo fi;
-
-	for (;;) {
-		if (c->in_next == ffchain_sentl(&c->in_list))
-			return NULL;
-
-		e = FF_GETPTR(struct in_ent, sib, c->in_next);
-
-		if (c->cmd.recurse) {
-			if (0 == fffile_infofn(e->fn, &fi)
-				&& fffile_isdir(fffile_infoattr(&fi))) {
-				dir_scan(c, e->fn);
-
-				ffstr name;
-				ffpath_split2(e->fn, ffsz_len(e->fn), NULL, &name);
-
-				if (ffstr_eqz(&name, ".")
-					|| ffstr_eqz(&name, "..")
-					|| !file_matches(c, e->fn, 0)) {
-					FF_ASSERT(!(flags & FCOM_CMD_ARG_PEEK));
-					c->in_next = e->sib.next;
-					continue;
-				}
-			}
-		}
-
-		if ((flags & FCOM_CMD_ARG_FILE)
-			&& 0 == fffile_infofn(e->fn, &fi)
-			&& fffile_isdir(fffile_infoattr(&fi))) {
-			c->in_next = e->sib.next;
-			continue;
-		}
-
-		break;
-	}
-
-	if (!(flags & FCOM_CMD_ARG_PEEK))
-		c->in_next = e->sib.next;
-	return e->fn;
-}
-
-/**
-'include' filter matches files only.
-'exclude' filter matches files & directories (names or full paths).
-Return TRUE if filename matches user's filename wildcards. */
-static ffbool file_matches(comm *c, const char *full_fn, ffbool dir)
-{
-	const ffstr *wc;
-	ffbool ok = 1;
-	ffstr fn;
-	ffstr_setz(&fn, full_fn);
-
-	if (!dir) {
-		ok = (c->cmd.include_files.len == 0);
-		FFARR_WALKT(&c->cmd.include_files, wc, ffstr) {
-
-			if (0 == ffs_wildcard(wc->ptr, wc->len, fn.ptr, fn.len, FFS_WC_ICASE)
-				|| ffpath_match(&fn, wc, FFPATH_CASE_ISENS)) {
-				ok = 1;
-				break;
-			}
-		}
-		if (!ok)
-			return 0;
-	}
-
-	FFARR_WALKT(&c->cmd.exclude_files, wc, ffstr) {
-
-		if (0 == ffs_wildcard(wc->ptr, wc->len, fn.ptr, fn.len, FFS_WC_ICASE)
-			|| ffpath_match(&fn, wc, FFPATH_CASE_ISENS)) {
-			return 0;
-		}
-	}
-
-	return ok;
-}
-
-#ifdef FCOM_TEST
-#include <FFOS/test.h>
-#define x  FFTEST_BOOL
-void test_file_matches()
-{
-	comm *c = ffmem_new(comm);
-
-	ffstr *dst, s, wc;
-	ffarr aincl = {};
-	ffstr_setz(&s, "/path");
-	while (s.len != 0) {
-		ffstr_nextval3(&s, &wc, ';');
-		dst = ffarr_pushgrowT(&aincl, 4, ffstr);
-		*dst = wc;
-	}
-	ffarr_set(&c->cmd.include_files, aincl.ptr, aincl.len);
-
-	ffarr aexcl = {};
-	ffstr_setz(&s, "*/.git;/path/bin;/path/dir/_bin;*.zip");
-	while (s.len != 0) {
-		ffstr_nextval3(&s, &wc, ';');
-		dst = ffarr_pushgrowT(&aexcl, 4, ffstr);
-		*dst = wc;
-	}
-	ffarr_set(&c->cmd.exclude_files, aexcl.ptr, aexcl.len);
-
-	x(!file_matches(c, "/path2", 0));
-
-	x(file_matches(c, "/path/file", 0));
-	x(file_matches(c, "/path/dir", 1));
-
-	x(!file_matches(c, "/path/.git", 1));
-	x(file_matches(c, "/path/.git2", 1));
-	x(file_matches(c, "/path/1.git", 1));
-	x(!file_matches(c, "/path/dir/.git", 1));
-
-	x(!file_matches(c, "/path/bin", 1));
-	x(file_matches(c, "/path/binn", 1));
-	x(file_matches(c, "/path/dir/bin", 1));
-
-	x(!file_matches(c, "/path/dir/_bin", 1));
-	x(file_matches(c, "/path/ddir/_bin", 1));
-
-	x(!file_matches(c, "/path/dir/1.zip", 1));
-	x(file_matches(c, "/path/dir/1.zip2", 1));
-}
-#endif
-
-/** List directory contents and add its filenames to the arguments list. */
-static int dir_scan(comm *c, char *name)
-{
-	ffdirexp dr = {0};
-	fffileinfo fi;
-	const char *fn;
-	int r = -1;
-	ffchain files, dirs;
-	ffchain_item *last = ffchain_last(&c->in_list);
-
-	ffchain_init(&files);
-	ffchain_init(&dirs);
-
-	dbglog(0, "opening directory %s", name);
-
-	if (0 != ffdir_expopen(&dr, name, FFDIR_EXP_NOWILDCARD)) {
-		if (fferr_last() != ENOMOREFILES) {
-			syserrlog("%s", ffdir_open_S);
-			return -1;
-		}
-		return 0;
-	}
-
-	while (NULL != (fn = ffdir_expread(&dr))) {
-		ffstr s;
-		ffstr_setz(&s, fn);
-		struct in_ent *e;
-
-		if (0 != fffile_infofn(fn, &fi))
-			ffmem_tzero(&fi);
-		uint isdir = fffile_isdir(fffile_infoattr(&fi));
-		if (!file_matches(c, fn, isdir))
-			continue;
-
-		if (NULL == (e = ffmem_alloc(sizeof(struct in_ent) + s.len + 1)))
-			goto done;
-
-		if (c->cmd.fsort == FCOM_CMD_SORT_ALPHA) {
-			ffchain_append(&e->sib, last);
-			last = &e->sib;
-		} else {
-			if (isdir) {
-				ffchain_add(&dirs, &e->sib);
-			} else {
-				ffchain_add(&files, &e->sib);
-			}
-		}
-
-		ffsz_fcopy(e->fn, s.ptr, s.len);
-	}
-
-	if (c->cmd.fsort == FCOM_CMD_SORT_FILES_DIRS) {
-		//args -> files -> dirs -> ...args
-		_ffchain_link2(ffchain_last(&dirs), c->in_next->next);
-		_ffchain_link2(ffchain_last(&files), ffchain_first(&dirs));
-		_ffchain_link2(c->in_next, ffchain_first(&files));
-	} else if (c->cmd.fsort == FCOM_CMD_SORT_DIRS_FILES) {
-		//args -> dirs -> files -> ...args
-		_ffchain_link2(ffchain_last(&files), c->in_next->next);
-		_ffchain_link2(ffchain_last(&dirs), ffchain_first(&files));
-		_ffchain_link2(c->in_next, ffchain_first(&dirs));
-	}
-
-	r = 0;
-
-done:
-	ffdir_expclose(&dr);
-	return r;
 }
 
 /** Add filter to chain. */
