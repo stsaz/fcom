@@ -24,29 +24,41 @@ void opts_def();
 void opts_load();
 
 
+enum SHOWMASK_E {
+	// 1<<FSYNC_ST_EQ
+	// 1<<FSYNC_ST_SRC
+	// 1<<FSYNC_ST_DEST
+	// 1<<FSYNC_ST_MOVED
+	// 1<<FSYNC_ST_NEQ
+	SHOWMASK_NEWER = 1<<28,
+	SHOWMASK_OLDER = 1<<29,
+	SHOWMASK_DIRS = 1<<30,
+};
+
 struct wsync {
 	ffui_wnd wnd;
 	ffui_menu mm;
 	ffui_edit eleft;
 	ffui_edit eright;
-	ffui_checkbox cbeq;
-	ffui_checkbox cbnew;
-	ffui_checkbox cbmod;
-	ffui_checkbox cbmov;
-	ffui_checkbox cbdel;
+	ffui_checkbox cbeq, cbnew, cbmod, cbdel, cbmov;
+	ffui_checkbox cbshowdirs, cbshowolder, cbshownewer;
+	ffui_edit eexclude, einclude;
 	ffui_view vlist;
 	ffui_ctl stbar;
 
-	ffuint showmask; //enum FSYNC_ST
+	ffarr4 *listsel;
+
+	ffuint showmask; // enum SHOWMASK_E
 	fsync_dir *src, *dst;
 	char *srcfn, *dstfn;
+	ffstr show_excl, show_incl;
 	char *opts_fn;
 	ffvec col_width;
 	ffvec cmptbl, cmptbl_filter; // comparison results.  struct fsync_cmp[]
 };
 
 struct ggui {
-	ffui_menu mcmd;
+	ffui_menu mcmd, mfile;
 	struct wsync *wsync;
 	fftask tsk;
 };
@@ -63,6 +75,11 @@ const ffui_ldr_ctl wsync_ctls[] = {
 	FFUI_LDR_CTL(struct wsync, cbmod),
 	FFUI_LDR_CTL(struct wsync, cbmov),
 	FFUI_LDR_CTL(struct wsync, cbdel),
+	FFUI_LDR_CTL(struct wsync, cbshowdirs),
+	FFUI_LDR_CTL(struct wsync, cbshowolder),
+	FFUI_LDR_CTL(struct wsync, cbshownewer),
+	FFUI_LDR_CTL(struct wsync, eexclude),
+	FFUI_LDR_CTL(struct wsync, einclude),
 	FFUI_LDR_CTL(struct wsync, vlist),
 	FFUI_LDR_CTL(struct wsync, stbar),
 	FFUI_LDR_CTL_END
@@ -70,35 +87,19 @@ const ffui_ldr_ctl wsync_ctls[] = {
 
 const ffui_ldr_ctl top_ctls[] = {
 	FFUI_LDR_CTL(struct ggui, mcmd),
+	FFUI_LDR_CTL(struct ggui, mfile),
 	FFUI_LDR_CTL3_PTR(struct ggui, wsync, wsync_ctls),
 	FFUI_LDR_CTL_END
 };
 
 enum {
-	A_NONE,
-	A_CMP,
-	A_SYNC,
-	A_DISP,
-	A_EXEC,
-	A_SHOWEQ,
-	A_SHOWNEW,
-	A_SHOWMOD,
-	A_SHOWMOVE,
-	A_SHOWDEL,
+#include "actions.h"
 	A_ONCLOSE,
 };
 const char* const scmds[] = {
-	"A_NONE",
-	"A_CMP",
-	"A_SYNC",
-	"A_DISP",
-	"A_EXEC",
-	"A_SHOWEQ",
-	"A_SHOWNEW",
-	"A_SHOWMOD",
-	"A_SHOWMOVE",
-	"A_SHOWDEL",
-	"A_ONCLOSE",
+#define ACTION_NAMES
+#include "actions.h"
+#undef ACTION_NAMES
 };
 
 static void* wsync_getctl(void *udata, const ffstr *name)
@@ -160,12 +161,81 @@ enum {
 	FSYNC_ST_DONE = 1 << 31,
 };
 
+/** Apply exclude-include name filters */
+static ffbool excl_incl(const struct fsync_cmp *c)
+{
+	struct wsync *w = gg->wsync;
+	ffstr n1 = {}, n2 = {};
+	if (c->left != NULL) {
+		char *fullname = _fsync->get(FSYNC_FULLNAME, c->left);
+		ffstr_setz(&n1, fullname);
+	}
+	if (c->right != NULL) {
+		char *fullname = _fsync->get(FSYNC_FULLNAME, c->right);
+		ffstr_setz(&n2, fullname);
+	}
+
+	ffbool skip = 0;
+	ffstr strlist = w->show_excl;
+	if (w->show_incl.len != 0)
+		strlist = w->show_incl;
+
+	while (strlist.len != 0) {
+		ffstr part;
+		ffstr_splitby(&strlist, ' ', &part, &strlist);
+		ffstr_trimwhite(&part);
+		if (part.len == 0)
+			continue;
+
+		if (ffstr_ifindstr(&n1, &part) >= 0
+			|| ffstr_ifindstr(&n2, &part) >= 0) {
+			// matched
+			if (w->show_incl.len != 0) {
+				skip = 0;
+				goto fin;
+			}
+			skip = 1; // excluded
+			break;
+		} else {
+			// not matched
+			if (w->show_incl.len != 0)
+				skip = 1; // not included
+		}
+	}
+
+fin:
+	ffmem_free(n1.ptr);
+	ffmem_free(n2.ptr);
+	if (skip)
+		return 0;
+	return 1;
+}
+
 static ffbool cmpent_visible(const struct fsync_cmp *c)
 {
 	struct wsync *w = gg->wsync;
 	ffuint st = c->status & _FSYNC_ST_MASK;
 	if (!ffbit_test32(&w->showmask, st))
 		return 0;
+
+	if (st == FSYNC_ST_NEQ) {
+		if (!(w->showmask & SHOWMASK_OLDER) && (c->status & FSYNC_ST_OLDER))
+			return 0;
+		if (!(w->showmask & SHOWMASK_NEWER) && (c->status & FSYNC_ST_NEWER))
+			return 0;
+	}
+
+	if (!(w->showmask & SHOWMASK_DIRS)
+		&& ((c->left != NULL && isdir(fsfile(c->left)->attr))
+			|| (c->right != NULL && isdir(fsfile(c->right)->attr))))
+		return 0;
+
+	if (w->show_excl.len != 0
+		|| w->show_incl.len != 0) {
+		if (0 == excl_incl(c))
+			return 0;
+	}
+
 	return 1;
 }
 
@@ -179,6 +249,9 @@ void ctls_set()
 	ffui_checkbox_check(&w->cbdel, !!(w->showmask & (1<<FSYNC_ST_DEST)));
 	ffui_checkbox_check(&w->cbmov, !!(w->showmask & (1<<FSYNC_ST_MOVED)));
 	ffui_checkbox_check(&w->cbmod, !!(w->showmask & (1<<FSYNC_ST_NEQ)));
+	ffui_checkbox_check(&w->cbshowdirs, !!(w->showmask & SHOWMASK_DIRS));
+	ffui_checkbox_check(&w->cbshowolder, !!(w->showmask & SHOWMASK_OLDER));
+	ffui_checkbox_check(&w->cbshownewer, !!(w->showmask & SHOWMASK_NEWER));
 }
 
 /** Get file info as text */
@@ -371,41 +444,61 @@ struct cmpstat {
 	uint mov;
 	uint mod;
 	uint del;
+	uint dir;
+	uint older, newer;
 };
 
-void cmpstat_add(struct cmpstat *ns, struct fsync_cmp *cmp)
+void cmpstat_add(struct cmpstat *c, struct fsync_cmp *cmp)
 {
 	int st = cmp->status & _FSYNC_ST_MASK;
 	if (st == FSYNC_ST_EQ)
-		ns->eq++;
+		c->eq++;
 	else if (st == FSYNC_ST_SRC)
-		ns->new++;
+		c->new++;
 	else if (st == FSYNC_ST_DEST)
-		ns->del++;
+		c->del++;
 	else if (st == FSYNC_ST_MOVED)
-		ns->mov++;
+		c->mov++;
 	else if (st == FSYNC_ST_NEQ)
-		ns->mod++;
+		c->mod++;
+
+	if ((cmp->left != NULL && isdir(fsfile(cmp->left)->attr))
+		|| (cmp->right != NULL && isdir(fsfile(cmp->right)->attr)))
+		c->dir++;
+
+	if (cmp->status & FSYNC_ST_OLDER)
+		c->older++;
+	else if (cmp->status & FSYNC_ST_NEWER)
+		c->newer++;
 }
 
-void ctls_set_cmpstat(struct cmpstat *ns)
+void ctls_set_cmpstat(struct cmpstat *c)
 {
 	struct wsync *w = gg->wsync;
 	char buf[64];
-	ffs_format(buf, sizeof(buf), "Eq (%u)%Z", ns->eq);
+	ffs_format(buf, sizeof(buf), "Eq (%u)%Z", c->eq);
 	ffui_send_checkbox_settextz(&w->cbeq, buf);
 
-	ffs_format(buf, sizeof(buf), "New (%u)%Z", ns->new);
+	ffs_format(buf, sizeof(buf), "New (%u)%Z", c->new);
 	ffui_send_checkbox_settextz(&w->cbnew, buf);
 
-	ffs_format(buf, sizeof(buf), "Mod (%u)%Z", ns->mod);
+	ffs_format(buf, sizeof(buf), "Mod (%u)%Z", c->mod);
 	ffui_send_checkbox_settextz(&w->cbmod, buf);
 
-	ffs_format(buf, sizeof(buf), "Mov (%u)%Z", ns->mov);
+	ffs_format(buf, sizeof(buf), "Mov (%u)%Z", c->mov);
 	ffui_send_checkbox_settextz(&w->cbmov, buf);
 
-	ffs_format(buf, sizeof(buf), "Del (%u)%Z", ns->del);
+	ffs_format(buf, sizeof(buf), "Del (%u)%Z", c->del);
 	ffui_send_checkbox_settextz(&w->cbdel, buf);
+
+	ffs_format(buf, sizeof(buf), "Dirs (%u)%Z", c->dir);
+	ffui_send_checkbox_settextz(&w->cbshowdirs, buf);
+
+	ffs_format(buf, sizeof(buf), "Older (%u)%Z", c->older);
+	ffui_send_checkbox_settextz(&w->cbshowolder, buf);
+
+	ffs_format(buf, sizeof(buf), "Newer (%u)%Z", c->newer);
+	ffui_send_checkbox_settextz(&w->cbshownewer, buf);
 }
 
 void reset()
@@ -423,6 +516,17 @@ void filter()
 {
 	struct wsync *w = gg->wsync;
 	w->cmptbl_filter.len = 0;
+
+	ffstr ss = {};
+	ffui_send_edit_textstr(&w->eexclude, &ss);
+	ffstr_free(&w->show_excl);
+	w->show_excl = ss;
+	ffstr_null(&ss);
+
+	ffui_send_edit_textstr(&w->einclude, &ss);
+	ffstr_free(&w->show_incl);
+	w->show_incl = ss;
+	ffstr_null(&ss);
 
 	struct fsync_cmp *c;
 	FFSLICE_WALK(&w->cmptbl, c) {
@@ -717,10 +821,77 @@ void scan_task(void *param)
 	showresults();
 }
 
+/** Perform file operation */
+static void fop(void *param)
+{
+	struct wsync *w = gg->wsync;
+	int id = (ffsize)param;
+	char *fullname = NULL;
+	ffvec vec = {}, buf = {};
+
+	for (;;) {
+		int i = ffui_view_selnext(&w->vlist, w->listsel);
+		if (i < 0)
+			break;
+
+		const struct fsync_cmp *c = *ffslice_itemT(&w->cmptbl_filter, i, struct fsync_cmp*);
+		void *obj = c->left;
+		switch (id) {
+		case A_CLIPFN_RIGHT:
+		case A_DEL_RIGHT:
+			obj = c->right;
+			break;
+		}
+		if (obj == NULL)
+			continue;
+		ffmem_free(fullname);
+		fullname = _fsync->get(FSYNC_FULLNAME, obj);
+
+		switch (id) {
+		case A_CLIPFN_LEFT:
+		case A_CLIPFN_RIGHT:
+			ffvec_addfmt(&buf, "%s\n", fullname);
+			break;
+
+		default: {
+			char **s = ffvec_pushT(&vec, char*);
+			*s = ffsz_dup(fullname);
+		}
+		}
+	}
+
+	if (vec.len != 0) {
+		if (0) {
+			fops->del_many(vec.ptr, vec.len, FOP_TRASH);
+		} else {
+			char **s;
+			FFSLICE_WALK(&vec, s) {
+				fops->del(*s, FOP_DIR);
+			}
+		}
+	} else if (buf.len != 0) {
+		ffui_clipboard_settextstr(&buf);
+	}
+
+	ffui_view_sel_free(w->listsel);  w->listsel = NULL;
+	char **s;
+	FFSLICE_WALK(&vec, s) {
+		ffmem_free(*s);
+	}
+	ffvec_free(&vec);
+	ffvec_free(&buf);
+	ffmem_free(fullname);
+}
+
 void wsync_action(ffui_wnd *wnd, int id)
 {
 	struct wsync *w = gg->wsync;
+	ffui_checkbox *pcb = NULL;
 	int i, m;
+
+	if ((uint)id < FF_COUNT(scmds))
+		fcom_dbglog(0, "gsync", "action: %s", scmds[id]);
+
 	switch (id) {
 
 	case A_DISP:
@@ -754,26 +925,49 @@ void wsync_action(ffui_wnd *wnd, int id)
 	case A_EXEC:
 		break;
 
+	case A_CLIPFN_LEFT:
+	case A_CLIPFN_RIGHT:
+	case A_DEL_LEFT:
+	case A_DEL_RIGHT: {
+		w->listsel = ffui_view_getsel(&w->vlist);
+		task_add(fop, (void*)(ffsize)id);
+		break;
+	}
+
 	case A_SHOWEQ:
-		i = ffui_checkbox_checked(&w->cbeq);
+		pcb = &w->cbeq;
 		m = 1<<FSYNC_ST_EQ;
 		goto show;
 	case A_SHOWNEW:
-		i = ffui_checkbox_checked(&w->cbnew);
+		pcb = &w->cbnew;
 		m = 1<<FSYNC_ST_SRC;
 		goto show;
 	case A_SHOWMOD:
-		i = ffui_checkbox_checked(&w->cbmod);
+		pcb = &w->cbmod;
 		m = 1<<FSYNC_ST_NEQ;
 		goto show;
 	case A_SHOWDEL:
-		i = ffui_checkbox_checked(&w->cbdel);
+		pcb = &w->cbdel;
 		m = 1<<FSYNC_ST_DEST;
 		goto show;
 	case A_SHOWMOVE:
-		i = ffui_checkbox_checked(&w->cbmov);
+		pcb = &w->cbmov;
 		m = 1<<FSYNC_ST_MOVED;
+		goto show;
+	case A_SHOW_DIRS:
+		pcb = &w->cbshowdirs;
+		m = SHOWMASK_DIRS;
+		goto show;
+	case A_SHOW_OLDER:
+		pcb = &w->cbshowolder;
+		m = SHOWMASK_OLDER;
+		goto show;
+	case A_SHOW_NEWER:
+		pcb = &w->cbshownewer;
+		m = SHOWMASK_NEWER;
+		goto show;
 	show:
+		i = ffui_checkbox_checked(pcb);
 		ffint_bitmask(&w->showmask, m, i);
 		filter();
 		showresults();
@@ -871,7 +1065,8 @@ void opts_def()
 	struct wsync *w = gg->wsync;
 	w->srcfn = ffsz_dup("");
 	w->dstfn = ffsz_dup("");
-	w->showmask = (1<<FSYNC_ST_SRC) | (1<<FSYNC_ST_DEST) | (1<<FSYNC_ST_MOVED) | (1<<FSYNC_ST_NEQ);
+	w->showmask = (1<<FSYNC_ST_SRC) | (1<<FSYNC_ST_DEST) | (1<<FSYNC_ST_MOVED) | (1<<FSYNC_ST_NEQ)
+		| SHOWMASK_DIRS | SHOWMASK_OLDER | SHOWMASK_NEWER;
 }
 void opts_load()
 {
@@ -922,6 +1117,8 @@ void wsync_destroy()
 	_fsync->tree_free(w->dst);  w->dst = NULL;
 	ffmem_free(w->srcfn);
 	ffmem_free(w->dstfn);
+	ffstr_free(&w->show_excl);
+	ffstr_free(&w->show_incl);
 	ffmem_free(w->opts_fn);
 	ffvec_free(&w->cmptbl);
 	ffvec_free(&w->cmptbl_filter);
