@@ -41,8 +41,8 @@ extern const fcom_fsync fsync_if;
 
 #define FILT_NAME  "fsync"
 
-#define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, __VA_ARGS__)
-#define warnlog(fmt, ...)  fcom_warnlog(FILT_NAME, fmt, __VA_ARGS__)
-#define errlog(fmt, ...)  fcom_errlog(FILT_NAME, fmt, __VA_ARGS__)
-#define syserrlog(fmt, ...)  fcom_syserrlog(FILT_NAME, fmt, __VA_ARGS__)
+#define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, ##__VA_ARGS__)
+#define warnlog(fmt, ...)  fcom_warnlog(FILT_NAME, fmt, ##__VA_ARGS__)
+#define errlog(fmt, ...)  fcom_errlog(FILT_NAME, fmt, ##__VA_ARGS__)
+#define syserrlog(fmt, ...)  fcom_syserrlog(FILT_NAME, fmt, ##__VA_ARGS__)
 

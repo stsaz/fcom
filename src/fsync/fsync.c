@@ -1018,22 +1018,31 @@ static int fsyncss_process(void *p, fcom_cmd *cmd)
 	switch (f->state) {
 	case 0: {
 		char *fn;
-		if (NULL == (fn = com->arg_next(cmd, 0)))
-			return FCOM_ERR;
-
-		if (cmd->output.fn == NULL) {
-			errlog("output file isn't specified", 0);
-			return FCOM_ERR;
+		if (NULL == (fn = com->arg_next(cmd, 0))) {
+			if (f->tree == NULL) {
+				errlog("no input files");
+				return FCOM_ERR;
+			}
+			goto done;
 		}
 
-		com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(cmd));
+		if (f->tree == NULL) {
+			if (cmd->output.fn == NULL) {
+				errlog("output file isn't specified", 0);
+				return FCOM_ERR;
+			}
 
+			com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(cmd));
+
+			ffconfw_addlinez(&f->cw, "# fcom file tree snapshot");
+		}
+
+		tree_free(f->tree);
 		if (NULL == (f->tree = scan_tree(fn, 0)))
 			return FCOM_ERR;
 
 		cur_init(&f->cur, f->tree);
 
-		ffconfw_addlinez(&f->cw, "# fcom file tree snapshot");
 		f->curdir = NULL;
 	}
 	// fall through
@@ -1062,6 +1071,7 @@ static int fsyncss_process(void *p, fcom_cmd *cmd)
 				return FCOM_DATA;
 			}
 		}
+		f->state = 0;
 		break;
 
 	case 2:
@@ -1069,10 +1079,9 @@ static int fsyncss_process(void *p, fcom_cmd *cmd)
 		f->state = 1;
 		continue;
 	}
-
-	break;
 	}
 
+done:
 	ffconfw_addobj(&f->cw, 0);
 	if (0 != ffconfw_fin(&f->cw))
 		errlog("config write", 0);
