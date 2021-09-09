@@ -34,34 +34,42 @@ char* com_arg_next(fcom_cmd *_c, uint flags)
 	comm *c = FF_GETPTR(comm, cmd, _c);
 	fffileinfo fi;
 	const char *name;
+	unsigned fi_valid = 0;
 
-	if (c->cmd.recurse && c->curname.len != 0) {
-		name = c->curname.ptr;
-		ffuint attr = 0;
-		if (flags & FCOM_CMD_ARG_USECURFILE) {
-			attr = _c->input.attr;
-		} else {
-			if (0 == fffile_infofn(name, &fi))
-				attr = fffileinfo_attr(&fi);
-			else
-				syserrlog("fffile_infofn: %s", name);
-		}
-		if (fffile_isdir(attr) && file_matches(c, name, 1))
-			dir_scan(c, name);
+	if (c->curdir == NULL) {
+		name = NULL;
+		goto done;
 	}
 
 	for (;;) {
 
+		if (c->cmd.recurse && c->curname.len != 0) {
+			name = c->curname.ptr;
+			ffuint attr = 0;
+			if (flags & FCOM_CMD_ARG_USECURFILE) {
+				flags &= ~FCOM_CMD_ARG_USECURFILE;
+				attr = _c->input.attr;
+			} else {
+				if (fi_valid || 0 == fffile_info_path(name, &fi))
+					attr = fffileinfo_attr(&fi);
+				else
+					syserrlog("fffile_info_path: %s", name);
+			}
+			if (fffile_isdir(attr) && file_matches(c, name, 1))
+				dir_scan(c, name);
+		}
+
+		fi_valid = 0;
+		c->curname.len = 0;
+
 		name = dir_next(c->curdir, !!(flags & FCOM_CMD_ARG_PEEK));
 		if (name == NULL) {
-			c->curname.len = 0;
 			if (dir_parent(c->curdir) == NULL)
 				break;
 			c->curdir = dir_parent(c->curdir);
 			continue;
 		}
 
-		c->curname.len = 0;
 		if (dir_path(c->curdir)[0] == '\0')
 			ffvec_addfmt(&c->curname, "%s%Z", name);
 		else
@@ -71,7 +79,8 @@ char* com_arg_next(fcom_cmd *_c, uint flags)
 		if (!file_matches(c, name, 0)) {
 
 		} else if ((flags & FCOM_CMD_ARG_FILE)
-			&& 0 == fffile_infofn(name, &fi)
+			&& 0 == fffile_info_path(name, &fi)
+			&& (fi_valid = 1)
 			&& fffile_isdir(fffileinfo_attr(&fi))) {
 
 		} else {
@@ -80,12 +89,9 @@ char* com_arg_next(fcom_cmd *_c, uint flags)
 
 		if (flags & FCOM_CMD_ARG_PEEK)
 			dir_next(c->curdir, 0);
-
-		if (c->cmd.recurse) {
-			//
-		}
 	}
 
+done:
 	dbglog(0, "arg_next: %s", name);
 	return (char*)name;
 }
