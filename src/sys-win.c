@@ -224,9 +224,9 @@ static void wrf_enum_vals(struct wregfind *c)
 			c->stat.vals++;
 
 			if (ke->key[0] != '\0')
-				fcom_infolog(FILT_NAME, "%s\\%s\\%S = \"%S\"", ke->hkey_name, ke->key, &c->e.name, &c->e.value);
+				fcom_userlog("%s\\%s\\%S = \"%S\"", ke->hkey_name, ke->key, &c->e.name, &c->e.value);
 			else
-				fcom_infolog(FILT_NAME, "%s\\%S = \"%S\"", ke->hkey_name, &c->e.name, &c->e.value);
+				fcom_userlog("%s\\%S = \"%S\"", ke->hkey_name, &c->e.name, &c->e.value);
 		}
 	}
 	ffwreg_enumreset(&c->e);
@@ -277,11 +277,11 @@ static int wrf_enum_keys(struct wregfind *c)
 				fftime_split(&dt, &t, FFTIME_TZLOCAL);
 				char buf[128];
 				r = fftime_tostr(&dt, buf, sizeof(buf), FFTIME_DATE_YMD | FFTIME_HMS);
-				fcom_infolog(FILT_NAME, "%s\\%S\\  subkeys:%u  values:%u  modified:%*s"
+				fcom_userlog("%s\\%S\\  subkeys:%u  values:%u  modified:%*s"
 					, ke->hkey_name, &path
 					, (uint)nf.subkeys, (uint)nf.values, (size_t)r, buf);
 			} else {
-				fcom_infolog(FILT_NAME, "%s\\%S\\", ke->hkey_name, &path);
+				fcom_userlog("%s\\%S\\", ke->hkey_name, &path);
 			}
 		}
 

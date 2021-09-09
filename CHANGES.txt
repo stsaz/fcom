@@ -8,6 +8,14 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.17 - Sep 9, 2021
+
+ + fcom list
+ * sync-snapshot: allow multi input files
+ - pic-convert, gz, crypto: parallel processing didn't work
+ - global input file problem;  --include/--exclude didn't work
+
+
 fcom v0.16 - Aug 11, 2021
 
  + Linux: fcom gsync

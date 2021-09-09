@@ -27,17 +27,8 @@ static void piconv_close(void *p, fcom_cmd *cmd);
 static int piconv_process(void *p, fcom_cmd *cmd);
 static const fcom_filter piconv_filt = { &piconv_open, &piconv_close, &piconv_process };
 
-// PIXELS CONVERTOR
-static void* pxconv_open(fcom_cmd *cmd);
-static void pxconv_close(void *p, fcom_cmd *cmd);
-static int pxconv_process(void *p, fcom_cmd *cmd);
-static const fcom_filter pxconv_filt = { &pxconv_open, &pxconv_close, &pxconv_process };
-
-// CROP
-static void* piccrop_open(fcom_cmd *cmd);
-static void piccrop_close(void *p, fcom_cmd *cmd);
-static int piccrop_process(void *p, fcom_cmd *cmd);
-static const fcom_filter piccrop_filt = { &piccrop_open, &piccrop_close, &piccrop_process };
+#include <pic/conv.h>
+#include <pic/crop.h>
 
 extern const fcom_filter bmpi_filt;
 extern const fcom_filter bmpo_filt;
@@ -117,86 +108,6 @@ static int pic_conf(const char *name, ffconf_scheme *cs)
 	else if (ffsz_eq(name, "png-out"))
 		return pngo_config(cs);
 	return 1;
-}
-
-
-struct conv {
-	uint state;
-	uint in_fmt;
-	uint out_fmt;
-	uint in_size;
-	uint out_size;
-	ffarr out;
-	ffstr in;
-};
-
-static void* pxconv_open(fcom_cmd *cmd)
-{
-	struct conv *c;
-	if (NULL == (c = ffmem_new(struct conv)))
-		return FCOM_OPEN_SYSERR;
-
-	return c;
-}
-
-static void pxconv_close(void *p, fcom_cmd *cmd)
-{
-	struct conv *c = p;
-	ffarr_free(&c->out);
-	ffmem_free(c);
-}
-
-static int pxconv_process(void *p, fcom_cmd *cmd)
-{
-	struct conv *c = p;
-	uint pixels;
-	enum { CONV_PREP, CONV_PROC };
-
-	if (cmd->flags & FCOM_CMD_FWD) {
-		c->in = cmd->in;
-	}
-
-	switch (c->state) {
-	case CONV_PREP: {
-		uint linesize;
-		c->in_fmt = cmd->pic.format;
-		c->in_size = ffpic_bits(c->in_fmt) / 8;
-		c->out_fmt = cmd->pic.out_format;
-		c->out_size = ffpic_bits(c->out_fmt) / 8;
-		cmd->pic.format = c->out_fmt;
-		linesize = cmd->pic.width * c->out_size;
-
-		if (0 != ffpic_convert(c->in_fmt, NULL, c->out_fmt, NULL, 0)) {
-			fcom_errlog("pic.pxconv", "unsupported conversion: %s -> %s"
-				, ffpic_fmtstr(c->in_fmt), ffpic_fmtstr(c->out_fmt));
-			return FCOM_ERR;
-		}
-
-		fcom_dbglog(0, "pic.pxconv", "conversion: %s -> %s"
-			, ffpic_fmtstr(c->in_fmt), ffpic_fmtstr(c->out_fmt));
-
-		if (NULL == ffarr_alloc(&c->out, linesize))
-			return FCOM_SYSERR;
-		c->state = CONV_PROC;
-		break;
-	}
-
-	case CONV_PROC:
-		break;
-	}
-
-	if (c->in.len == 0) {
-		if (cmd->flags & FCOM_CMD_FIRST)
-			return FCOM_DONE;
-		return FCOM_MORE;
-	}
-
-	pixels = ffmin(c->in.len / c->in_size, c->out.cap / c->out_size);
-	ffpic_convert(c->in_fmt, c->in.ptr, c->out_fmt, c->out.ptr, pixels);
-
-	ffstr_shift(&c->in, pixels * c->in_size);
-	ffstr_set(&cmd->out, c->out.ptr, pixels * c->out_size);
-	return FCOM_DATA;
 }
 
 
@@ -403,62 +314,6 @@ static int piconv_process(void *p, fcom_cmd *cmd)
 	}
 
 	return FCOM_ASYNC;
-}
-
-#undef FILT_NAME
-
-
-#define FILT_NAME  "pic.crop"
-
-struct piccrop {
-	uint height;
-};
-
-static void* piccrop_open(fcom_cmd *cmd)
-{
-	struct piccrop *c = ffmem_new(struct piccrop);
-	if (c == NULL)
-		return FCOM_OPEN_SYSERR;
-	if (cmd->crop.width != 0)
-		cmd->pic.width = cmd->crop.width;
-	if (cmd->crop.height != 0)
-		cmd->pic.height = cmd->crop.height;
-	return c;
-}
-
-static void piccrop_close(void *p, fcom_cmd *cmd)
-{
-	struct piccrop *c = p;
-	ffmem_free(c);
-}
-
-static int piccrop_process(void *p, fcom_cmd *cmd)
-{
-	struct piccrop *c = p;
-
-	if (!(cmd->flags & FCOM_CMD_FWD)) {
-		if (cmd->flags & FCOM_CMD_FIRST)
-			return FCOM_OUTPUTDONE;
-		if (c->height == cmd->crop.height)
-			return FCOM_OUTPUTDONE;
-		return FCOM_MORE;
-	}
-
-	if (cmd->in.len == 0)
-		return FCOM_OUTPUTDONE;
-
-	ffstr d;
-	if (cmd->crop.width != 0) {
-		if (0 != ffpic_cut(cmd->pic.format, cmd->in.ptr, cmd->in.len, 0, cmd->crop.width, &d)) {
-			fcom_errlog(FILT_NAME, "ffpic_cut() failed", 0);
-			return FCOM_ERR;
-		}
-		cmd->out = d;
-	} else
-		cmd->out = cmd->in;
-	c->height++;
-	fcom_dbglog(0, FILT_NAME, "%u/%u", c->height, cmd->crop.height);
-	return FCOM_DATA;
 }
 
 #undef FILT_NAME

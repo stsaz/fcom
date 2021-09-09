@@ -103,6 +103,9 @@ do
 		$FCOM decrypt --password=123456 $TESTDIR/fcom-encrypt -o $TESTDIR/fcom-decrypt
 		diff ./fcom $TESTDIR/fcom-decrypt
 
+	else
+		echo "Invalid command: $CMD"
+
 	fi
 
 done

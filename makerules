@@ -18,7 +18,11 @@ $(OBJ_DIR)/%.o: $(SRCDIR)/%.c $(SRCDIR)/*.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
 $(OBJ_DIR)/%.o: $(SRCDIR)/arc/%.c $(SRCDIR)/arc/*.h $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
-$(OBJ_DIR)/%.o: $(SRCDIR)/pic/%.c $(SRCDIR)/fcom.h $(FF_HDR)
+$(OBJ_DIR)/%.o: $(SRCDIR)/fileops/%.c $(SRCDIR)/fileops/*.h $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
+$(OBJ_DIR)/%.o: $(SRCDIR)/pic/%.c $(SRCDIR)/pic/*.h $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
+$(OBJ_DIR)/%.o: $(SRCDIR)/text/%.c $(SRCDIR)/text/*.h $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
 
 $(RES): $(PROJDIR)/res/fcom.rc $(PROJDIR)/res/fcom.exe.manifest $(PROJDIR)/res/fcom.ico
