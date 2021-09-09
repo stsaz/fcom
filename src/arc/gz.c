@@ -41,7 +41,6 @@ const fcom_filter ungz1_filt = { &ungz1_open, &ungz1_close, &ungz1_process };
 #define FILT_NAME  "arc.gz"
 
 typedef struct gzip {
-	ffarr fn;
 	fcom_cmd *cmd;
 	ffatomic nsubtasks;
 	uint close :1;
@@ -52,17 +51,7 @@ static void* gzip_open(fcom_cmd *cmd)
 	gzip *g;
 	if (NULL == (g = ffmem_new(gzip)))
 		return FCOM_OPEN_SYSERR;
-
-	if (NULL == ffarr_alloc(&g->fn, 1024)) {
-		fcom_syserrlog(FILT_NAME, "%s", ffmem_alloc_S);
-		goto err;
-	}
-
 	return g;
-
-err:
-	gzip_close(g, cmd);
-	return FCOM_OPEN_SYSERR;
 }
 
 static void gzip_close(void *p, fcom_cmd *cmd)
@@ -75,40 +64,24 @@ static void gzip_close(void *p, fcom_cmd *cmd)
 		return;
 	}
 
-	ffarr_free(&g->fn);
 	ffmem_free(g);
 }
 
-static int gzip_process1(gzip *g, fcom_cmd *cmd, const char *ifn, const char *ofn);
+static int gzip_process1(gzip *g, fcom_cmd *cmd, const char *ifn);
 
 static int gzip_process(void *p, fcom_cmd *cmd)
 {
 	gzip *g = p;
-	const char *ifn, *ofn;
+	const char *ifn;
 
 	for (;;) {
-		if (NULL == (ifn = com->arg_next(cmd, 0))) {
+		if (NULL == (ifn = com->arg_next(cmd, FCOM_CMD_ARG_FILE))) {
 			if (0 != ffatom_get(&g->nsubtasks))
 				return FCOM_ASYNC;
 			return FCOM_DONE;
 		}
 
-		ofn = cmd->output.fn;
-		if (cmd->output.fn == NULL) {
-			ffstr outdir, name;
-			ffstr_setz(&name, ifn);
-			if (cmd->outdir != NULL)
-				ffstr_setz(&outdir, cmd->outdir);
-			else
-				ffstr_setz(&outdir, ".");
-			ffpath_split2(name.ptr, name.len, NULL, &name);
-			g->fn.len = 0;
-			if (0 == ffstr_catfmt(&g->fn, "%S/%S.gz%Z", &outdir, &name))
-				return FCOM_SYSERR;
-			ofn = g->fn.ptr;
-		}
-
-		int r = gzip_process1(g, cmd, ifn, ofn);
+		int r = gzip_process1(g, cmd, ifn);
 		if (r != FCOM_MORE)
 			return r;
 
@@ -119,12 +92,25 @@ static int gzip_process(void *p, fcom_cmd *cmd)
 	return FCOM_ASYNC;
 }
 
-static void gzip_task_done(fcom_cmd *cmd, uint sig);
-static const struct fcom_cmd_mon gzip_mon_iface = { &gzip_task_done };
+struct gztask {
+	struct gzip *c;
+	char *ifn, *ofn;
+};
 
-static void gzip_task_done(fcom_cmd *cmd, uint sig)
+void gztask_free(struct gztask *t)
 {
-	struct gzip *g = (void*)com->ctrl(cmd, FCOM_CMD_UDATA);
+	ffmem_free(t->ifn);
+	ffmem_free(t->ofn);
+	ffmem_free(t);
+}
+
+static void gzip_task_done(fcom_cmd *cmd, uint sig, void *param)
+{
+	struct gztask *t = param;
+	struct gzip *g = t->c;
+
+	gztask_free(t);
+
 	if (0 == ffatom_decret(&g->nsubtasks) && g->close) {
 		gzip_close(g, NULL);
 		return;
@@ -140,35 +126,59 @@ static void fcom_cmd_set(fcom_cmd *dst, const fcom_cmd *src)
 	ffstr_null(&dst->out);
 }
 
-static int gzip_process1(gzip *g, fcom_cmd *cmd, const char *ifn, const char *ofn)
+static int gzip_process1(gzip *g, fcom_cmd *cmd, const char *ifn)
 {
+	struct gztask *t = ffmem_new(struct gztask);
 	void *nc;
 
+	ffarr buf = {};
 	fcom_cmd ncmd = {};
 	fcom_cmd_set(&ncmd, cmd);
 	ncmd.name = "arc.gz1";
 	ncmd.flags = FCOM_CMD_EMPTY | FCOM_CMD_INTENSE;
-	ncmd.input.fn = ifn;
-	ncmd.output.fn = ofn;
+	t->ifn = ffsz_dup(ifn);
+	ncmd.input.fn = t->ifn;
 	ncmd.out_fn_copy = 1;
 
+	const char *ofn = cmd->output.fn;
+	if (cmd->output.fn == NULL) {
+		ffstr outdir, name;
+		ffstr_setz(&name, ifn);
+		if (cmd->outdir != NULL)
+			ffstr_setz(&outdir, cmd->outdir);
+		else
+			ffstr_setz(&outdir, ".");
+		ffpath_split2(name.ptr, name.len, NULL, &name);
+		if (0 == ffstr_catfmt(&buf, "%S/%S.gz%Z", &outdir, &name))
+			goto err;
+		t->ofn = buf.ptr;
+		ffarr_null(&buf);
+		ofn = t->ofn;
+	}
+	ncmd.output.fn = ofn;
+
 	if (NULL == (nc = com->create(&ncmd)))
-		return FCOM_ERR;
+		goto err;
 
 	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_IN(&ncmd));
 	if (NULL == (void*)com->ctrl(nc, FCOM_CMD_FILTADD_LAST, "arc.gz1")) {
 		com->close(nc);
-		return FCOM_ERR;
+		goto err;
 	}
 	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(&ncmd));
 
+	t->c = g;
 	g->cmd = cmd;
-	com->fcom_cmd_monitor(nc, &gzip_mon_iface);
-	com->ctrl(nc, FCOM_CMD_SETUDATA, g);
+	com->fcom_cmd_monitor_func(nc, gzip_task_done, t);
 	ffatom_inc(&g->nsubtasks);
 
 	com->ctrl(nc, FCOM_CMD_RUNASYNC);
 	return FCOM_MORE;
+
+err:
+	ffarr_free(&buf);
+	gztask_free(t);
+	return FCOM_ERR;
 }
 
 #undef FILT_NAME

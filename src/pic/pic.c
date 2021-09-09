@@ -204,7 +204,6 @@ static int pxconv_process(void *p, fcom_cmd *cmd)
 
 struct piconv {
 	fcom_cmd *cmd;
-	ffarr fn;
 	ffatomic nsubtasks;
 	uint close :1;
 };
@@ -228,7 +227,6 @@ static void piconv_close(void *p, fcom_cmd *cmd)
 		return;
 	}
 
-	ffarr_free(&c->fn);
 	ffmem_free(c);
 }
 
@@ -259,12 +257,22 @@ static void path_split3(const char *fullname, size_t len, ffstr *path, ffstr *na
 	ffs_split2(name->ptr, name->len, dot, name, ext);
 }
 
-static void picconv_task_done(fcom_cmd *cmd, uint sig);
-static const struct fcom_cmd_mon picconv_mon_iface = { &picconv_task_done };
+struct pictask {
+	struct piconv *c;
+	char *ifn, *ofn;
+};
 
-static void picconv_task_done(fcom_cmd *cmd, uint sig)
+void pictask_free(struct pictask *t)
 {
-	struct piconv *c = (void*)com->ctrl(cmd, FCOM_CMD_UDATA);
+	ffmem_free(t->ifn);
+	ffmem_free(t->ofn);
+	ffmem_free(t);
+}
+
+static void picconv_task_done(fcom_cmd *cmd, uint sig, void *param)
+{
+	struct pictask *t = param;
+	struct piconv *c = t->c;
 
 	if (cmd->del_source && !cmd->err) {
 		char *newfn = ffsz_allocfmt("%s.deleted", cmd->input.fn);
@@ -272,6 +280,8 @@ static void picconv_task_done(fcom_cmd *cmd, uint sig)
 			fcom_syserrlog(FILT_NAME, "file rename: %s -> %s", cmd->input.fn, newfn);
 		ffmem_free(newfn);
 	}
+
+	pictask_free(t);
 
 	if (0 == ffatom_decret(&c->nsubtasks) && c->close) {
 		piconv_close(c, NULL);
@@ -292,6 +302,8 @@ static void fcom_cmd_set(fcom_cmd *dst, const fcom_cmd *src)
 Filter chain: f.in -> p.in -> [filters] -> p.out -> f.out */
 static int piconv_process1(struct piconv *c, fcom_cmd *cmd, const char *ifn)
 {
+	struct pictask *t = ffmem_new(struct pictask);
+	ffarr buf = {};
 	const char *ofn;
 	void *nc;
 	int r, ii, oi;
@@ -302,14 +314,16 @@ static int piconv_process1(struct piconv *c, fcom_cmd *cmd, const char *ifn)
 
 	if (0 > (ii = ffcharr_findsorted(exts, FFCNT(exts), sizeof(exts[0]), iext.ptr, iext.len))) {
 		fcom_errlog(FILT_NAME, "unknown picture file extension .%S", &iext);
-		return FCOM_ERR;
+		r = FCOM_ERR;
+		goto err;
 	}
 
 	fcom_cmd ncmd = {};
 	fcom_cmd_set(&ncmd, cmd);
 	ncmd.name = "pic.conv-task";
 	ncmd.flags = FCOM_CMD_EMPTY | FCOM_CMD_INTENSE;
-	ncmd.input.fn = ifn;
+	t->ifn = ffsz_dup(ifn);
+	ncmd.input.fn = t->ifn;
 
 	if (cmd->output.fn == NULL) {
 		fcom_errlog(FILT_NAME, "output file isn't set", 0);
@@ -327,17 +341,21 @@ static int piconv_process1(struct piconv *c, fcom_cmd *cmd, const char *ifn)
 
 	ofn = cmd->output.fn;
 	if (oname.len == 0) {
-		if (0 != ffpath_makefn_out(&c->fn, &idir, &iname, &odir, &oext)) {
+		if (0 != ffpath_makefn_out(&buf, &idir, &iname, &odir, &oext)) {
 			r = FCOM_SYSERR;
 			goto err;
 		}
-		ofn = c->fn.ptr;
+		t->ofn = buf.ptr;
+		ffarr_null(&buf);
+		ofn = t->ofn;
 	}
 	ncmd.output.fn = ofn;
 	ncmd.out_fn_copy = 1;
 
-	if (NULL == (nc = com->create(&ncmd)))
-		return FCOM_ERR;
+	if (NULL == (nc = com->create(&ncmd))) {
+		r = FCOM_ERR;
+		goto err;
+	}
 
 	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_IN(&ncmd));
 	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, ifilters[ii]);
@@ -347,13 +365,15 @@ static int piconv_process1(struct piconv *c, fcom_cmd *cmd, const char *ifn)
 
 	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, ofilters[oi]);
 	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(&ncmd));
-	com->fcom_cmd_monitor(nc, &picconv_mon_iface);
-	com->ctrl(nc, FCOM_CMD_SETUDATA, c);
+	t->c = c;
+	com->fcom_cmd_monitor_func(nc, picconv_task_done, t);
 	ffatom_inc(&c->nsubtasks);
 	com->ctrl(nc, FCOM_CMD_RUNASYNC);
 	return FCOM_MORE;
 
 err:
+	ffarr_free(&buf);
+	pictask_free(t);
 	return r;
 }
 

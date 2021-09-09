@@ -259,7 +259,6 @@ static int decrypt1_process(void *p, fcom_cmd *cmd)
 struct crypto {
 	ffatomic nsubtasks;
 	fcom_cmd *cmd;
-	ffvec fn;
 	uint close;
 	int err;
 };
@@ -281,13 +280,28 @@ static void crypt_close(void *p, fcom_cmd *cmd)
 		return;
 	}
 
-	ffvec_free(&c->fn);
 	ffmem_free(c);
+}
+
+struct cryptotask {
+	struct crypto *c;
+	char *ifn, *ofn;
+};
+
+void cryptotask_free(struct cryptotask *t)
+{
+	ffmem_free(t->ifn);
+	ffmem_free(t->ofn);
+	ffmem_free(t);
 }
 
 static void task_onfinish(fcom_cmd *cmd, uint sig, void *param)
 {
-	struct crypto *c = param;
+	struct cryptotask *t = param;
+	struct crypto *c = t->c;
+
+	cryptotask_free(t);
+
 	if (1 == ffatomic_fetch_add(&c->nsubtasks, -1) && c->close) {
 		crypt_close(c, NULL);
 		return;
@@ -313,7 +327,7 @@ static void path_split3(const char *fullname, size_t len, ffstr *path, ffstr *na
 }
 
 /** Make output file name */
-static const char* make_filename(struct crypto *c, const char *ifn, const char *ofn)
+static const char* make_filename(struct cryptotask *t, const char *ifn, const char *ofn)
 {
 	if (ofn == NULL) {
 		errlog("output file isn't set", 0);
@@ -328,31 +342,36 @@ static const char* make_filename(struct crypto *c, const char *ifn, const char *
 	ffstr_setz(&oname, ofn);
 	path_split3(oname.ptr, oname.len, &odir, &oname, &oext);
 	if (oname.len == 0) {
-		if (0 != ffpath_makefn_out((ffarr*)&c->fn, &idir, &iname, &odir, &oext)) {
+		ffvec buf = {};
+		if (0 != ffpath_makefn_out((ffarr*)&buf, &idir, &iname, &odir, &oext)) {
+			ffvec_free(&buf);
 			errlog("ffpath_makefn_out()", 0);
 			return NULL;
 		}
-		return c->fn.ptr;
+		t->ofn = buf.ptr;
+		return t->ofn;
 	}
 	return ofn;
 }
 
 static int crypt_process1(struct crypto *c, fcom_cmd *cmd, const char *fn)
 {
+	struct cryptotask *t = ffmem_new(struct cryptotask);
 	fcom_cmd ncmd = {};
 	fcom_cmd_set(&ncmd, cmd);
 	ncmd.name = "crypto.task";
 	ncmd.flags = FCOM_CMD_EMPTY | FCOM_CMD_INTENSE;
-	ncmd.input.fn = fn;
+	t->ifn = ffsz_dup(fn);
+	ncmd.input.fn = t->ifn;
 
-	ncmd.output.fn = make_filename(c, fn, cmd->output.fn);
+	ncmd.output.fn = make_filename(t, fn, cmd->output.fn);
 	if (ncmd.output.fn == NULL)
-		return FCOM_ERR;
+		goto err;
 	ncmd.out_fn_copy = 1;
 
 	fcom_cmd *nc;
 	if (NULL == (nc = com->create(&ncmd)))
-		return FCOM_ERR;
+		goto err;
 
 	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_IN(nc));
 
@@ -363,10 +382,15 @@ static int crypt_process1(struct crypto *c, fcom_cmd *cmd, const char *fn)
 
 	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(nc));
 
-	com->fcom_cmd_monitor_func(nc, task_onfinish, c);
+	t->c = c;
+	com->fcom_cmd_monitor_func(nc, task_onfinish, t);
 	ffatomic_fetch_add(&c->nsubtasks, 1);
 	com->ctrl(nc, FCOM_CMD_RUNASYNC);
 	return FCOM_MORE;
+
+err:
+	cryptotask_free(t);
+	return FCOM_ERR;
 }
 
 static int crypt_process(void *p, fcom_cmd *cmd)
