@@ -53,6 +53,10 @@ static void* iso_open(fcom_cmd *cmd)
 static void iso_close(void *p, fcom_cmd *cmd)
 {
 	struct iso *iso = p;
+	char **name;
+	FFSLICE_WALK(&iso->fnames, name) {
+		ffmem_free(*name);
+	}
 	ffarr_free(&iso->fnames);
 	ffmem_free(iso->volname);
 	ffmem_free(iso);
@@ -83,7 +87,7 @@ again:
 			goto again;
 		}
 		const char **p = (void*)ffarr_pushgrowT(&iso->fnames, 64, char*);
-		*p = fn;
+		*p = ffsz_dup(fn);
 
 		fffileinfo fi;
 		if (0 != fffile_infofn(fn, &fi))
