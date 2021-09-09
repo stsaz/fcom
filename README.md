@@ -23,6 +23,7 @@ FEATURES
 	* `fcom encrypt` - encrypt files
 	* `fcom decrypt` - decrypt files
 	* `fcom hexprint` - print data in hexadecimal/text format
+	* `fcom list` - list input file names
 * Text files
 	* `fcom textcount` - show information about text files
 	* `fcom utf8` - convert text files to UTF-8

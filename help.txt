@@ -17,6 +17,7 @@ OPERATION
  disk
  mount DISKNAME -o DIR
  hexprint FILE...
+ list FILE...
 
 Pack files (.gz, .tar, .zip, .iso):
  gz FILE... [--out=FILE] [--deflate-level=INT]
