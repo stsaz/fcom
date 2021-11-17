@@ -94,7 +94,7 @@ static int arc_sig(uint signo)
 		ffmem_init();
 		com = core->iface("core.com");
 		const struct cmd *c;
-		FFARR_WALKNT(cmds, FFCNT(cmds), c, struct cmd) {
+		FFARRS_FOREACH(cmds, c) {
 			if (c->mod != NULL && 0 != com->reg(c->name, c->mod))
 				return -1;
 		}

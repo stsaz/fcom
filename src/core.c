@@ -121,46 +121,8 @@ static struct mod* mod_load(const ffstr *soname);
 static void mods_destroy(void);
 static void on_posted(void *);
 
-int conf_workers(ffconf_scheme *cs, struct fcom_conf *conf, int64 val)
-{
-	if (conf->workers == 0)
-		conf->workers = val;
-	return 0;
-}
-int conf_codepage(ffconf_scheme *cs, struct fcom_conf *conf, const ffstr *val)
-{
-	static const char *const cp_str[] = {
-		"win1251", // FFUNICODE_WIN1251
-		"win1252", // FFUNICODE_WIN1252
-		"win866", // FFUNICODE_WIN866
-	};
-	int cp = ffszarr_ifindsorted(cp_str, FF_COUNT(cp_str), val->ptr, val->len);
-	if (cp < 0)
-		return FFCONF_EBADVAL;
-	conf->codepage = cp + _FFUNICODE_CP_BEGIN;
-	return 0;
-}
-static int conf_mod(ffconf_scheme *cs, void *obj, const ffstr *val)
-{
-	if (0 != mod_add(val, NULL))
-		return FFCONF_EBADVAL;
-	return 0;
-}
-static int conf_modconf(ffconf_scheme *cs, void *obj)
-{
-	const ffstr *name = ffconf_scheme_objval(cs);
-	if (0 != mod_add(name, cs))
-		return FFCONF_EBADVAL;
-	return 0;
-}
-static const ffconf_arg conf_args[] = {
-	{ "codepage",	FFCONF_TSTR, (ffsize)conf_codepage },
-	{ "workers",	FFCONF_TINT32, (ffsize)conf_workers },
-	{ "mod_conf",	FFCONF_TOBJ | FFCONF_FNOTEMPTY | FFCONF_FMULTI, (ffsize)conf_modconf },
-	{ "mod",	FFCONF_TSTR | FFCONF_FNOTEMPTY | FFCONF_FMULTI, (ffsize)conf_mod },
-	{}
-};
-
+#include <core-conf.h>
+#include <core-mod.h>
 
 static int set_rootdir(char **argv)
 {
@@ -252,14 +214,14 @@ static void conf_destroy(struct fcom_conf *c)
 void core_free(void)
 {
 	struct worker *w;
-	FFARR_WALKT(&g->workers, w, struct worker) {
+	FFSLICE_WALK(&g->workers, w) {
 		if (w->init)
 			work_destroy(w);
 	}
 	ffarr_free(&g->workers);
 
 	struct iface *pif;
-	FFARR_WALKT(&g->ifaces, pif, struct iface) {
+	FFSLICE_WALK(&g->ifaces, pif) {
 		ffmem_safefree(pif->name);
 	}
 	ffarr_free(&g->ifaces);
@@ -292,36 +254,6 @@ static void core_log(uint flags, const char *fmt, ...)
 	va_end(va);
 }
 
-static int readconf(const char *fn)
-{
-	char *fullfn;
-	if (NULL == (fullfn = core_getpath(fn, ffsz_len(fn))))
-		goto end;
-
-	dbglog(0, "reading config file %s", fullfn);
-
-	ffstr errmsg = {};
-	int r = ffconf_parse_file(conf_args, &g->conf, fullfn, 0, &errmsg);
-	if (r != 0) {
-		errlog("parse config: %s: %S", fullfn, &errmsg);
-		goto end;
-	}
-
-	r = 0;
-
-end:
-	ffstr_free(&errmsg);
-	ffmem_safefree(fullfn);
-	return r;
-}
-
-static int setconf(fcom_conf *conf)
-{
-	g->conf.loglev = conf->loglev;
-	g->conf.workers = conf->workers;
-	return 0;
-}
-
 static char* core_getpath(const char *name, size_t len)
 {
 	ffarr s = {0};
@@ -346,146 +278,6 @@ err:
 static char* core_env_expand(char *dst, size_t cap, const char *src)
 {
 	return ffenv_expand(&g->env, dst, cap, src);
-}
-
-static const void* core_iface(const char *nm)
-{
-	struct iface *pif;
-	FFARR_WALKT(&g->ifaces, pif, struct iface) {
-		if (ffsz_eq(pif->name, nm))
-			return pif->iface;
-	}
-	errlog("no such interface: %s", nm);
-	return NULL;
-}
-
-static void mod_destroy(struct mod *m)
-{
-	FF_SAFECLOSE(m->dl, NULL, ffdl_close);
-	ffmem_safefree(m->name);
-}
-
-static void mods_destroy(void)
-{
-	struct mod *m;
-	FFARR_WALKT(&g->mods, m, struct mod) {
-		mod_destroy(m);
-	}
-	ffarr_free(&g->mods);
-}
-
-static int mods_sig(uint sig)
-{
-	int r = 0;
-	struct mod *m;
-	FFARR_WALKT(&g->mods, m, struct mod) {
-		if (0 != m->mod->sig(sig))
-			r = 1;
-	}
-	return r;
-}
-
-static struct mod* mod_find(const ffstr *soname)
-{
-	struct mod *m;
-	FFARR_WALKT(&g->mods, m, struct mod) {
-		if (ffstr_eqz(soname, m->name))
-			return m;
-	}
-	return NULL;
-}
-
-static struct mod* mod_load(const ffstr *soname)
-{
-	ffdl dl = NULL;
-	fcom_getmod_t getmod;
-	struct mod *m, *rc = NULL;
-	char *fn = NULL;
-
-	if (NULL == (m = ffarr_pushgrowT(&g->mods, 16, struct mod)))
-		goto fail;
-	ffmem_tzero(m);
-	if (NULL == (m->name = ffsz_alcopy(soname->ptr, soname->len)))
-		goto fail;
-
-	if (ffstr_eqcz(soname, "core")) {
-		getmod = &coremod_getmod;
-
-	} else {
-		if (NULL == (fn = ffsz_alfmt("%Smod%c%S." FFDL_EXT, &g->rootdir, FFPATH_SLASH, soname)))
-			goto fail;
-
-		dbglog(0, "loading module %s", fn);
-		if (NULL == (dl = ffdl_open(fn, FFDL_SELFDIR))) {
-			errlog("loading %s: %s", fn, ffdl_errstr());
-			goto fail;
-		}
-		if (NULL == (getmod = (void*)ffdl_addr(dl, FCOM_MODFUNCNAME))) {
-			errlog("resolving '%s' from %s: %s", FCOM_MODFUNCNAME, fn, ffdl_errstr());
-			goto fail;
-		}
-	}
-
-	if (NULL == (m->mod = getmod(core)))
-		goto fail;
-
-	if (0 != m->mod->sig(FCOM_SIGINIT))
-		goto fail;
-	m->dl = dl;
-	rc = m;
-
-fail:
-	if (rc == NULL) {
-		mod_destroy(m);
-		g->mods.len--;
-		FF_SAFECLOSE(dl, NULL, ffdl_close);
-	}
-	ffmem_safefree(fn);
-	return rc;
-}
-
-static int mod_add(const ffstr *name, ffconf_scheme *cs)
-{
-	ffstr soname, iface;
-	char fn[128];
-	struct mod *m;
-	struct iface *pif = NULL;
-
-	ffs_split2by(name->ptr, name->len, '.', &soname, &iface);
-	if (soname.len == 0 || iface.len == 0) {
-		fferr_set(EINVAL);
-		goto fail;
-	}
-
-	if (NULL == (m = mod_find(&soname))) {
-		if (NULL == (m = mod_load(&soname)))
-			goto fail;
-	}
-
-	if (0 == ffs_fmt(fn, fn + sizeof(fn), "%S%Z", &iface))
-		goto fail;
-
-	if (cs != NULL) {
-		if (m->mod->conf == NULL)
-			goto fail;
-		if (0 != m->mod->conf(fn, cs))
-			goto fail;
-	}
-
-	if (NULL == (pif = ffarr_pushgrowT(&g->ifaces, 16, struct iface)))
-		goto fail;
-	ffmem_tzero(pif);
-
-	if (NULL == (pif->iface = m->mod->iface(fn)))
-		goto fail;
-
-	if (NULL == (pif->name = ffsz_alcopy(name->ptr, name->len)))
-		goto fail;
-	pif->m = m;
-	return 0;
-
-fail:
-	return -1;
 }
 
 static const char* const cmd_str[] = {
@@ -716,7 +508,7 @@ static uint work_assign(uint flags)
 	struct worker *w, *ww = (void*)g->workers.ptr;
 	uint id = 0, j = -1;
 
-	FFARR_WALKT(&g->workers, w, struct worker) {
+	FFSLICE_WALK(&g->workers, w) {
 		uint nj = ffatom_get(&w->njobs);
 		if (nj < j) {
 			id = w - ww;
@@ -754,7 +546,7 @@ static void work_release(uint wid, uint flags)
 static uint work_avail()
 {
 	struct worker *w;
-	FFARR_WALKT(&g->workers, w, struct worker) {
+	FFSLICE_WALK(&g->workers, w) {
 		if (ffatom_get(&w->njobs) == 0)
 			return 1;
 	}

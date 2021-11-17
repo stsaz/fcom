@@ -21,7 +21,6 @@ struct unzip1 {
 	ffzipread zip;
 	ffarr fn;
 	ffstr in;
-	int skipfile;
 	uint64 total_comp, total_uncomp;
 };
 
@@ -158,8 +157,9 @@ again:
 			const ffzipread_fileinfo_t *f = ffzipread_fileinfo(&z->zip);
 			dbglog0("file header for %S", &f->name);
 			if (!arc_need_file(cmd, &f->name)) {
-				z->skipfile = 1;
-				break;
+				z->state = I_NEXTFILE;
+				z->ifile++;
+				goto again;
 			}
 
 			if (cmd->output.fn == NULL) {
@@ -189,11 +189,6 @@ again:
 		case FFZIPREAD_FILEDONE: {
 			z->state = I_NEXTFILE;
 			z->ifile++;
-
-			if (z->skipfile) {
-				z->skipfile = 0;
-				goto again;
-			}
 
 			const ffzipread_fileinfo_t *f = ffzipread_fileinfo(&z->zip);
 			dbglog0("%S: %U => %U (%u%%)"

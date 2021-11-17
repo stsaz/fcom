@@ -3,38 +3,42 @@ fcom OPERATION [OPTIONS] ...
 OPERATION
 
  copy FILE -o FILE [--resume]
- touch FILE... [--date=DATE] [--date-as=FILE]
- rename FILE... --replace='SEARCH/REPLACE'
+ crc FILE...
  encrypt|decrypt --password=STR FILE... -o FILE...
+ hexprint FILE...
+ list FILE...
+ mount DISKNAME -o DIR
+ rename FILE... --replace='SEARCH/REPLACE'
  sync (DIR | FILE.txt) -o DIR
  sync-snapshot FILE -o FILE.txt
  textcount FILE...
+ touch FILE... [--date=DATE] [--date-as=FILE]
  utf8 FILE... -o FILE
- crc FILE...
- wregfind STR... [--member=KEY]...
- screenshots
- gsync
+
+Windows-only:
  disk
- mount DISKNAME -o DIR
- hexprint FILE...
- list FILE...
+ wregfind STR... [--member=KEY]...
+
+GUI:
+ gsync
+ screenshots
 
 Pack files (.gz, .tar, .zip, .iso):
  gz FILE... [--out=FILE] [--deflate-level=INT]
- zst FILE... [--out=FILE] [--zstd-level=INT] [--zstd-workers=INT]
- tar FILE... --out=FILE(.tar | .tar.gz | .tgz | .tar.zst) [--deflate-level=INT] [--zstd-level=INT] [--zstd-workers=INT]
- zip FILE... --out=FILE [--deflate-level=INT] [--zstd-level=INT] [--zstd-workers=INT]
  iso DIR --out=FILE
+ tar FILE... --out=FILE(.tar | .tar.gz | .tgz | .tar.zst) [--deflate-level=INT] [--zstd-level=INT] [--zstd-workers=INT]
+ zip FILE... --out=FILE [--compression-method=STR] [--deflate-level=INT] [--zstd-level=INT] [--zstd-workers=INT]
+ zst FILE... [--out=FILE] [--zstd-level=INT] [--zstd-workers=INT]
 
 Unpack archives (.gz, .xz, .zst, .tar, .zip, .zipx, .7z, .iso, .ico):
  unpack FILE... [--out=FILE] [--member=FILE]... [--show]
- ungz FILE... [--out=FILE]
- unzst FILE... [--out=FILE]
- unxz FILE... [--out=FILE]
- untar FILE(.tar | .tar.gz | .tgz | .tar.zst)... [--out=FILE] [--member=FILE]... [--show]
- unzip FILE... [--out=FILE] [--member=WILDCARD]... [--show]
  un7z FILE... [--out=FILE] [--member=FILE]... [--show]
+ ungz FILE... [--out=FILE]
  uniso FILE... [--out=FILE] [--member=FILE]... [--show]
+ untar FILE(.tar | .tar.gz | .tgz | .tar.zst)... [--out=FILE] [--member=FILE]... [--show]
+ unxz FILE... [--out=FILE]
+ unzip FILE... [--out=FILE] [--member=WILDCARD]... [--show]
+ unzst FILE... [--out=FILE]
 
 Convert pictures (.bmp, .jpg, .png):
  pic-convert FILE... --out=FILE [--colors=INT] [--crop=INT:INT]
