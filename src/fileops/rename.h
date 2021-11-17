@@ -21,7 +21,7 @@ static int f_rename_process(void *p, fcom_cmd *cmd)
 	}
 
 	int r;
-	ffarr newfn = {};
+	ffvec newfn = {};
 	const char *fn;
 	ffstr sfn;
 
@@ -32,21 +32,11 @@ static int f_rename_process(void *p, fcom_cmd *cmd)
 		}
 
 		ffstr_setz(&sfn, fn);
-
-		if (-1 == ffstr_find(&sfn, cmd->search.ptr, cmd->search.len))
+		newfn.len = 0;
+		if (0 == ffstr_growadd_replace((ffstr*)&newfn, &newfn.cap, &sfn, &cmd->search, &cmd->replace, FFSTR_REPLACE_ICASE | FFSTR_REPLACE_ALL))
 			continue;
 
-		size_t n = sfn.len - cmd->search.len + cmd->replace.len;
-		if (NULL == ffarr_realloc(&newfn, n + 1)) {
-			r = FCOM_SYSERR;
-			goto done;
-		}
-
-		r = ffstr_replace((ffstr*)&newfn, &sfn, &cmd->search, &cmd->replace, FFSTR_REPL_ICASE);
-		if (r < 0)
-			continue;
-
-		if (NULL == ffarr_append(&newfn, "", 1))
+		if (0 == ffvec_addchar(&newfn, '\0'))
 			return FCOM_SYSERR;
 
 		if (!cmd->read_only
@@ -61,7 +51,7 @@ static int f_rename_process(void *p, fcom_cmd *cmd)
 	}
 
 done:
-	ffarr_free(&newfn);
+	ffvec_free(&newfn);
 	return r;
 }
 #undef FILT_NAME
