@@ -747,7 +747,7 @@ void sync2(struct sync_s *sc)
 
 		case FSYNC_ST_DEST:
 			fnR = _fsync->get(FSYNC_FULLNAME, c->right);
-			fops->del(fnR, FOP_DIR);
+			fops->del(fnR, FOP_TRASH);
 			verblog("delete: %s", fnR);
 			break;
 
@@ -861,14 +861,7 @@ static void fop(void *param)
 	}
 
 	if (vec.len != 0) {
-		if (0) {
-			fops->del_many(vec.ptr, vec.len, FOP_TRASH);
-		} else {
-			char **s;
-			FFSLICE_WALK(&vec, s) {
-				fops->del(*s, FOP_DIR);
-			}
-		}
+		fops->del_many(vec.ptr, vec.len, FOP_TRASH);
 	} else if (buf.len != 0) {
 		ffui_clipboard_settextstr(&buf);
 	}

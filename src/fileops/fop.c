@@ -162,7 +162,7 @@ err:
 
 /** Exec and wait
 Return exit code or -1 on error */
-static inline int ffps_exec_wait(const char *filename, const char **argv, const char **env)
+static inline int _ffui_ps_exec_wait(const char *filename, const char **argv, const char **env)
 {
 	ffps_execinfo info = {};
 	info.argv = argv;
@@ -178,32 +178,23 @@ static inline int ffps_exec_wait(const char *filename, const char **argv, const 
 	return code;
 }
 
-static inline int ffui_kde_trash(const char **fn, ffsize n)
+/** Move files to Trash */
+static inline int ffui_glib_trash(const char **names, ffsize n)
 {
-	if (n == 0)
-		return 0;
 	ffvec v = {};
-	ffvec_allocT(&v, 4 + n, char*);
-	*ffvec_pushT(&v, char*) = "/usr/bin/kioclient5";
-	*ffvec_pushT(&v, char*) = "move";
+	if (NULL == ffvec_allocT(&v, 3 + n, char*))
+		return -1;
+	char **p = (char**)v.ptr;
+	*p++ = "/usr/bin/gio";
+	*p++ = "trash";
 	for (ffsize i = 0;  i != n;  i++) {
-		*ffvec_pushT(&v, const char*) = fn[i];
+		*p++ = (char*)names[i];
 	}
-	*ffvec_pushT(&v, char*) = "trash:/";
-	*ffvec_pushT(&v, char*) = NULL;
-	return ffps_exec_wait(((char**)v.ptr)[0], (const char**)v.ptr, (const char**)environ);
+	*p++ = NULL;
+	int r = _ffui_ps_exec_wait(((char**)v.ptr)[0], (const char**)v.ptr, (const char**)environ);
+	ffvec_free(&v);
+	return r;
 }
-
-/*static inline int ffui_gnome_trash(const char *fn)
-{
-	const char *args[] = {
-		"/usr/bin/gio",
-		"trash",
-		fn,
-		NULL,
-	};
-	return ffps_exec_wait(args[0], args, (const char**)environ);
-}*/
 
 int fop_del_many(const char **names, ffsize n, uint flags)
 {
@@ -215,7 +206,7 @@ int fop_del_many(const char **names, ffsize n, uint flags)
 		if (0 != ffui_fop_del(names, n, FFUI_FOP_ALLOWUNDO))
 			goto err;
 #else
-		if (0 != ffui_kde_trash(names, n))
+		if (0 != ffui_glib_trash(names, n))
 			goto err;
 #endif
 		goto done;
@@ -242,7 +233,7 @@ static int fop_del(const char *fn, uint flags)
 		if (0 != ffui_fop_del(&fn, 1, FFUI_FOP_ALLOWUNDO))
 			goto err;
 #else
-		if (0 != ffui_kde_trash(&fn, 1))
+		if (0 != ffui_glib_trash(&fn, 1))
 			goto err;
 #endif
 		goto done;
