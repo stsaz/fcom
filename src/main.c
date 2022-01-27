@@ -28,11 +28,14 @@ struct cmdconf {
 	ffarr members; //char*[]
 	ffarr2 include_files; //ffstr[]
 	ffarr2 exclude_files; //ffstr[]
+	char *include_files_data, *exclude_files_data;
 
 	ffarr2 servers; //ffstr[]
+	char *servers_data;
 
 	ffstr search;
 	ffstr replace;
+	char *sr_data;
 
 	uint crop_width;
 	uint crop_height;
@@ -225,6 +228,7 @@ static void cmds_free(void)
 		ffmem_free(ent);
 	}
 
+	struct cmdconf *c = &g->conf;
 	ffmem_safefree(g->conf.out);
 	ffmem_safefree(g->conf.outdir);
 	ffmem_safefree(g->conf.date_as_fn);
@@ -232,7 +236,10 @@ static void cmds_free(void)
 	ffslice_free(&g->conf.include_files);
 	ffslice_free(&g->conf.exclude_files);
 	ffslice_free(&g->conf.servers);
-	ffstr_free(&g->conf.search);
+	ffmem_free(c->servers_data);
+	ffmem_free(c->sr_data);
+	ffmem_free(c->include_files_data);
+	ffmem_free(c->exclude_files_data);
 
 	char **ps;
 	FFARR_WALKT(&g->conf.members, ps, char*)

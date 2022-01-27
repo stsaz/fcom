@@ -30,8 +30,7 @@ $(RES): $(PROJDIR)/res/fcom.rc $(PROJDIR)/res/fcom.exe.manifest $(PROJDIR)/res/f
 
 
 BIN_O := $(OBJ_DIR)/main.o \
-	$(FF_O) \
-	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffpsarg.o
+	$(FF_O)
 
 ifeq ($(OS),win)
 BIN_O += $(RES)
@@ -52,8 +51,7 @@ CORE_O := \
 	$(FF_OBJ_DIR)/fftmr.o \
 	$(FF_OBJ_DIR)/fffileread.o \
 	$(FF_OBJ_DIR)/fffilewrite.o \
-	$(FF_OBJ_DIR)/ffthpool.o \
-	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffpsarg.o $(FF_OBJ_DIR)/ffconf.o
+	$(FF_OBJ_DIR)/ffthpool.o
 
 core.$(SO): $(CORE_O)
 	$(LD) -shared $(CORE_O) $(LDFLAGS) $(LD_LDL) $(LD_LPTHREAD) -o$@
