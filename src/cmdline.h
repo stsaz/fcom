@@ -170,14 +170,15 @@ done:
 static int arg_date(ffcmdarg_scheme *as, void *obj, const ffstr *val)
 {
 	struct cmdconf *c = obj;
-	ffdtm dt;
-	if (val->len == fftime_fromstr(&dt, val->ptr, val->len, FFTIME_YMD))
+	ffdatetime dt;
+	if (val->len == fftime_fromstr1(&dt, val->ptr, val->len, FFTIME_YMD))
 	{}
-	else if (val->len == fftime_fromstr(&dt, val->ptr, val->len, FFTIME_DATE_YMD))
+	else if (val->len == fftime_fromstr1(&dt, val->ptr, val->len, FFTIME_DATE_YMD))
 	{}
 	else
 		return FFCMDARG_ERROR;
-	fftime_join(&c->mtime, &dt, FFTIME_TZLOCAL);
+	fftime_join1(&c->mtime, &dt);
+	c->mtime.sec -= FFTIME_1970_SECONDS + core->conf->tz.real_offset;
 	return 0;
 }
 

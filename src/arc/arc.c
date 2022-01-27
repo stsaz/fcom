@@ -91,7 +91,6 @@ static int arc_sig(uint signo)
 {
 	switch (signo) {
 	case FCOM_SIGINIT: {
-		ffmem_init();
 		com = core->iface("core.com");
 		const struct cmd *c;
 		FFARRS_FOREACH(cmds, c) {
@@ -145,7 +144,7 @@ int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf)
 		ffstr_set(&in, p, r);
 	}
 
-	if (0 == (n = ffpath_norm(p, end - p, in.ptr, in.len, FFPATH_NOWINDOWS | FFPATH_FORCESLASH | FFPATH_TOREL | FFPATH_MERGEDOTS))) {
+	if (0 == (n = ffpath_normalize(p, end - p, in.ptr, in.len, FFPATH_SIMPLE | FFPATH_NO_DISK_LETTER | FFPATH_SLASH_BACKSLASH | FFPATH_FORCE_SLASH))) {
 		fcom_errlog_ctx(cmd, "arc.unpack", "ffpath_norm: %S", input);
 		return FCOM_ERR;
 	}
@@ -227,25 +226,6 @@ ffbool arc_need_member(const ffarr2 *members, ffbool member_wildcard, const ffst
 		}
 	}
 	return 0;
-}
-
-ffbool arc_need_file(fcom_cmd *cmd, const ffstr *fn)
-{
-	if (!cmd->skip_err || cmd->out_overwrite)
-		return 1;
-
-	int rc = 0;
-	ffarr ofn = {};
-	if (FCOM_DATA != fn_out(cmd, fn, &ofn))
-		goto end;
-	if (fffile_exists(ofn.ptr)) {
-		fcom_dbglog(0, "arc", "skipping existing file: %s", ofn.ptr);
-		goto end;
-	}
-	rc = 1;
-end:
-	ffarr_free(&ofn);
-	return rc;
 }
 
 

@@ -3,7 +3,6 @@ Copyright (c) 2019 Simon Zolin
 */
 
 #include <fcom.h>
-#include <FF/data/utf8.h>
 #include <FF/number.h>
 #include <FF/path.h>
 

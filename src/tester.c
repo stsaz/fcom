@@ -50,7 +50,6 @@ void test_file_matches()
 
 int main(int argc, char const *argv[])
 {
-	ffmem_init();
 	test_file_matches();
 	fffile_writecz(ffstdout, "DONE");
 	return 0;

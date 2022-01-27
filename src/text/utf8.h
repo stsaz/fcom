@@ -26,6 +26,57 @@ static void utf8_close(void *p, fcom_cmd *cmd)
 	ffmem_free(u);
 }
 
+static size_t ffutf8_encodedata(char *dst, size_t cap, const char *src, size_t *plen, uint flags)
+{
+	ffssize r;
+	size_t len = *plen;
+
+	switch (flags) {
+	case FFUNICODE_UTF8:
+		if (dst == NULL)
+			return len;
+		len = ffmin(cap, len);
+		ffmemcpy(dst, src, len);
+		*plen = len;
+		return len;
+
+	case FFUNICODE_UTF16LE:
+		r = ffutf8_from_utf16(dst, cap, src, *plen, FFUNICODE_UTF16LE);
+		break;
+
+	case FFUNICODE_UTF16BE:
+		r = ffutf8_from_utf16(dst, cap, src, *plen, FFUNICODE_UTF16BE);
+		break;
+
+	default:
+		r = ffutf8_from_cp(dst, cap, src, *plen, flags);
+		break;
+	}
+
+	if (r < 0)
+		return 0;
+	return r;
+}
+
+static size_t ffutf8_encodewhole(char *dst, size_t cap, const char *src, size_t len, uint flags)
+{
+	size_t ln = len;
+	size_t r = ffutf8_encodedata(dst, cap, src, &ln, flags);
+	if (ln != len)
+		return 0; //not enough output space
+	return r;
+}
+
+static size_t ffutf8_strencode(ffstr3 *dst, const char *src, size_t len, uint flags)
+{
+	size_t r = ffutf8_encodewhole(NULL, 0, src, len, flags);
+	if (NULL == ffarr_realloc(dst, r))
+		return 0;
+	r = ffutf8_encodewhole(dst->ptr, dst->cap, src, len, flags);
+	dst->len = r;
+	return r;
+}
+
 // Note: uses much memory (reads the whole file, writes the whole file)
 static int utf8_process(void *p, fcom_cmd *cmd)
 {
@@ -51,7 +102,7 @@ static int utf8_process(void *p, fcom_cmd *cmd)
 
 		size_t n = data.len;
 		coding = ffutf_bom(data.ptr, &n);
-		if (coding != FFU_UTF16LE && coding != FFU_UTF16BE) {
+		if (coding != FFUNICODE_UTF16LE && coding != FFUNICODE_UTF16BE) {
 			fcom_infolog(FILT_NAME, "skipping file %s", fn);
 			continue;
 		}

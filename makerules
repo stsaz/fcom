@@ -11,10 +11,12 @@ all: ff $(BINS)
 
 include $(FF)/makerules
 include $(FF3PT)/makerules
-FF_O := $(FFOS_OBJ) $(FF_OBJ) $(FF_OBJ_DIR)/ffutf8.o
+FF_O := $(FFOS_OBJ) $(FF_OBJ)
 FF_HDR += $(FFPACK)/ffpack/*.h
 
 $(OBJ_DIR)/%.o: $(SRCDIR)/%.c $(SRCDIR)/*.h $(FF_HDR)
+	$(C)  $(CFLAGS) $<  -o$@
+$(OBJ_DIR)/%.o: $(SRCDIR)/core/%.c $(SRCDIR)/core/*.h $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
 $(OBJ_DIR)/%.o: $(SRCDIR)/arc/%.c $(SRCDIR)/arc/*.h $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@

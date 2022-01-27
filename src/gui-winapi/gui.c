@@ -59,7 +59,6 @@ static int gui_sig(uint signo)
 {
 	switch (signo) {
 	case FCOM_SIGINIT: {
-		ffmem_init();
 		com = core->iface("core.com");
 		const struct cmd *c;
 		FFARRS_FOREACH(cmds, c) {

@@ -59,7 +59,6 @@ static int dns_sig(uint signo)
 {
 	switch (signo) {
 	case FCOM_SIGINIT: {
-		ffmem_init();
 		if (0 != ffskt_init(FFSKT_WSA))
 			return -1;
 		com = core->iface("core.com");

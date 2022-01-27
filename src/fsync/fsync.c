@@ -81,7 +81,6 @@ static int fsync_sig(uint signo)
 {
 	switch (signo) {
 	case FCOM_SIGINIT: {
-		ffmem_init();
 		com = core->iface("core.com");
 		const struct cmd *c;
 		FFARR_WALKNT(cmds, FFCNT(cmds), c, struct cmd) {
@@ -674,7 +673,7 @@ static int cmp_file(const struct file *f1, const struct file *f2, uint flags)
 	int r;
 	uint m = 0;
 	if ((flags & FSYNC_CMP_SIZE)
-		&& !(isdir(f1->attr) | isdir(f2->attr))
+		&& !isdir(f1->attr)
 		&& f1->size != f2->size) {
 		m |= (f1->size < f2->size) ? FSYNC_ST_SMALLER : FSYNC_ST_LARGER;
 	}
@@ -754,16 +753,16 @@ static int cmp_trees(fsync_ctx *c, struct fsync_cmp *cmp)
 	if (l == NULL && r == NULL)
 		return -1;
 	else if (l != NULL && r != NULL) {
-		fcom_dbglog(0, FILT_NAME, "cmp: %s/%s  and  %s/%s"
-			, l->parent->path, l->name, r->parent->path, r->name);
 		rcmp = path_cmp(c, l, r);
+		fcom_dbglog(0, FILT_NAME, "cmp: '%s/%s'  and  '%s/%s': %d"
+			, l->parent->path, l->name, r->parent->path, r->name, rcmp);
 	} else {
 		rcmp = (l == NULL) ? 1 : -1;
 		if (l != NULL)
-			fcom_dbglog(0, FILT_NAME, "cmp: %s/%s  and  -"
+			fcom_dbglog(0, FILT_NAME, "cmp: '%s/%s'  and  -"
 				, l->parent->path, l->name);
 		else
-			fcom_dbglog(0, FILT_NAME, "cmp: -  and  %s/%s"
+			fcom_dbglog(0, FILT_NAME, "cmp: -  and  '%s/%s'"
 				, r->parent->path, r->name);
 	}
 

@@ -274,6 +274,7 @@ typedef struct fcom_cmd {
 		, out_fn_copy :1 //output.fn is transient, store its data internally
 		, bmp_input_reverse :1 //input lines order is HEIGHT..1, as in .bmp
 		, del_source :1
+		, skip_err_active :1
 		;
 	fffd input_fd; // fd of input file
 } fcom_cmd;

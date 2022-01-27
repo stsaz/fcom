@@ -191,7 +191,7 @@ static void untar_showinfo(untar *t, const fftarread_fileinfo_t *f)
 	char *p = t->fn.ptr, *end = ffarr_edge(&t->fn);
 
 	p += fffile_unixattr_tostr(p, end - p, f->attr_unix);
-	p += ffs_format(p, end - p, " %4u %4u %12u "
+	p += ffs_format_r0(p, end - p, " %4u %4u %12u "
 		, f->uid, f->gid, f->size);
 
 	ffdatetime dt;

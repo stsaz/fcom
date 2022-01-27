@@ -74,7 +74,6 @@ static int pic_sig(uint signo)
 {
 	switch (signo) {
 	case FCOM_SIGINIT: {
-		ffmem_init();
 		com = core->iface("core.com");
 		const struct cmd *c;
 		FFARR_WALKNT(commands, FFCNT(commands), c, struct cmd) {

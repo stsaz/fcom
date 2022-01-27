@@ -46,7 +46,7 @@ struct wsync {
 	ffui_view vlist;
 	ffui_ctl stbar;
 
-	ffarr4 *listsel;
+	ffui_sel *listsel;
 
 	ffuint showmask; // enum SHOWMASK_E
 	fsync_dir *src, *dst;
@@ -658,7 +658,7 @@ static char* dst_fn(const char *fnL)
 }
 
 struct sync_s {
-	ffarr4 *sel;
+	ffui_sel *sel;
 	int index;
 	char *fnL, *fnR;
 };
@@ -882,7 +882,7 @@ void wsync_action(ffui_wnd *wnd, int id)
 	ffui_checkbox *pcb = NULL;
 	int i, m;
 
-	if ((uint)id < FF_COUNT(scmds))
+	if ((uint)id < FF_COUNT(scmds) && id != A_DISP)
 		fcom_dbglog(0, "gsync", "action: %s", scmds[id]);
 
 	switch (id) {

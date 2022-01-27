@@ -3,7 +3,7 @@ Copyright (c) 2017 Simon Zolin
 */
 
 #include <fcom.h>
-#include <com-dir.h>
+#include <core/com-dir.h>
 
 #include <FF/sys/dir.h>
 #include <FF/list.h>
@@ -63,7 +63,7 @@ typedef struct {
 	fftask tsk;
 } comm;
 
-#include <com-arg.h>
+#include <core/com-arg.h>
 
 // COMMAND
 static void* com_create(fcom_cmd *cmd);

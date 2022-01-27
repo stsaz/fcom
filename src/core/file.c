@@ -15,6 +15,7 @@ Copyright (c) 2017 Simon Zolin
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, __VA_ARGS__)
+#define warnlog(fmt, ...)  fcom_warnlog(FILT_NAME, fmt, __VA_ARGS__)
 #define errlog(fmt, ...)  fcom_errlog(FILT_NAME, fmt, __VA_ARGS__)
 #define syserrlog(fmt, ...)  fcom_syserrlog(FILT_NAME, fmt, __VA_ARGS__)
 
@@ -371,10 +372,13 @@ typedef struct fout {
 
 static void fo_log(void *p, uint level, ffstr msg)
 {
-	// fout *f = p;
+	fout *f = p;
 	switch (level) {
 	case FFFILEWRITE_LOG_ERR:
-		errlog("%S", &msg);
+		if (f->cmd->skip_err)
+			warnlog("%S", &msg);
+		else
+			errlog("%S", &msg);
 		break;
 	case FFFILEWRITE_LOG_DBG:
 		dbglog(0, "%S", &msg);
@@ -421,8 +425,10 @@ static void* fo_open(fcom_cmd *cmd)
 	return f;
 
 err:
-	if (cmd->skip_err)
+	if (cmd->skip_err) {
+		cmd->skip_err_active = 1;
 		return f;
+	}
 	fo_close(f, cmd);
 	return NULL;
 }

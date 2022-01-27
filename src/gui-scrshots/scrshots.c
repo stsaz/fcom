@@ -263,6 +263,38 @@ static const char* const vars[] = {
 	"time",
 };
 
+typedef struct ffsvar {
+	ffstr val;
+} ffsvar;
+
+enum FFSVAR {
+	FFSVAR_TEXT,
+	FFSVAR_S,
+};
+
+/** Process input string of the format "...text $var text...".
+Return enum FFSVAR. */
+static inline int ffsvar_parse(ffsvar *p, const char *data, size_t *plen)
+{
+	if (*data != '$') {
+		const char *s = ffs_find(data, *plen, '$');
+		p->val.ptr = (char*)data;
+		p->val.len = s - data;
+		*plen = p->val.len;
+		return FFSVAR_TEXT;
+	}
+
+	size_t i;
+	for (i = 1 /*skip $*/;  i != *plen;  i++) {
+		if (!ffchar_isname(data[i]))
+			break;
+	}
+	p->val.ptr = (char*)&data[1];
+	p->val.len = i - 1;
+	*plen = i;
+	return FFSVAR_S;
+}
+
 /** Expand $-variables. */
 static int Svar_expand(ffarr *out, const ffstr *in)
 {

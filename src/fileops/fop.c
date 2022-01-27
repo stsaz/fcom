@@ -114,7 +114,6 @@ static int f_sig(uint signo)
 {
 	switch (signo) {
 	case FCOM_SIGINIT: {
-		ffmem_init();
 		com = core->iface("core.com");
 
 		const struct oper *op;

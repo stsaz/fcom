@@ -63,7 +63,7 @@ static void unzip_showinfo(struct unzip1 *z, const ffzipread_fileinfo_t *f)
 		ffuint percent = (f->uncompressed_size != 0)
 			? f->compressed_size * 100 / f->uncompressed_size
 			: 0;
-		p += ffs_format(p, end - p, "%12u%12u(%3u%%)"
+		p += ffs_format_r0(p, end - p, "%12u%12u(%3u%%)"
 			, f->uncompressed_size, f->compressed_size, percent);
 	}
 	p = ffs_copyc(p, end, ' ');
@@ -156,11 +156,6 @@ again:
 			struct file *of = ffslice_itemT(&z->files, z->ifile, struct file);
 			const ffzipread_fileinfo_t *f = ffzipread_fileinfo(&z->zip);
 			dbglog0("file header for %S", &f->name);
-			if (!arc_need_file(cmd, &f->name)) {
-				z->state = I_NEXTFILE;
-				z->ifile++;
-				goto again;
-			}
 
 			if (cmd->output.fn == NULL) {
 				if (FCOM_DATA != (r = fn_out(cmd, &f->name, &z->fn)))
@@ -198,6 +193,12 @@ again:
 		}
 
 		case FFZIPREAD_DATA:
+			if (cmd->skip_err_active) {
+				cmd->skip_err_active = 0;
+				z->state = I_NEXTFILE;
+				z->ifile++;
+				return FCOM_NEXTDONE;
+			}
 			return FCOM_DATA;
 
 		case FFZIPREAD_MORE:

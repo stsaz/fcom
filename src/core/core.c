@@ -121,8 +121,8 @@ static struct mod* mod_load(const ffstr *soname);
 static void mods_destroy(void);
 static void on_posted(void *);
 
-#include <core-conf.h>
-#include <core-mod.h>
+#include <core/core-conf.h>
+#include <core/core-mod.h>
 
 static int set_rootdir(char **argv)
 {
@@ -140,7 +140,6 @@ static int set_rootdir(char **argv)
 
 const fcom_core* core_create(fcom_log log, char **argv, char **env)
 {
-	ffmem_init();
 	fflk_setup();
 	if (NULL == (g = ffmem_new(struct fcom)))
 		return NULL;
@@ -153,7 +152,6 @@ const fcom_core* core_create(fcom_log log, char **argv, char **env)
 
 	fftime_local(&g->conf.tz);
 	fftime_storelocal(&g->conf.tz);
-	fftime_init();
 
 	if (0 != set_rootdir(argv))
 		goto err;
