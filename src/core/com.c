@@ -5,7 +5,6 @@ Copyright (c) 2017 Simon Zolin
 #include <fcom.h>
 #include <core/com-dir.h>
 
-#include <FF/sys/dir.h>
 #include <FF/list.h>
 #include <FF/path.h>
 #include <FFOS/process.h>

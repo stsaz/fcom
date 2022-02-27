@@ -3,13 +3,13 @@ Copyright (c) 2017 Simon Zolin */
 
 #include <fcom.h>
 
-#include <FF/sys/dir.h>
 #include <FF/time.h>
 #include <FF/path.h>
 #include <FFOS/process.h>
 #include <FFOS/file.h>
 #include <FFOS/thread.h>
 #include <FFOS/sig.h>
+#include <FFOS/dirscan.h>
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, "main", fmt, __VA_ARGS__)
@@ -153,8 +153,8 @@ enum IN_ADD {
 static int wcard_open(struct job *c, const ffstr *s)
 {
 	int r = -1;
-	ffdirexp de;
-	char *wc = NULL;
+	ffdirscan de = {};
+	char *fullname = NULL, *dirz = NULL;
 	const char *fn;
 
 	if (ffstr_matchz(s, "\\\\?\\"))
@@ -163,23 +163,28 @@ static int wcard_open(struct job *c, const ffstr *s)
 	if (ffarr_end(s) == ffs_findof(s->ptr, s->len, "*?", 2))
 		return 0;
 
-	if (NULL == (wc = ffsz_alcopy(s->ptr, s->len)))
-		return -1;
-
-	if (0 != ffdir_expopen(&de, wc, 0))
+	ffstr dir, name;
+	ffpath_splitpath(s->ptr, s->len, &dir, &name);
+	dirz = ffsz_dupstr(&dir);
+	de.wildcard = ffsz_dupstr(&name);
+	if (0 != ffdirscan_open(&de, dirz, FFDIRSCAN_USEWILDCARD))
 		goto done;
 
-	while (NULL != (fn = ffdir_expread(&de))) {
+	while (NULL != (fn = ffdirscan_next(&de))) {
+		ffmem_free(fullname);
+		fullname = ffsz_allocfmt("%s/%s", dirz, fn);
 		ffstr sfn;
-		ffstr_setz(&sfn, fn);
+		ffstr_setz(&sfn, fullname);
 		if (0 != in_add(c, &sfn, ADD_NO_WCARD))
 			goto done;
 	}
 	r = 1;
 
 done:
-	ffdir_expclose(&de);
-	ffmem_safefree(wc);
+	ffmem_free((char*)de.wildcard);
+	ffdirscan_close(&de);
+	ffmem_free(fullname);
+	ffmem_free(dirz);
 	return r;
 }
 #else

@@ -9,14 +9,16 @@ Copyright (c) 2017 Simon Zolin */
 #include <FFOS/queue.h>
 #include <FFOS/process.h>
 #include <FFOS/thread.h>
+#include <FFOS/timer.h>
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, "core", fmt, __VA_ARGS__)
 #define errlog(fmt, ...)  fcom_errlog("core", fmt, __VA_ARGS__)
-#define syserrlog(fmt, ...)  fcom_syserrlog("core", fmt, __VA_ARGS__)
+#define syserrlog(fmt, ...)  fcom_syserrlog("core", fmt, ##__VA_ARGS__)
 
 FF_EXP const fcom_core* core_create(fcom_log log, char **argv, char **env);
 FF_EXP void core_free(void);
+static void on_timer(void *param);
 
 extern const fcom_command core_com_iface;
 extern int core_comm_sig(uint signo);
@@ -41,8 +43,10 @@ struct worker {
 
 	fftaskmgr tskmgr;
 
-	fftimer_queue tmrq;
-	uint64 period;
+	fftimer timer;
+	fftimerqueue timerq;
+	uint64 timer_period;
+	ffkevent timer_kev;
 
 	ffatomic njobs;
 	uint init :1;
@@ -85,7 +89,7 @@ static char* core_getpath(const char *name, size_t len);
 static char* core_env_expand(char *dst, size_t cap, const char *src);
 static const void* core_iface(const char *name);
 static void core_task(uint cmd, fftask *tsk);
-static int core_timer(fftmrq_entry *tmr, int interval, uint flags);
+static int core_timer(fftimerqueue_node *tmr, int interval, uint flags);
 static fcom_core gcore = {
 	.cmd = core_cmd,
 	.log = core_log, .logex = core_logex,
@@ -412,48 +416,61 @@ static void core_task(uint cmd, fftask *tsk)
 	}
 }
 
-static int core_timer(fftmrq_entry *tmr, int interval, uint flags)
+static int core_timer(fftimerqueue_node *t, int interval, uint flags)
 {
 	struct worker *w = (void*)g->workers.ptr;
 
 	dbglog(0, "timer:%p  interval:%u  handler:%p  param:%p"
-		, tmr, interval, tmr->handler, tmr->param);
-
-	if (fftmrq_active(&w->tmrq, tmr))
-		fftmrq_rm(&w->tmrq, tmr);
+		, t, interval, t->func, t->param);
 
 	if (interval == 0) {
-		if (fftmrq_empty(&w->tmrq)) {
-			fftmrq_destroy(&w->tmrq, w->kq);
-			dbglog(0, "stopped kernel timer", 0);
-		}
+		fftimerqueue_remove(&w->timerq, t);
 		return 0;
 	}
 
-	if (fftmrq_started(&w->tmrq) && (uint64)ffabs(interval) < w->period) {
-		fftmrq_destroy(&w->tmrq, w->kq);
+	uint period = ffabs(interval);
+
+	if (period < w->timer_period) {
+		fftimer_stop(w->timer, w->kq);
+		w->timer_period = 0;
 		dbglog(0, "stopped kernel timer", 0);
 	}
 
-	if (!fftmrq_started(&w->tmrq)) {
-		fftmrq_init(&w->tmrq);
-		if (0 != fftmrq_start(&w->tmrq, w->kq, ffabs(interval))) {
-			syserrlog("fftmrq_start()", 0);
+	if (w->timer_period == 0) {
+		w->timer_kev.handler = on_timer;
+		w->timer_kev.udata = w;
+		if (0 != fftimer_start(w->timer, w->kq, &w->timer_kev, period)) {
+			syserrlog("fftimer_start()", 0);
 			return -1;
 		}
-		w->period = ffabs(interval);
-		dbglog(0, "started kernel timer  interval:%u", ffabs(interval));
+		w->timer_period = period;
+		dbglog(0, "started kernel timer  interval:%u", period);
 	}
 
-	fftmrq_add(&w->tmrq, tmr, interval);
+	fftime now = fftime_monotonic();
+	ffuint now_msec = now.sec*1000 + now.nsec/1000000;
+	fftimerqueue_add(&w->timerq, t, now_msec, interval, t->func, t->param);
 	return 0;
+}
+
+static void on_timer(void *param)
+{
+	struct worker *w = param;
+	fftime now = fftime_monotonic();
+	ffuint now_msec = now.sec*1000 + now.nsec/1000000;
+	fftimerqueue_process(&w->timerq, now_msec);
+	fftimer_consume(w->timer);
 }
 
 /** Initialize worker object. */
 static int work_init(struct worker *w, uint thread)
 {
 	fftask_init(&w->tskmgr);
-	fftmrq_init(&w->tmrq);
+	fftimerqueue_init(&w->timerq);
+	if (FFTIMER_NULL == (w->timer = fftimer_create(0))) {
+		syserrlog("fftimer_create");
+		return 1;
+	}
 
 	if (FF_BADFD == (w->kq = ffkqu_create())) {
 		syserrlog("%s", ffkqu_create_S);
@@ -489,7 +506,7 @@ static void work_destroy(struct worker *w)
 		dbglog(0, "thread %xU exited", (int64)w->id);
 		w->thd = FFTHD_INV;
 	}
-	fftmrq_destroy(&w->tmrq, w->kq);
+	fftimer_close(w->timer, w->kq);
 	if (w->kq != FF_BADFD) {
 		ffkqu_post_detach(&w->kqpost, w->kq);
 		ffkqu_close(w->kq);

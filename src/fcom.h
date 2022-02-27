@@ -6,8 +6,8 @@ Copyright (c) 2017 Simon Zolin */
 #include <FF/array.h>
 #include <FF/data/conf2-scheme.h>
 #include <FF/sys/taskqueue.h>
-#include <FF/sys/timer-queue.h>
 #include <FFOS/file.h>
+#include <FFOS/timerqueue.h>
 
 /*
 CORE
@@ -114,7 +114,7 @@ struct fcom_core {
 	/** Set timer on the main worker.
 	@interval: msec.  >0: periodic;  <0: one-shot;  0: disable.
 	Return 0 on success. */
-	int (*timer)(fftmrq_entry *tmr, int interval, uint flags);
+	int (*timer)(fftimerqueue_node *tmr, int interval, uint flags);
 };
 
 #define fcom_core_readconf(conffn) \

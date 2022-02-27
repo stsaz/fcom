@@ -57,7 +57,6 @@ CORE_O := \
 	$(OBJ_DIR)/crc.o \
 	$(FF_O) \
 	$(FFOS_THD) \
-	$(FF_OBJ_DIR)/fftmr.o \
 	$(FF_OBJ_DIR)/fffileread.o \
 	$(FF_OBJ_DIR)/fffilewrite.o \
 	$(FF_OBJ_DIR)/ffthpool.o
@@ -83,6 +82,7 @@ file.$(SO): $(FILE_O)
 
 FSYNC_O := $(OBJ_DIR)/fsync.o $(OBJ_DIR)/snapshot.o \
 	$(OBJ_DIR)/crc.o \
+	$(FF_OBJ_DIR)/ffrbtree.o \
 	$(FF_O)
 $(OBJ_DIR)/%.o: $(SRCDIR)/fsync/%.c $(SRCDIR)/fsync/fsync.h $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
@@ -131,7 +131,6 @@ NET_O := $(OBJ_DIR)/dns.o \
 	$(FF_OBJ_DIR)/ffdns-client.o \
 	$(FF_OBJ_DIR)/ffurl.o \
 	$(FF_OBJ_DIR)/ffproto.o \
-	$(FF_OBJ_DIR)/ffparse.o \
 	$(FF_O) \
 	$(FFOS_SKT)
 net.$(SO): $(NET_O)
@@ -149,7 +148,6 @@ GUI_O := $(OBJ_DIR)/gui.o \
 	$(OBJ_DIR)/scrshots.o \
 	$(OBJ_DIR)/gsync.o \
 	$(FF_GUI_OBJ) \
-	$(FF_OBJ_DIR)/ffpic.o \
 	$(FF_O)
 gui.$(SO): $(GUI_O)
 	$(LD) -shared $(GUI_O) $(LDFLAGS) $(LD_LPTHREAD) -lshell32 -luxtheme -lcomctl32 -lcomdlg32 -lgdi32 -lole32 -luuid -o$@
@@ -167,7 +165,6 @@ GUI_O := $(OBJ_DIR)/gui-gtk.o \
 	$(FF_OBJ_DIR)/ffgui-gtk-loader.o \
 	$(FF_OBJ_DIR)/ffgui-gtk.o \
 	$(FF_OBJ_DIR)/ffurl.o \
-	$(FF_OBJ_DIR)/ffparse.o \
 	$(FF_O)
 gui.$(SO): $(GUI_O)
 	$(LD) -shared $(GUI_O) $(LDFLAGS) $(LIBS_GTK) -pthread -o$@

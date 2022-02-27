@@ -3,11 +3,11 @@
 */
 
 #include <fcom.h>
-#include <FF/sys/dir.h>
 #include <FF/gui-gtk/gtk.h>
 #include <FF/number.h>
 #include <FF/path.h>
 #include <FF/data/conf2-scheme.h>
+#include <FFOS/dirscan.h>
 
 extern const fcom_core *core;
 const fcom_fsync *_fsync;
@@ -400,21 +400,25 @@ static fsync_dir* scan_path(const char *path, uint flags)
 {
 	ffstr p;
 	ffstr_setz(&p, path);
-	ffdirexp de;
+	ffdirscan de = {};
 	const char *fn;
-	char *wc = NULL;
+	char *fullname = NULL, *dirz = NULL;
 	fsync_dir *r = NULL, *d = NULL, *parent = NULL;
 
 	if (NULL == ffs_findc(p.ptr, p.len, '*'))
 		return _fsync->scan_tree(path, 0);
 
-	if (NULL == (wc = ffsz_alcopyz(path)))
-		goto done;
-	if (0 != ffdir_expopen(&de, wc, 0))
+	ffstr dir, name;
+	ffpath_splitpath(path, ffsz_len(path), &dir, &name);
+	dirz = ffsz_dupstr(&dir);
+	de.wildcard = name.ptr;
+	if (0 != ffdirscan_open(&de, dirz, FFDIRSCAN_USEWILDCARD))
 		goto done;
 
-	while (NULL != (fn = ffdir_expread(&de))) {
-		if (NULL == (d = _fsync->scan_tree(fn, flags)))
+	while (NULL != (fn = ffdirscan_next(&de))) {
+		ffmem_free(fullname);
+		fullname = ffsz_allocfmt("%s/%s", dirz, fn);
+		if (NULL == (d = _fsync->scan_tree(fullname, flags)))
 			goto done;
 		if (parent != NULL) {
 			fsync_dir *dnew;
@@ -429,8 +433,9 @@ static fsync_dir* scan_path(const char *path, uint flags)
 	r = parent;
 
 done:
-	ffdir_expclose(&de);
-	ffmem_free(wc);
+	ffmem_free(dirz);
+	ffmem_free(fullname);
+	ffdirscan_close(&de);
 	if (r == NULL) {
 		_fsync->tree_free(d);
 		_fsync->tree_free(parent);

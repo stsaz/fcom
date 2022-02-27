@@ -7,7 +7,6 @@ Copyright (c) 2017 Simon Zolin
 #include <FF/gui/loader.h>
 #include <FF/gui/winapi.h>
 #include <pic/util/bmp.h>
-#include <FF/data/parse.h>
 #include <FF/time.h>
 #include <FF/path.h>
 

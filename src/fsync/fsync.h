@@ -3,6 +3,7 @@ Copyright (c) 2019 Simon Zolin */
 
 #include <fcom.h>
 #include <FF/data/conf2-writer.h>
+#include <FF/rbtree.h>
 
 
 struct dir;

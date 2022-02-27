@@ -105,7 +105,7 @@ static void dnscl_log(uint level, const char *fmt, ...)
 	ffarr_free(&a);
 }
 
-static void dnscl_timer(fftmrq_entry *tmr, uint value_ms)
+static void dnscl_timer(fftimerqueue_node *tmr, uint value_ms)
 {
 	core->timer(tmr, value_ms, 0);
 }

@@ -4,11 +4,11 @@ Copyright (c) 2017 Simon Zolin
 
 #include <fsync/fsync.h>
 #include <FF/path.h>
-#include <FF/sys/dir.h>
 #include <FF/time.h>
 #include <FF/number.h>
 #include <FF/rbtree.h>
 #include <FF/crc.h>
+#include <FFOS/dirscan.h>
 
 /** Fast CRC32 implementation using 8k table. */
 extern uint crc32(const void *buf, size_t size, uint crc);
@@ -356,16 +356,17 @@ static int fsync_process(void *p, fcom_cmd *cmd)
 /** Get contents of a directory. */
 static int scan1(struct dir *d, char *name, ffchain_item **dirs)
 {
-	ffdirexp dr = {0};
+	ffdirscan dr = {};
 	fffileinfo fi;
 	const char *fn;
+	char *fullname = NULL;
 	struct file *e;
 	int r = -1;
 	ffchain_item *last = *dirs;
 
 	fcom_dbglog(0, FILT_NAME, "opening directory %s", name);
 
-	if (0 != ffdir_expopen(&dr, name, 0)) {
+	if (0 != ffdirscan_open(&dr, name, 0)) {
 		if (fferr_last() != ENOMOREFILES) {
 			syserrlog("%s: %s", ffdir_open_S, name);
 			return -1;
@@ -373,18 +374,26 @@ static int scan1(struct dir *d, char *name, ffchain_item **dirs)
 		return 0;
 	}
 
-	if (NULL == ffarr_allocT(&d->files, dr.size, struct file))
+	uint n = 0;
+	while (NULL != ffdirscan_next(&dr)) {
+		n++;
+	}
+	ffdirscan_reset(&dr);
+
+	if (NULL == ffarr_allocT(&d->files, n, struct file))
 		goto done;
 
-	while (NULL != (fn = ffdir_expread(&dr))) {
+	while (NULL != (fn = ffdirscan_next(&dr))) {
 
 		e = ffarr_pushT(&d->files, struct file);
 		ffmem_tzero(e);
-		if (NULL == (e->name = ffsz_alcopyz(ffdir_expname(&dr, fn))))
+		if (NULL == (e->name = ffsz_alcopyz(fn)))
 			goto done;
 		e->parent = d;
 
-		if (0 == fffile_infofn(fn, &fi)) {
+		ffmem_free(fullname);
+		fullname = ffsz_allocfmt("%s/%s", name, fn);
+		if (0 == fffile_infofn(fullname, &fi)) {
 #ifdef FF_UNIX
 			e->attr = fffile_infoattr(&fi);
 #else
@@ -408,7 +417,8 @@ static int scan1(struct dir *d, char *name, ffchain_item **dirs)
 	r = 0;
 
 done:
-	ffdir_expclose(&dr);
+	ffmem_free(fullname);
+	ffdirscan_close(&dr);
 	return r;
 }
 
@@ -939,9 +949,9 @@ static struct file* mv_find(struct mv *mv, struct file *f, uint flags)
 {
 	ffrbtl_node *nod_name, *nod;
 
-	if (NULL == (nod = (void*)ffrbt_find(&mv->props_index, mv_hash(f, flags), NULL)))
+	if (NULL == (nod = (void*)ffrbt_find(&mv->props_index, mv_hash(f, flags))))
 		return NULL;
-	nod_name = (void*)ffrbt_find(&mv->names_index, mv_namehash(f), NULL);
+	nod_name = (void*)ffrbt_find(&mv->names_index, mv_namehash(f));
 
 	if (nod_name != NULL) {
 		ffrbtl_node *it;
