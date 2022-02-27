@@ -1,4 +1,4 @@
-# fcom v0.1 makefile
+# fcom
 
 PROJ := fcom
 ROOT := ..
@@ -10,7 +10,6 @@ FFBASE := $(ROOT)/ffbase
 FFOS := $(ROOT)/ffos
 FFPACK := $(ROOT)/ffpack
 FF := $(ROOT)/ff
-FF3PT := $(ROOT)/ff-3pt
 
 include $(FFOS)/makeconf
 
@@ -24,6 +23,8 @@ INSTDIR := ./$(PROJ)-0
 BIN := fcom
 endif
 VER :=
+PICLIB3 := $(PROJDIR)/piclib3/_$(OSFULL)-amd64
+CRYPTOLIB3 := $(PROJDIR)/cryptolib3/_$(OSFULL)-amd64
 
 FF_OBJ_DIR := ./ff-obj
 ifeq ($(OPT),0)
@@ -34,14 +35,17 @@ endif
 CFLAGS += -DFFBASE_HAVE_FFERR_STR -Wno-maybe-uninitialized
 FFOS_CFLAGS := $(CFLAGS)
 FF_CFLAGS := $(CFLAGS)
-FF3PT_CFLAGS := $(CFLAGS)
-FF3PTLIB := $(FF3PT)-bin/$(OS)-$(ARCH)
 
 CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-stringop-overflow \
-	-I$(SRCDIR) -I$(FFBASE) -I$(FFPACK) -I$(FF) -I$(FFOS) -I$(FF3PT)
+	-I$(SRCDIR) \
+	-I$(PICLIB3)/.. \
+	-I$(CRYPTOLIB3)/.. \
+	-I$(FFBASE) -I$(FFPACK) -I$(FF) -I$(FFOS)
 
 LDFLAGS += -Wno-stringop-overflow \
-	-L$(FFPACK)/zlib -L$(FFPACK)/lzma -L$(FFPACK)/zstd -L$(FF3PTLIB)
+	-L$(FFPACK)/zlib -L$(FFPACK)/lzma -L$(FFPACK)/zstd \
+	-L$(PICLIB3) \
+	-L$(CRYPTOLIB3)
 
 include $(PROJDIR)/makerules
 

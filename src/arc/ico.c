@@ -3,8 +3,8 @@ Copyright (c) 2019 Simon Zolin
 */
 
 #include <fcom.h>
-#include <FF/pic/pic.h>
-#include <FF/pic/ico.h>
+#include <pic/util/pic.h>
+#include <pic/util/ico.h>
 #include <FF/path.h>
 
 

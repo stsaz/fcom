@@ -3,8 +3,8 @@ Copyright (c) 2019 Simon Zolin
 */
 
 #include <fcom.h>
-#include <FF/pic/pic.h>
-#include <FF/pic/jpeg.h>
+#include <pic/util/pic.h>
+#include <pic/util/jpeg.h>
 
 
 extern const fcom_core *core;

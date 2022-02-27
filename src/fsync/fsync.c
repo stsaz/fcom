@@ -10,6 +10,8 @@ Copyright (c) 2017 Simon Zolin
 #include <FF/rbtree.h>
 #include <FF/crc.h>
 
+/** Fast CRC32 implementation using 8k table. */
+extern uint crc32(const void *buf, size_t size, uint crc);
 
 const fcom_core *core;
 static const fcom_command *com;

@@ -2,6 +2,9 @@
 2021, Simon Zolin
 */
 
+/** Fast CRC32 implementation using 8k table. */
+extern uint crc32(const void *buf, size_t size, uint crc);
+
 #define FILT_NAME  "f-crc"
 
 struct f_crc {

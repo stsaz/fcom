@@ -277,26 +277,22 @@ INSTALL
 		git clone https://github.com/stsaz/ffpack
 		git clone https://github.com/stsaz/ffos
 		git clone https://github.com/stsaz/ff
-		git clone https://github.com/stsaz/ff-3pt
 		git clone https://github.com/stsaz/fcom
 
-3. Build ff-3pt package (3rd-party libraries) or download pre-built binaries.  See `ff-3pt/README.txt` for details.
+3. Build ffpack libs, cryptolib3, piclib3 (3rd-party libraries) or use the binaries from the previous fcom release.
 
 4. Build fcom:
 
 		cd fcom
-		export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:../ff-3pt-bin/linux-amd64
 		make install
 
 	You can explicitly specify path to each of FF source repositories, e.g.:
 
-		make install FFOS=~/ffos FF=~/ff FF3PT=~/ff-3pt
+		make install FFOS=~/ffos FF=~/ff FFPACK=~/ffpack
 
 	Default architecture is amd64.  You can specify different target architecture like this:
 
 		make install ARCH=i686
-
-	You'll also need to specify the proper path to ff-3pt binaries in `LD_LIBRARY_PATH`.
 
 5. Ready!  You can copy the directory `./fcom-0` anywhere you want (see section "INSTALL ON LINUX").
 

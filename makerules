@@ -10,7 +10,6 @@ endif
 all: ff $(BINS)
 
 include $(FF)/makerules
-include $(FF3PT)/makerules
 FF_O := $(FFOS_OBJ) $(FF_OBJ)
 FF_HDR += $(FFPACK)/ffpack/*.h
 
@@ -24,8 +23,16 @@ $(OBJ_DIR)/%.o: $(SRCDIR)/fileops/%.c $(SRCDIR)/fileops/*.h $(SRCDIR)/fcom.h $(F
 	$(C)  $(CFLAGS) $<  -o$@
 $(OBJ_DIR)/%.o: $(SRCDIR)/pic/%.c $(SRCDIR)/pic/*.h $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
+$(OBJ_DIR)/%.o: $(SRCDIR)/pic/util/%.c $(SRCDIR)/pic/util/*.h $(SRCDIR)/fcom.h $(FF_HDR)
+	$(C) $(CFLAGS) $< -o $@
 $(OBJ_DIR)/%.o: $(SRCDIR)/text/%.c $(SRCDIR)/text/*.h $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
+$(OBJ_DIR)/%.o: $(FFPACK)/crc/%.c
+	$(C) $(CFLAGS) $< -o $@
+$(OBJ_DIR)/%.o: $(CRYPTOLIB3)/../sha1/%.c
+	$(C) $(CFLAGS) $< -o $@
+$(OBJ_DIR)/%.o: $(CRYPTOLIB3)/../sha/%.c
+	$(C) $(CFLAGS) $< -o $@
 
 $(RES): $(PROJDIR)/res/fcom.rc $(PROJDIR)/res/fcom.exe.manifest $(PROJDIR)/res/fcom.ico
 	$(WINDRES) -I$(SRCDIR) -I$(FFBASE) -I$(FF) -I$(FFOS) $(PROJDIR)/res/fcom.rc $@
@@ -47,7 +54,7 @@ CORE_O := \
 	$(OBJ_DIR)/com.o \
 	$(OBJ_DIR)/file.o \
 	$(OBJ_DIR)/file-std.o \
-	$(FF_OBJ_DIR)/crc.o \
+	$(OBJ_DIR)/crc.o \
 	$(FF_O) \
 	$(FFOS_THD) \
 	$(FF_OBJ_DIR)/fftmr.o \
@@ -61,8 +68,7 @@ core.$(SO): $(CORE_O)
 
 FILE_O := $(OBJ_DIR)/fop.o \
 	$(OBJ_DIR)/text.o \
-	$(FF_OBJ_DIR)/crc.o \
-	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffconf.o \
+	$(OBJ_DIR)/crc.o \
 	$(FF_OBJ_DIR)/ffpe.o \
 	$(FF_O)
 
@@ -76,8 +82,7 @@ file.$(SO): $(FILE_O)
 
 
 FSYNC_O := $(OBJ_DIR)/fsync.o $(OBJ_DIR)/snapshot.o \
-	$(FF_OBJ_DIR)/crc.o \
-	$(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffconf.o \
+	$(OBJ_DIR)/crc.o \
 	$(FF_O)
 $(OBJ_DIR)/%.o: $(SRCDIR)/fsync/%.c $(SRCDIR)/fsync/fsync.h $(SRCDIR)/fcom.h $(FF_HDR)
 	$(C)  $(CFLAGS) $<  -o$@
@@ -86,9 +91,9 @@ fsync.$(SO): $(FSYNC_O)
 
 
 crypto.$(SO): $(OBJ_DIR)/crypto.o \
-	$(FF_OBJ_DIR)/crc.o $(FF_OBJ_DIR)/ffparse.o $(FF_OBJ_DIR)/ffconf.o $(FF_O) \
-	$(FF_OBJ_DIR)/sha256.o $(FF_OBJ_DIR)/sha256-ff.o $(FF_OBJ_DIR)/sha1.o \
-	$(FF3PTLIB)/AES-ff.a
+	$(OBJ_DIR)/crc.o $(FF_O) \
+	$(OBJ_DIR)/sha256.o $(OBJ_DIR)/sha256-ff.o $(OBJ_DIR)/sha1.o \
+	$(CRYPTOLIB3)/AES-ff.a
 
 	$(LD) -shared $+ $(LDFLAGS) $(LD_LPTHREAD) -o$@
 
@@ -102,9 +107,8 @@ ARC_O := $(OBJ_DIR)/arc.o \
 	$(OBJ_DIR)/7z.o \
 	$(OBJ_DIR)/iso.o \
 	$(OBJ_DIR)/ico.o \
-	$(FF_OBJ_DIR)/crc.o \
-	$(FF_OBJ_DIR)/ffico.o \
-	$(FF_OBJ_DIR)/ffparse.o \
+	$(OBJ_DIR)/crc.o \
+	$(OBJ_DIR)/ffico.o \
 	$(FF_O)
 arc.$(SO): $(ARC_O)
 	$(LD) -shared $(ARC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) -lz-ff -llzma-ff -lzstd-ffpack -o$@
@@ -114,11 +118,10 @@ PIC_O := $(OBJ_DIR)/pic.o \
 	$(OBJ_DIR)/bmp.o \
 	$(OBJ_DIR)/png.o \
 	$(OBJ_DIR)/jpg.o \
-	$(FF_OBJ_DIR)/ffpic.o \
-	$(FF_OBJ_DIR)/ffbmp.o \
-	$(FF_OBJ_DIR)/ffjpeg.o \
-	$(FF_OBJ_DIR)/ffpng.o \
-	$(FF_OBJ_DIR)/ffparse.o \
+	$(OBJ_DIR)/ffpic.o \
+	$(OBJ_DIR)/ffbmp.o \
+	$(OBJ_DIR)/ffjpeg.o \
+	$(OBJ_DIR)/ffpng.o \
 	$(FF_O)
 pic.$(SO): $(PIC_O)
 	$(LD) -shared $(PIC_O) $(LDFLAGS) $(LD_RPATH_ORIGIN) $(LD_LPTHREAD) -ljpeg-turbo-ff -lpng-ff -o$@
@@ -147,8 +150,6 @@ GUI_O := $(OBJ_DIR)/gui.o \
 	$(OBJ_DIR)/gsync.o \
 	$(FF_GUI_OBJ) \
 	$(FF_OBJ_DIR)/ffpic.o \
-	$(FF_OBJ_DIR)/ffconf.o \
-	$(FF_OBJ_DIR)/ffparse.o \
 	$(FF_O)
 gui.$(SO): $(GUI_O)
 	$(LD) -shared $(GUI_O) $(LDFLAGS) $(LD_LPTHREAD) -lshell32 -luxtheme -lcomctl32 -lcomdlg32 -lgdi32 -lole32 -luuid -o$@
@@ -166,7 +167,6 @@ GUI_O := $(OBJ_DIR)/gui-gtk.o \
 	$(FF_OBJ_DIR)/ffgui-gtk-loader.o \
 	$(FF_OBJ_DIR)/ffgui-gtk.o \
 	$(FF_OBJ_DIR)/ffurl.o \
-	$(FF_OBJ_DIR)/ffconf.o \
 	$(FF_OBJ_DIR)/ffparse.o \
 	$(FF_O)
 gui.$(SO): $(GUI_O)
@@ -221,7 +221,7 @@ endif
 		*.$(SO) \
 		$(FFPACK)/zlib/libz-ff.$(SO) $(FFPACK)/lzma/liblzma-ff.$(SO) \
 		$(FFPACK)/zstd/libzstd-ffpack.$(SO) \
-		$(FF3PTLIB)/libjpeg-turbo-ff.$(SO) $(FF3PTLIB)/libpng-ff.$(SO) \
+		$(PICLIB3)/libjpeg-turbo-ff.$(SO) $(PICLIB3)/libpng-ff.$(SO) \
 		$(INSTDIR)/mod
 
 ifneq ($(OS),win)
