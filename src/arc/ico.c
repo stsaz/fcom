@@ -5,7 +5,7 @@ Copyright (c) 2019 Simon Zolin
 #include <fcom.h>
 #include <pic/util/pic.h>
 #include <pic/util/ico.h>
-#include <FF/path.h>
+#include <util/path.h>
 
 
 extern const fcom_core *core;

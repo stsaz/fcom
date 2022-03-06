@@ -3,7 +3,7 @@
 */
 
 #include <pic/util/pic.h>
-#include <FF/string.h>
+#include <util/string.h>
 
 const char* ffpic_fmtstr(uint fmt)
 {

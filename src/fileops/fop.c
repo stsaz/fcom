@@ -2,18 +2,18 @@
 Copyright (c) 2017 Simon Zolin
 */
 
+#ifdef _WIN32
+#include <util/gui-winapi/winapi-shell.h>
+#include <util/gui-winapi/winapi.h>
+#endif
 #include <fcom.h>
 
-#include <FF/number.h>
-#include <FF/crc.h>
-#include <FF/data/pe.h>
-#include <FF/data/pe-fmt.h>
+#include <util/crc.h>
+#include <util/pe.h>
+#include <util/pe-fmt.h>
 #include <FFOS/dir.h>
 #include <FFOS/file.h>
 #include <FFOS/process.h>
-#ifdef FF_WIN
-#include <FF/gui/winapi.h>
-#endif
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, ##__VA_ARGS__)
 #define infolog(dbglev, fmt, ...)  fcom_infolog(FILT_NAME, fmt, ##__VA_ARGS__)

@@ -4,10 +4,10 @@ Copyright (c) 2017 Simon Zolin
 
 #include <fcom.h>
 
-#include <FF/sys/thpool.h>
-#include <FF/sys/fileread.h>
-#include <FF/sys/filewrite.h>
-#include <FF/path.h>
+#include <util/thpool.h>
+#include <util/fileread.h>
+#include <util/filewrite.h>
+#include <util/path.h>
 #include <FFOS/error.h>
 #include <FFOS/file.h>
 #include <FFOS/dir.h>

@@ -4,8 +4,7 @@
 
 #include <fcom.h>
 #include <arc/arc.h>
-#include <FF/path.h>
-#include <FF/number.h>
+#include <util/path.h>
 #include <zstd/zstd-ff.h>
 
 extern const fcom_core *core;

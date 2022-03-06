@@ -5,7 +5,7 @@ Copyright (c) 2017 Simon Zolin
 #include <fcom.h>
 
 #include <pic/util/pic.h>
-#include <FF/path.h>
+#include <util/path.h>
 
 
 const fcom_core *core;

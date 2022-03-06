@@ -101,11 +101,11 @@ again:
 				"forwarder:%xu  "
 				"name_rva:%xu  "
 				"addrs_rva:%xu"
-				, ffint_ltoh32(id[i].lookups_rva)
-				, ffint_ltoh32(id[i].unused1)
-				, ffint_ltoh32(id[i].forwarder)
-				, ffint_ltoh32(id[i].name_rva)
-				, ffint_ltoh32(id[i].addrs_rva));
+				, ffint_le_cpu32_ptr(id[i].lookups_rva)
+				, ffint_le_cpu32_ptr(id[i].unused1)
+				, ffint_le_cpu32_ptr(id[i].forwarder)
+				, ffint_le_cpu32_ptr(id[i].name_rva)
+				, ffint_le_cpu32_ptr(id[i].addrs_rva));
 		}
 		break;
 	}

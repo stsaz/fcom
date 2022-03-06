@@ -3,7 +3,6 @@
 */
 
 #include <ffpack/zipread.h>
-#include <FF/number.h>
 
 #define dbglog0(...)  fcom_dbglog(0, FILT_NAME, __VA_ARGS__)
 #define errlog(...)  fcom_errlog(FILT_NAME, __VA_ARGS__)
@@ -78,7 +77,7 @@ static void unzip_showinfo(struct unzip1 *z, const ffzipread_fileinfo_t *f)
 
 	p = ffs_copystr(p, end, &f->name);
 
-	fcom_userlog("%*s", p - z->fn.ptr, z->fn.ptr);
+	fcom_userlog("%*s", p - (char*)z->fn.ptr, z->fn.ptr);
 }
 
 static int unzip1_process(void *p, fcom_cmd *cmd)

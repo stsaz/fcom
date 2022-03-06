@@ -4,8 +4,8 @@ Copyright (c) 2017 Simon Zolin
 
 #include <fcom.h>
 
-#include <FF/sys/wreg.h>
-#include <FF/time.h>
+#include <util/wreg.h>
+#include <util/time.h>
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, "com", fmt, __VA_ARGS__)
@@ -96,7 +96,7 @@ static void wregfind_close(void *p, fcom_cmd *cmd)
 		ffmblk_free(mblk);
 	}
 
-	fffile_fmt(ffstdout, NULL, "subkeys:%u (%u)  values:%u (%u)\n"
+	ffstdout_fmt("subkeys:%u (%u)  values:%u (%u)\n"
 		, c->stat.subkeys, c->stat.subkeys_all, c->stat.vals, c->stat.vals_all);
 
 	ffmem_free(c);

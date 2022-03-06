@@ -3,10 +3,9 @@
 */
 
 #include <ffpack/tarread.h>
-#include <FF/number.h>
-#include <FF/path.h>
-#include <FF/array.h>
-#include <FF/time.h>
+#include <util/path.h>
+#include <util/array.h>
+#include <util/time.h>
 
 #define dbglog0(...)  fcom_dbglog(0, FILT_NAME, __VA_ARGS__)
 #define warnlog(...)  fcom_warnlog(FILT_NAME, __VA_ARGS__)
@@ -183,6 +182,30 @@ again:
 			return FCOM_ERR;
 		}
 	}
+}
+
+static const char s_fmode[] = ".pc.d.b.-.l.s...";
+static const char s_fperm_set[] = "rwxrwxrwx";
+
+/** Convert UNIX file mode to string: "Trwxrwxrwx"
+Return number of bytes written. */
+uint fffile_unixattr_tostr(char *dst, size_t cap, uint mode)
+{
+	if (cap < 10)
+		return 0;
+
+	uint n;
+	n = (mode & FFUNIX_FILE_TYPEMASK) >> 12;
+	*dst++ = s_fmode[n];
+
+	ffs_fill(dst, dst + cap, '-', 9);
+	n = mode & 0777;
+	while (n != 0) {
+		uint i = ffbit_ffs32(n) - 1;
+		dst[8 - i] = s_fperm_set[8 - i];
+		ffbit_reset32(&n, i);
+	}
+	return 10;
 }
 
 /* "mode user group size date name" */

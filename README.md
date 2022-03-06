@@ -276,7 +276,6 @@ INSTALL
 		git clone https://github.com/stsaz/ffbase
 		git clone https://github.com/stsaz/ffpack
 		git clone https://github.com/stsaz/ffos
-		git clone https://github.com/stsaz/ff
 		git clone https://github.com/stsaz/fcom
 
 3. Build ffpack libs, cryptolib3, piclib3 (3rd-party libraries) or use the binaries from the previous fcom release.
@@ -288,16 +287,10 @@ INSTALL
 
 	You can explicitly specify path to each of FF source repositories, e.g.:
 
-		make install FFOS=~/ffos FF=~/ff FFPACK=~/ffpack
+		make install FFOS=~/ffos FFPACK=~/ffpack
 
 	Default architecture is amd64.  You can specify different target architecture like this:
 
 		make install ARCH=i686
 
 5. Ready!  You can copy the directory `./fcom-0` anywhere you want (see section "INSTALL ON LINUX").
-
-
----------------
-HOMEPAGE
----------------
-http://github.com/stsaz/fcom

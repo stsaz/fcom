@@ -3,9 +3,9 @@ Copyright (c) 2020 Simon Zolin */
 
 #include <fcom.h>
 
-#include <FF/net/dns-client.h>
-#include <FF/net/dns.h>
-#include <FF/net/proto.h>
+#include <util/dns-client.h>
+#include <util/dns.h>
+#include <util/ipaddr.h>
 #include <FFOS/netconf.h>
 
 

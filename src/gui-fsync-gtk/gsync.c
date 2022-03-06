@@ -3,10 +3,11 @@
 */
 
 #include <fcom.h>
-#include <FF/gui-gtk/gtk.h>
-#include <FF/number.h>
-#include <FF/path.h>
-#include <FF/data/conf2-scheme.h>
+#include <util/gui-gtk/gtk.h>
+#include <util/gui-gtk/loader.h>
+#include <util/path.h>
+#include <util/misc.h>
+#include <util/conf2-scheme.h>
 #include <FFOS/dirscan.h>
 
 extern const fcom_core *core;
@@ -22,6 +23,15 @@ extern const fcom_command *com;
 void opts_save();
 void opts_def();
 void opts_load();
+
+/** Set or clear bits. */
+#define ffint_bitmask(pn, mask, set) \
+do { \
+	if (set) \
+		*(pn) |= (mask); \
+	else \
+		*(pn) &= ~(mask); \
+} while (0)
 
 
 enum SHOWMASK_E {
@@ -270,7 +280,7 @@ static int finfo(const struct fsync_file *e, ffarr *buf)
 
 void modtime(ffarr *buf, struct fsync_file *e)
 {
-	ffarr_grow(buf, 64, 0);
+	ffvec_grow(buf, 64, 1);
 	ffdatetime dt = {};
 	fftime t = e->mtime;
 	t.sec += FFTIME_1970_SECONDS;

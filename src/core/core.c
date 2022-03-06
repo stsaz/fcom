@@ -3,8 +3,8 @@ Copyright (c) 2017 Simon Zolin */
 
 #include <fcom.h>
 
-#include <FF/path.h>
-#include <FF/time.h>
+#include <util/path.h>
+#include <util/time.h>
 #include <FFOS/dir.h>
 #include <FFOS/queue.h>
 #include <FFOS/process.h>
@@ -330,7 +330,7 @@ static int core_cmd(uint cmd, ...)
 		work_loop(g->workers.ptr);
 
 		struct worker *w;
-		FFSLICE_WALK_T(&g->workers, w, struct worker) {
+		FFSLICE_WALK(&g->workers, w) {
 			if (w != (struct worker*)g->workers.ptr && w->init)
 				ffkqu_post(&w->kqpost, &w->evposted);
 		}

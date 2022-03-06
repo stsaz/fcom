@@ -3,8 +3,7 @@ Copyright (c) 2019 Simon Zolin
 */
 
 #include <fcom.h>
-#include <FF/path.h>
-#include <FF/number.h>
+#include <util/path.h>
 
 
 extern const fcom_core *core;

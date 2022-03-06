@@ -2,10 +2,10 @@
 Copyright (c) 2019 Simon Zolin
 */
 
+#include <util/gui-winapi/winapi-shell.h>
 #include <fcom.h>
-
-#include <FF/gui/loader.h>
-#include <FF/gui/winapi.h>
+#include <util/gui-winapi/loader.h>
+#include <util/gui-winapi/winapi.h>
 
 
 /** Extensions to enum FSYNC_ST. */

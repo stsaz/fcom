@@ -4,11 +4,11 @@ Copyright (c) 2017 Simon Zolin
 
 #include <fcom.h>
 
-#include <FF/gui/loader.h>
-#include <FF/gui/winapi.h>
+#include <util/gui-winapi/loader.h>
+#include <util/gui-winapi/winapi.h>
 #include <pic/util/bmp.h>
-#include <FF/time.h>
-#include <FF/path.h>
+#include <util/time.h>
+#include <util/path.h>
 
 
 extern const fcom_core *core;

@@ -3,9 +3,9 @@ Copyright (c) 2017 Simon Zolin */
 
 #pragma once
 
-#include <FF/array.h>
-#include <FF/data/conf2-scheme.h>
-#include <FF/sys/taskqueue.h>
+#include <util/array.h>
+#include <util/conf2-scheme.h>
+#include <util/taskqueue.h>
 #include <FFOS/file.h>
 #include <FFOS/timerqueue.h>
 
@@ -226,10 +226,10 @@ typedef struct fcom_cmd {
 		uint attr;
 	} input, output;
 
-	ffarr2 members; //char*[]
-	ffarr2 include_files; //ffstr[]
-	ffarr2 exclude_files; //ffstr[]
-	ffarr2 servers; //ffstr[]
+	ffslice members; //char*[]
+	ffslice include_files; //ffstr[]
+	ffslice exclude_files; //ffstr[]
+	ffslice servers; //ffstr[]
 
 	struct {
 		uint width;

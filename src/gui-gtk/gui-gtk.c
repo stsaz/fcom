@@ -3,7 +3,8 @@
 */
 
 #include <fcom.h>
-#include <FF/gui-gtk/gtk.h>
+#include <util/gui-gtk/gtk.h>
+#include <util/gui-gtk/loader.h>
 #include <FFOS/thread.h>
 
 const fcom_core *core;

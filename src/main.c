@@ -3,8 +3,8 @@ Copyright (c) 2017 Simon Zolin */
 
 #include <fcom.h>
 
-#include <FF/time.h>
-#include <FF/path.h>
+#include <util/time.h>
+#include <util/path.h>
 #include <FFOS/process.h>
 #include <FFOS/file.h>
 #include <FFOS/thread.h>
@@ -26,11 +26,11 @@ struct cmdconf {
 	fftime mtime;
 
 	ffarr members; //char*[]
-	ffarr2 include_files; //ffstr[]
-	ffarr2 exclude_files; //ffstr[]
+	ffslice include_files; //ffstr[]
+	ffslice exclude_files; //ffstr[]
 	char *include_files_data, *exclude_files_data;
 
-	ffarr2 servers; //ffstr[]
+	ffslice servers; //ffstr[]
 	char *servers_data;
 
 	ffstr search;
@@ -350,17 +350,17 @@ static int loadcore(char *argv0)
 	if (0 == ffstr_catfmt(&a, "%s/../mod/core.%s%Z", path, FFDL_EXT))
 		goto end;
 	a.len = ffpath_normalize(a.ptr, a.cap, a.ptr, a.len - 1, 0);
-	a.ptr[a.len] = '\0';
+	((char*)a.ptr)[a.len] = '\0';
 
 	if (NULL == (dl = ffdl_open(a.ptr, 0))) {
-		fffile_fmt(ffstderr, NULL, "can't load %s: %s\n", a.ptr, ffdl_errstr());
+		ffstderr_fmt("can't load %s: %s\n", a.ptr, ffdl_errstr());
 		goto end;
 	}
 
 	g->core_create = (void*)ffdl_addr(dl, "core_create");
 	g->core_free = (void*)ffdl_addr(dl, "core_free");
 	if (g->core_create == NULL || g->core_free == NULL) {
-		fffile_fmt(ffstderr, NULL, "can't resolve functions from %s: %s\n"
+		ffstderr_fmt("can't resolve functions from %s: %s\n"
 			, a.ptr, ffdl_errstr());
 		goto end;
 	}

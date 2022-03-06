@@ -3,8 +3,7 @@ Copyright (c) 2019 Simon Zolin
 */
 
 #include <fcom.h>
-#include <FF/number.h>
-#include <FF/path.h>
+#include <util/path.h>
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, __VA_ARGS__)
 #define verblog(fmt, ...)  fcom_verblog(FILT_NAME, fmt, __VA_ARGS__)

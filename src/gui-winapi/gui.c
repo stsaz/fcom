@@ -4,8 +4,8 @@ Copyright (c) 2017 Simon Zolin
 
 #include <fcom.h>
 
-#include <FF/gui/loader.h>
-#include <FF/gui/winapi.h>
+#include <util/gui-winapi/loader.h>
+#include <util/gui-winapi/winapi.h>
 #include <FFOS/thread.h>
 
 

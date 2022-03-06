@@ -4,7 +4,7 @@ Copyright (c) 2017 Simon Zolin
 
 #include <arc/arc.h>
 
-#include <FF/path.h>
+#include <util/path.h>
 
 
 const fcom_core *core;
@@ -124,7 +124,7 @@ int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf)
 
 	n = input->len + 1;
 	n += (cmd->outdir != NULL) ? ffsz_len(cmd->outdir) + FFSLEN("/") : 0;
-	if (NULL == ffarr_grow(buf, n, 0))
+	if (NULL == ffvec_grow(buf, n, 1))
 		return FCOM_SYSERR;
 
 	p = buf->ptr;
@@ -199,10 +199,10 @@ end:
 }
 
 /** Check if --member items contain wildcards. */
-ffbool arc_members_wildcard(const ffarr2 *members)
+ffbool arc_members_wildcard(const ffslice *members)
 {
 	const char **pm;
-	FFSLICE_WALK_T(members, pm, const char*) {
+	FFSLICE_WALK(members, pm) {
 		size_t n = ffsz_len(*pm);
 		if (*pm + n != ffs_findof(*pm, n, "*?", 2))
 			return 1;
@@ -211,13 +211,13 @@ ffbool arc_members_wildcard(const ffarr2 *members)
 }
 
 /** Check if --member item matches the file name. */
-ffbool arc_need_member(const ffarr2 *members, ffbool member_wildcard, const ffstr *fn)
+ffbool arc_need_member(const ffslice *members, ffbool member_wildcard, const ffstr *fn)
 {
 	if (members->len == 0)
 		return 1;
 
 	const char **pm;
-	FFSLICE_WALK_T(members, pm, const char*) {
+	FFSLICE_WALK(members, pm) {
 		ffstr m;
 		ffstr_setz(&m, *pm);
 		if (0 == ffs_wildcard(m.ptr, m.len, fn->ptr, fn->len, FFS_WC_ICASE)

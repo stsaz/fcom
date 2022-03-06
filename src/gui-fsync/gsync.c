@@ -6,9 +6,7 @@ Copyright (c) 2018 Simon Zolin
 #include <gui-fsync/conf.h>
 #include <gui-fsync/sync.h>
 #include <gui-fsync/tree.h>
-
-#include <FF/time.h>
-#include <FF/number.h>
+#include <util/time.h>
 #include <FFOS/dirscan.h>
 
 static void wsync_action(ffui_wnd *wnd, int id);
@@ -26,6 +24,16 @@ void list_cols_read();
 struct ggui *gg;
 const fcom_fsync *fsync;
 const fcom_fops *fops;
+
+
+/** Set or clear bits. */
+#define ffint_bitmask(pn, mask, set) \
+do { \
+	if (set) \
+		*(pn) |= (mask); \
+	else \
+		*(pn) &= ~(mask); \
+} while (0)
 
 
 enum SHOW_F {
@@ -758,7 +766,7 @@ static ffbool cmpent_visible(const struct fsync_cmp *c)
 
 void modtime(ffarr *buf, struct fsync_file *e)
 {
-	ffarr_grow(buf, 64, 0);
+	ffvec_grow(buf, 64, 1);
 	ffdatetime dt = {};
 	fftime t = e->mtime;
 	t.sec += FFTIME_1970_SECONDS;

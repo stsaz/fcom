@@ -147,9 +147,9 @@ void snapshot_writefile(ffconfw *cw, const struct file *f)
 	ffconfw_addkeyz(cw, "f");
 	ffconfw_addstrz(cw, f->name);
 	ffconfw_addint(cw, f->size);
-	ffconfw_addintf(cw, f->attr, FFINT_HEXLOW);
-	ffconfw_addintf(cw, 0, FFINT_HEXLOW);
-	ffconfw_addintf(cw, 0, FFINT_HEXLOW);
+	ffconfw_addintf(cw, f->attr, FFS_INTHEX);
+	ffconfw_addintf(cw, 0, FFS_INTHEX);
+	ffconfw_addintf(cw, 0, FFS_INTHEX);
 
 	char buf[128];
 	fftime mt = f->mtime;

@@ -1,7 +1,7 @@
 /** fcom: command-line arguments
 2021, Simon Zolin */
 
-#include <FF/data/cmdarg-scheme.h>
+#include <util/cmdarg-scheme.h>
 
 #define CMD_LAST 100
 
@@ -21,7 +21,7 @@ static int arg_flist(ffcmdarg_scheme *as, void *obj, const char *fn)
 	fffd f = FF_BADFD;
 	ffarr buf = {0};
 	ffstr line;
-	const char *d, *end, *lf, *ln_end;
+	const char *d, *end, *lf;
 
 	dbglog(0, "opening file %s", fn);
 
@@ -35,9 +35,9 @@ static int arg_flist(ffcmdarg_scheme *as, void *obj, const char *fn)
 	end = buf.ptr + n;
 	while (d != end) {
 		lf = ffs_find(d, end - d, '\n');
-		d = ffs_skipof(d, lf - d, " \t", 2);
-		ln_end = ffs_rskipof(d, lf - d, " \t\r", 3);
-		ffstr_set(&line, d, ln_end - d);
+		d += ffs_skipany(d, lf - d, " \t", 2);
+		n = ffs_rskipany(d, lf - d, " \t\r", 3);
+		ffstr_set(&line, d, n);
 		if (lf != end)
 			d = lf + 1;
 		else

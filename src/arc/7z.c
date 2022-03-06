@@ -5,7 +5,7 @@ Copyright (c) 2019 Simon Zolin
 #include <fcom.h>
 #include <arc/arc.h>
 #include <ffpack/7zread.h>
-#include <FF/time.h>
+#include <util/time.h>
 
 
 extern const fcom_core *core;
@@ -174,7 +174,7 @@ static void un7z_showinfo(un7z *z, const ff7zread_fileinfo *f, fcom_cmd *cmd)
 	if (f->attr & FFWIN_FILE_DIR)
 		p = ffs_copy(p, end, "       <DIR>", 12);
 	else
-		p += ffs_fromint(f->size, p, end - p, FFINT_WIDTH(12));
+		p += ffs_fromint(f->size, p, end - p, FFS_INTWIDTH(12));
 	p = ffs_copyc(p, end, ' ');
 
 	ffdtm dt;
@@ -192,7 +192,7 @@ static void un7z_showinfo(un7z *z, const ff7zread_fileinfo *f, fcom_cmd *cmd)
 		p = ffs_copystr(p, end, &f->name);
 	}
 
-	fcom_verblog(FILT_NAME, "%*s", p - z->fn.ptr, z->fn.ptr);
+	fcom_verblog(FILT_NAME, "%*s", p - (char*)z->fn.ptr, z->fn.ptr);
 }
 
 #undef FILT_NAME

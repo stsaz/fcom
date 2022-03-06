@@ -173,7 +173,7 @@ static void uniso_showinfo(struct uniso *o, const ffisoread_fileinfo_t *f, uint 
 	if (ffiso_file_isdir(f))
 		p = ffs_copy(p, end, "       <DIR>", 12);
 	else
-		p += ffs_fromint(f->size, p, end - p, FFINT_WIDTH(12));
+		p += ffs_fromint(f->size, p, end - p, FFS_INTWIDTH(12));
 	p = ffs_copyc(p, end, ' ');
 
 	ffdtm dt;
@@ -184,9 +184,9 @@ static void uniso_showinfo(struct uniso *o, const ffisoread_fileinfo_t *f, uint 
 	p = ffs_copystr(p, end, &f->name);
 
 	if (show)
-		fcom_userlog("%*s", p - o->fn.ptr, o->fn.ptr);
+		fcom_userlog("%*s", p - (char*)o->fn.ptr, o->fn.ptr);
 	else
-		fcom_verblog(FILT_NAME, "%*s", p - o->fn.ptr, o->fn.ptr);
+		fcom_verblog(FILT_NAME, "%*s", p - (char*)o->fn.ptr, o->fn.ptr);
 }
 
 #undef FILT_NAME

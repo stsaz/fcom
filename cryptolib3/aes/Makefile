@@ -21,18 +21,14 @@ $(DIR): $(PKG)
 	touch $(DIR)
 
 # build
-CFLAGS += -I$(DIR)
+CFLAGS := -O3 -I$(DIR)
 
 SRC := \
-	$(DIR)/aesaux.c \
-	$(DIR)/aes_avs.c \
 	$(DIR)/aescrypt.c \
-	$(DIR)/aesgav.c \
 	$(DIR)/aeskey2.c \
 	$(DIR)/aeskey.c \
 	$(DIR)/aes_modes.c \
 	$(DIR)/aes_ni.c \
-	$(DIR)/aesrav.c \
 	$(DIR)/aestab.c
 OBJ := aes-ff.o $(SRC:.c=.o)
 

@@ -5,8 +5,8 @@ Copyright (c) 2017 Simon Zolin
 #include <fcom.h>
 #include <core/com-dir.h>
 
-#include <FF/list.h>
-#include <FF/path.h>
+#include <util/list.h>
+#include <util/path.h>
 #include <FFOS/process.h>
 #include <FFOS/dirscan.h>
 
@@ -40,6 +40,8 @@ typedef struct {
 	uint done_prev :1;
 	uint data_empty :1;
 } filter;
+
+typedef fflist_item* fflist_cursor;
 
 typedef struct {
 	fcom_cmd cmd;
@@ -258,6 +260,75 @@ static int filt_isfirst(comm *c, fflist_item *item)
 			return 0;
 	}
 	return 0;
+}
+
+enum FFLIST_CUR {
+	FFLIST_CUR_SAME = 0
+	, FFLIST_CUR_NEXT = 1
+	, FFLIST_CUR_PREV = 2
+
+	, FFLIST_CUR_RM = 0x10 //remove this
+	, FFLIST_CUR_RMPREV = 0x20 //remove all previous
+	, FFLIST_CUR_RMNEXT = 0x40 //remove all next
+	, FFLIST_CUR_RMFIRST = 0x80 //remove if the first
+
+	, FFLIST_CUR_BOUNCE = 0x100 //go back if FFLIST_CUR_NEXT is set and it's the last item in chain
+	, FFLIST_CUR_SAMEIFBOUNCE = 0x200 //stay at the same position if a bounce occurs
+
+	//return codes:
+	// FFLIST_CUR_SAME
+	// FFLIST_CUR_NEXT
+	// FFLIST_CUR_PREV
+	, FFLIST_CUR_NONEXT = 3
+	, FFLIST_CUR_NOPREV = 4
+};
+
+/** Shift cursor.
+@cmd: enum FFLIST_CUR
+Return enum FFLIST_CUR. */
+uint fflist_curshift(fflist_cursor *cur, uint cmd, void *sentl)
+{
+	const fflist_cursor c = *cur;
+	uint r;
+	FF_ASSERT((cmd & (FFLIST_CUR_NEXT | FFLIST_CUR_PREV)) != (FFLIST_CUR_NEXT | FFLIST_CUR_PREV));
+
+	if (cmd & FFLIST_CUR_RMPREV)
+		c->prev = sentl;
+	if (cmd & FFLIST_CUR_RMNEXT)
+		c->next = sentl;
+
+	if (cmd & FFLIST_CUR_NEXT) {
+		if (c->next != sentl) {
+			*cur = c->next;
+			r = FFLIST_CUR_NEXT;
+		} else if ((cmd & (FFLIST_CUR_BOUNCE | FFLIST_CUR_SAMEIFBOUNCE)) == (FFLIST_CUR_BOUNCE | FFLIST_CUR_SAMEIFBOUNCE)) {
+			r = FFLIST_CUR_SAME;
+		} else if ((cmd & FFLIST_CUR_BOUNCE) && c->prev != sentl) {
+			*cur = c->prev;
+			r = FFLIST_CUR_PREV;
+		} else
+			r = FFLIST_CUR_NONEXT;
+
+	} else if (cmd & FFLIST_CUR_PREV) {
+		if (c->prev != sentl) {
+			*cur = c->prev;
+			r = FFLIST_CUR_PREV;
+
+		} else if ((cmd & FFLIST_CUR_BOUNCE) && c->next != sentl) {
+			*cur = c->next;
+			r = FFLIST_CUR_NEXT;
+
+		} else
+			r = FFLIST_CUR_NOPREV;
+
+	} else
+		r = FFLIST_CUR_SAME;
+
+	if ((cmd & FFLIST_CUR_RM)
+		|| ((cmd & FFLIST_CUR_RMFIRST) && c->prev == sentl))
+		ffchain_unlink(c);
+
+	return r;
 }
 
 /** Call filters within the chain. */

@@ -4,7 +4,7 @@ Copyright (c) 2019 Simon Zolin
 
 #include <fcom.h>
 #include <ffpack/xzread.h>
-#include <FF/path.h>
+#include <util/path.h>
 
 
 extern const fcom_core *core;

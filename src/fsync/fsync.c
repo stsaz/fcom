@@ -3,11 +3,10 @@ Copyright (c) 2017 Simon Zolin
 */
 
 #include <fsync/fsync.h>
-#include <FF/path.h>
-#include <FF/time.h>
-#include <FF/number.h>
-#include <FF/rbtree.h>
-#include <FF/crc.h>
+#include <util/path.h>
+#include <util/time.h>
+#include <util/rbtree.h>
+#include <util/crc.h>
 #include <FFOS/dirscan.h>
 
 /** Fast CRC32 implementation using 8k table. */
@@ -674,6 +673,8 @@ static struct file* cur_next2(struct cursor *c)
 	}
 }
 
+#define ffint_cmp(a, b) \
+	(((a) == (b)) ? 0 : ((a) < (b)) ? -1 : 1)
 
 /** Compare attributes of 2 files.
 Return enum FSYNC_ST. */
