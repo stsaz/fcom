@@ -114,7 +114,7 @@ static inline char * ffs_findof(const char *buf, size_t len, const char *anyof, 
 /** Perform reverse search of byte in a buffer. */
 static inline char* ffs_rfind(const char *buf, size_t len, int ch)
 {
-	ffssize i = ffs_rfindchar(buf, ch, len);
+	ffssize i = ffs_rfindchar(buf, len, ch);
 	if (i < 0)
 		return (char*)buf + len;
 	return (char*)buf + i;
