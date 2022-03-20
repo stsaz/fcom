@@ -275,6 +275,7 @@ typedef struct fcom_cmd {
 		, bmp_input_reverse :1 //input lines order is HEIGHT..1, as in .bmp
 		, del_source :1
 		, skip_err_active :1
+		, unbranch :1
 		;
 	fffd input_fd; // fd of input file
 } fcom_cmd;

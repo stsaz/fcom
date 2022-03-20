@@ -265,6 +265,7 @@ static const ffcmdarg_arg cmdline_args[] = {
 
 	// TEXT PROCESSING
 	{ 0, "replace",	TSTR,	F(arg_replace) },
+	{ 0, "unbranch",	TSWITCH,	O(unbranch) },
 
 	// IMAGE PROCESSING
 	{ 0, "jpeg-quality",	TINT8,	O(jpeg_quality) },

@@ -48,6 +48,7 @@ struct cmdconf {
 	byte png_comp;
 	byte preserve_date;
 	byte colors;
+	byte unbranch;
 
 	byte deflate_level;
 	char zstd_level;
@@ -305,6 +306,7 @@ static void cmd_add(void *param)
 	cmd.passwd = c->conf.passwd;
 	cmd.show = c->conf.show;
 	cmd.out_preserve_date = c->conf.preserve_date;
+	cmd.unbranch = c->conf.unbranch;
 	com = core->iface("core.com");
 	if (NULL == (m = com->create(&cmd)))
 		goto done;
