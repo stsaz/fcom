@@ -8,6 +8,16 @@ HISTORY OF FCOM
  "!" - broken compatibility
 
 
+fcom v0.18 - Mar 20, 2022
+
+ + gsync: "Swap Source & Target"
+ * gsync: delete to trash
+ + "rename": --unbranch
+ * "rename": replace all search occurrences
+ - windows: fix wildcard input
+ - fix output file auto naming (e.g. "-o .jpg")
+
+
 fcom v0.17 - Sep 9, 2021
 
  + fcom list

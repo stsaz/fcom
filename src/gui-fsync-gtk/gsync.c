@@ -399,10 +399,15 @@ end:
 	ffmem_free(fullname);
 }
 
-void status(const char *text)
+void status(const char *fmt, ...)
 {
 	struct wsync *w = gg->wsync;
-	ffui_send_stbar_settextz(&w->stbar, text);
+	va_list va;
+	va_start(va, fmt);
+	char *s = ffsz_allocfmtv(fmt, va);
+	va_end(va);
+	ffui_send_stbar_settextz(&w->stbar, s);
+	ffmem_free(s);
 }
 
 /** Scan directories, possibly with wildcards */
@@ -564,10 +569,7 @@ void showresults()
 	ffui_post_view_clear(&w->vlist);
 	ffui_post_view_setdata(&w->vlist, 0, w->cmptbl_filter.len);
 
-	ffvec buf = {};
-	ffvec_addfmt(&buf, "Results: %L (%L)%Z", w->cmptbl_filter.len, w->cmptbl.len);
-	status(buf.ptr);
-	ffvec_free(&buf);
+	status("Results: %L (%L)", w->cmptbl_filter.len, w->cmptbl.len);
 }
 
 /** Scan source and target trees */

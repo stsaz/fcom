@@ -8,7 +8,7 @@ OPERATION
  hexprint FILE...
  list FILE...
  mount DISKNAME -o DIR
- rename FILE... --replace='SEARCH/REPLACE'
+ rename FILE... [--unbranch] [--replace='SEARCH/REPLACE']
  sync (DIR | FILE.txt) -o DIR
  sync-snapshot FILE -o FILE.txt
  textcount FILE...
@@ -24,11 +24,11 @@ GUI:
  screenshots
 
 Pack files (.gz, .tar, .zip, .iso):
- gz FILE... [--out=FILE] [--deflate-level=INT]
- iso DIR --out=FILE
+ gz FILE... [--out=FILE.gz] [--deflate-level=INT]
+ iso DIR --out=FILE.iso
  tar FILE... --out=FILE(.tar | .tar.gz | .tgz | .tar.zst) [--deflate-level=INT] [--zstd-level=INT] [--zstd-workers=INT]
- zip FILE... --out=FILE [--compression-method=STR] [--deflate-level=INT] [--zstd-level=INT] [--zstd-workers=INT]
- zst FILE... [--out=FILE] [--zstd-level=INT] [--zstd-workers=INT]
+ zip FILE... --out=FILE.zip [--compression-method=STR] [--deflate-level=INT] [--zstd-level=INT] [--zstd-workers=INT]
+ zst FILE... [--out=FILE.zst] [--zstd-level=INT] [--zstd-workers=INT]
 
 Unpack archives (.gz, .xz, .zst, .tar, .zip, .zipx, .7z, .iso, .ico):
  unpack FILE... [--out=FILE] [--member=FILE]... [--show]
@@ -46,6 +46,7 @@ Convert pictures (.bmp, .jpg, .png):
 Network:
  dns HOSTNAME... [--servers='DNS_SERVER_ADDR;...']
 
+-------
 OPTIONS
 
 INPUT
@@ -56,22 +57,23 @@ INPUT
                     Only include files matching a pattern (full path or wildcard) (case-insensitive)
  --exclude='WILDCARD[;WILDCARD]'
                     Exclude files & directories matching a pattern (full path or wildcard) (case-insensitive)
- --recurse, -R      Recurse into sub-directories
+ -R, --recurse      Recurse into sub-directories
  --delete-source    Delete source file after successful operation
 
 ARCHIVE READING
  --member='WILDCARD[;WILDCARD]'
                     Names of the archive members to process
- --show             Show contents
+ --show             Just show file listing, don't unpack files
 
 ARCHIVE WRITING
  --compression-method=STR
                         Use specific compression method: store, deflate, zstd
- --deflate-level=INT    Set compression level for Deflate algorithm (1..9)
- --zstd-level=INT       Set compression level for ZStandard algorithm (-7..22)
+ --deflate-level=INT    Set compression level for Deflate algorithm (1..9).  Default: 6.
+ --zstd-level=INT       Set compression level for ZStandard algorithm (-7..22).  Default: 3.
  --zstd-workers=INT     Set max. number of worker threads for zstd compression
 
-TEXT PROCESSING
+FILE RENAMING
+ --unbranch         Move (rename) a file out of its directory structure (e.g. "./a/file" -> "./a - file")
  --replace='SEARCH/REPLACE'
                     Set search and replace text pattern
 
@@ -82,25 +84,24 @@ IMAGE PROCESSING
  --crop=[INT]:[INT]     Crop image to width:height pixels
 
 OUTPUT
- --out=FILE, -o     Set output file
+ -o, --out=FILE     Set output file
                      @stdout - write to standard output
- --outdir=DIR, -C   Set output directory
- --force, -f        Overwrite output files
+ -C, --outdir=DIR   Set output directory
+ -f, --force        Overwrite output files
  --resume           Resume copy from the target file size
- --test, -t         Read-only mode
+ -t, --test         Read-only mode
 
  --date=DATE        Set modification date
                     DATE: [YYYY-MM-DD] [hh:mm:ss]
  --date-as=FILE     Get date from file FILE
  --preserve-date    Copy modification date from input file
 
- --password=STR     Password for encryption/decryption
-
 MISC
- --workers=INT, -w  Set max. number of worker threads (see fcom.conf::workers)
- --skip-errors, -k  Print but skip errors and continue operation
- --verbose, -v      Print more information to stdout
- --debug, -D        Print debug log messages to stdout
+ --password=STR     Password for encryption/decryption
+ -w, --workers=INT  Set max. number of worker threads (see fcom.conf::workers)
+ -k, --skip-errors  Print but skip errors and continue operation
+ -v, --verbose      Print more information to stdout
+ -D, --debug        Print debug log messages to stdout
  --benchmark        Show the time spent for command execution
  --help             Show help
 

@@ -80,8 +80,12 @@ char* com_arg_next(fcom_cmd *_c, uint flags)
 
 		} else if ((flags & FCOM_CMD_ARG_FILE)
 			&& 0 == fffile_info_path(name, &fi)
-			&& (fi_valid = 1)
-			&& fffile_isdir(fffileinfo_attr(&fi))) {
+			&& (fi_valid = 1)) {
+
+			if (fffile_isdir(fffileinfo_attr(&fi)))
+				continue;
+			c->curname.len = 0; // don't enter 'cmd.recurse' branch on the next iteration
+			break;
 
 		} else {
 			break;
