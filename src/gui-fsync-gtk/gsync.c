@@ -911,6 +911,41 @@ static void fop(void *param)
 	ffmem_free(fullname);
 }
 
+/** Swap 2 objects. */
+#define SWAP2(o1, o2) \
+do { \
+	__typeof__(o1) _tmp = o1; \
+	o1 = o2; \
+	o2 = _tmp; \
+} while (0)
+
+void swap_src_tgt()
+{
+	struct wsync *w = gg->wsync;
+	SWAP2(w->src, w->dst);
+	SWAP2(w->srcfn, w->dstfn);
+	ffui_edit_settextz(&w->eleft, w->srcfn);
+	ffui_edit_settextz(&w->eright, w->dstfn);
+
+	struct fsync_cmp *it;
+	FFSLICE_WALK(&w->cmptbl, it) {
+		if (it->status == FSYNC_ST_SRC)
+			it->status = FSYNC_ST_DEST;
+		else if (it->status == FSYNC_ST_DEST)
+			it->status = FSYNC_ST_SRC;
+		SWAP2(it->left, it->right);
+	}
+	FFSLICE_WALK(&w->cmptbl_filter, it) {
+		if (it->status == FSYNC_ST_SRC)
+			it->status = FSYNC_ST_DEST;
+		else if (it->status == FSYNC_ST_DEST)
+			it->status = FSYNC_ST_SRC;
+		SWAP2(it->left, it->right);
+	}
+
+	showresults();
+}
+
 void wsync_action(ffui_wnd *wnd, int id)
 {
 	struct wsync *w = gg->wsync;
@@ -951,6 +986,10 @@ void wsync_action(ffui_wnd *wnd, int id)
 		break;
 
 	case A_EXEC:
+		break;
+
+	case A_SWAP:
+		swap_src_tgt();
 		break;
 
 	case A_CLIPFN_LEFT:

@@ -10,6 +10,9 @@ menu mcmd {
 		hotkey "F6"
 		action A_SYNC
 	}
+	item "Swap Source & Target" {
+		action A_SWAP
+	}
 }
 
 menu mfile {

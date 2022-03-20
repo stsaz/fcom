@@ -9,6 +9,7 @@
 
 	A(A_CMP),
 	A(A_SYNC),
+	A(A_SWAP),
 	A(A_DISP),
 	A(A_EXEC),
 	A(A_SHOWEQ),

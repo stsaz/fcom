@@ -229,6 +229,41 @@ void norm(ffstr *s)
 	s->ptr[s->len] = '\0';
 }
 
+/** Swap 2 objects. */
+#define SWAP2(o1, o2) \
+do { \
+	__typeof__(o1) _tmp = o1; \
+	o1 = o2; \
+	o2 = _tmp; \
+} while (0)
+
+void swap_src_tgt()
+{
+	struct wsync *w = &gg->wsync;
+	SWAP2(gg->src, gg->dst);
+	SWAP2(gg->opts.srcfn, gg->opts.dstfn);
+	ffui_settextz(&w->e1, gg->opts.srcfn);
+	ffui_settextz(&w->e2, gg->opts.dstfn);
+
+	struct fsync_cmp *it;
+	FFSLICE_WALK(&gg->cmptbl, it) {
+		if (it->status == FSYNC_ST_SRC)
+			it->status = FSYNC_ST_DEST;
+		else if (it->status == FSYNC_ST_DEST)
+			it->status = FSYNC_ST_SRC;
+		SWAP2(it->left, it->right);
+	}
+	FFSLICE_WALK(&gg->cmptbl_filter, it) {
+		if (it->status == FSYNC_ST_SRC)
+			it->status = FSYNC_ST_DEST;
+		else if (it->status == FSYNC_ST_DEST)
+			it->status = FSYNC_ST_SRC;
+		SWAP2(it->left, it->right);
+	}
+
+	gsync_showresults(0);
+}
+
 static void wsync_action(ffui_wnd *wnd, int id)
 {
 	struct wsync *w = &gg->wsync;
@@ -292,10 +327,7 @@ static void wsync_action(ffui_wnd *wnd, int id)
 		break;
 
 	case A_SWAP:
-		gsync_reset();
-		FF_SWAP2(gg->opts.srcfn, gg->opts.dstfn);
-		ffui_view_clear(&gg->wsync.vopts);
-		opts_show(&gg->opts, &gg->wsync.vopts);
+		swap_src_tgt();
 		break;
 
 	case A_SELALL:
