@@ -729,6 +729,7 @@ void sync2(struct sync_s *sc)
 	char *fnL = NULL, *fnR = NULL;
 	struct fsync_file *f;
 	int r;
+	ffvec toremove = {};
 
 	for (;;) {
 		int i = ffui_view_selnext(&w->vlist, sc->sel);
@@ -762,7 +763,16 @@ void sync2(struct sync_s *sc)
 
 		case FSYNC_ST_DEST:
 			fnR = _fsync->get(FSYNC_FULLNAME, c->right);
-			fops->del(fnR, FOP_TRASH);
+			if (toremove.len == 20) {
+				r = fops->del_many(toremove.ptr, toremove.len, FOP_TRASH);
+				char **it;
+				FFSLICE_WALK(&toremove, it) {
+					ffmem_free(*it);
+				}
+				toremove.len = 0;
+			}
+			*ffvec_pushT(&toremove, char*) = fnR;
+			fnR = NULL;
 			verblog("delete: %s", fnR);
 			break;
 
@@ -804,7 +814,7 @@ void sync2(struct sync_s *sc)
 		if (r == FCOM_ASYNC) {
 			sc->fnL = fnL;
 			sc->fnR = fnR;
-			return;
+			goto end2;
 		}
 
 		ffmem_free(fnL);  fnL = NULL;
@@ -817,6 +827,16 @@ void sync2(struct sync_s *sc)
 	ffmem_free(fnL);
 	ffmem_free(fnR);
 	sc_free(sc);
+
+end2:
+	if (toremove.len != 0) {
+		fops->del_many(toremove.ptr, toremove.len, FOP_TRASH);
+	}
+	char **it;
+	FFSLICE_WALK(&toremove, it) {
+		ffmem_free(*it);
+	}
+	ffvec_free(&toremove);
 }
 
 void sync()

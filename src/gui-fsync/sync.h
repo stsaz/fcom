@@ -144,6 +144,7 @@ static void sync(struct sync_ctx *sc)
 	struct fsync_cmp *cmp;
 	struct fsync_file *f;
 	int r;
+	ffvec toremove = {};
 
 	for (uint i = sc->row_index + 1;  i != gg->cmptbl_filter.len;  i++) {
 
@@ -218,15 +219,25 @@ static void sync(struct sync_ctx *sc)
 			sc->fnR = fsync->get(FSYNC_FULLNAME, cmp->right);
 			if (sc->fnR == NULL)
 				goto end;
-			r = fops->del(sc->fnR, FOP_TRASH);
+			if (toremove.len == 20) {
+				r = fops->del_many(toremove.ptr, toremove.len, FOP_TRASH);
+				char **it;
+				FFSLICE_WALK(&toremove, it) {
+					ffmem_free(*it);
+				}
+				toremove.len = 0;
+			}
+			*ffvec_pushT(&toremove, char*) = sc->fnR;
+			sc->fnR = NULL;
 			break;
 
 		default:
 			r = -1;
 		}
 
-		if (r == FCOM_ASYNC)
-			return;
+		if (r == FCOM_ASYNC) {
+			goto end2;
+		}
 
 		sync_result(sc, r);
 		sync_reset(sc);
@@ -234,4 +245,14 @@ static void sync(struct sync_ctx *sc)
 
 end:
 	sync_free(sc);
+
+end2:
+	if (toremove.len != 0) {
+		fops->del_many(toremove.ptr, toremove.len, FOP_TRASH);
+	}
+	char **it;
+	FFSLICE_WALK(&toremove, it) {
+		ffmem_free(*it);
+	}
+	ffvec_free(&toremove);
 }
