@@ -165,6 +165,8 @@ static int wcard_open(struct job *c, const ffstr *s)
 
 	ffstr dir, name;
 	ffpath_splitpath(s->ptr, s->len, &dir, &name);
+	if (dir.len == 0)
+		ffstr_setz(&dir, ".");
 	dirz = ffsz_dupstr(&dir);
 	de.wildcard = ffsz_dupstr(&name);
 	if (0 != ffdirscan_open(&de, dirz, FFDIRSCAN_USEWILDCARD))
