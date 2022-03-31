@@ -3,6 +3,7 @@ Copyright (c) 2019 Simon Zolin
 */
 
 #include <fcom.h>
+#include <ffbase/map.h>
 
 extern const fcom_core *core;
 extern const fcom_command *com;
@@ -10,8 +11,6 @@ extern const fcom_command *com;
 int fn_out(fcom_cmd *cmd, const ffstr *input, ffarr *buf);
 int out_hlink(fcom_cmd *cmd, ffstr target, const char *linkname);
 int out_slink(fcom_cmd *cmd, ffstr target, const char *linkname);
-ffbool arc_members_wildcard(const ffslice *members);
-ffbool arc_need_member(const ffslice *members, ffbool member_wildcard, const ffstr *fn);
 
 
 static inline void fcom_cmd_set(fcom_cmd *dst, const fcom_cmd *src)
@@ -41,3 +40,13 @@ static inline int task_create_run(fcom_cmd *parent, const char *prefilter_name, 
 	com->ctrl(nc, FCOM_CMD_RUNASYNC);
 	return FCOM_DONE;
 }
+
+struct members {
+	ffmap members;
+	ffvec members_wildcard; // ffstr[]
+};
+/**
+data: char*[] */
+void members_optimize(struct members *m, ffslice data);
+void members_destroy(struct members *m);
+ffbool members_check(struct members *m, ffstr fn);

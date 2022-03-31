@@ -36,7 +36,13 @@ typedef struct un7z {
 	ffarr fn;
 	ffarr buf;
 	const ff7zread_fileinfo *curfile;
+	struct members members;
 } un7z;
+
+void un7z_log(void *udata, ffuint level, ffstr msg)
+{
+	fcom_dbglog(0, "un7z", "%S", &msg);
+}
 
 static void* un7z_open(fcom_cmd *cmd)
 {
@@ -50,6 +56,7 @@ static void* un7z_open(fcom_cmd *cmd)
 	if (NULL == ffarr_alloc(&z->fn, 4096))
 		goto err;
 
+	members_optimize(&z->members, cmd->members);
 	return z;
 
 err:
@@ -63,6 +70,7 @@ static void un7z_close(void *p, fcom_cmd *cmd)
 	ffarr_free(&z->fn);
 	ffarr_free(&z->buf);
 	ff7zread_close(&z->z);
+	members_destroy(&z->members);
 	ffmem_free(z);
 }
 
@@ -81,9 +89,11 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 
 	case R_FIRST:
 		if (NULL == (cmd->input.fn = com->arg_next(cmd, 0)))
-			return FCOM_DONE;
+			return FCOM_FIN;
 		com->ctrl(cmd, FCOM_CMD_FILTADD_PREV, FCOM_CMD_FILT_IN(cmd));
 		ff7zread_open(&z->z);
+		z->z.log = un7z_log;
+		z->z.udata = un7z_log;
 		z->state = R_DATA;
 		return FCOM_MORE;
 
@@ -113,13 +123,14 @@ static int un7z_process(void *p, fcom_cmd *cmd)
 				return FCOM_MORE;
 			}
 
-			if (!arc_need_member(&cmd->members, 0, &f->name)) {
+			if (!members_check(&z->members, f->name)) {
+				fcom_dbglog(0, "7z", "skipping %S", &f->name);
 				continue;
 			}
 
 			z->curfile = f;
 
-			if (fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
+			if (cmd->show || fcom_logchk(core->conf->loglev, FCOM_LOGVERB))
 				un7z_showinfo(z, f, cmd);
 			if (cmd->show)
 				continue;

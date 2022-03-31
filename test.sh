@@ -5,103 +5,108 @@
 set -x # print commands before executing
 set -e # exit if a child process reports an error
 
-FCOM=./fcom
-TESTDIR=./fcom-test
-RM='rm -rf'
-
 for CMD in $@
 do
-	$RM $TESTDIR
+	rm -rf ./test
 
 	if test "$CMD" = "7z" ; then
-		mkdir -p $TESTDIR emptydir
-		7z a $TESTDIR/test.7z emptydir/ ./README.txt ./CHANGES.txt
+		mkdir -p ./test emptydir
+		7z a ./test/test.7z emptydir/ ./README.txt ./CHANGES.txt
 
-		$FCOM un7z $TESTDIR/test.7z -C $TESTDIR
-		diff ./README.txt $TESTDIR/README.txt
-		diff ./CHANGES.txt $TESTDIR/CHANGES.txt
-		ls $TESTDIR/emptydir
-		$RM emptydir
+		./fcom un7z ./test/test.7z -C ./test
+		diff ./README.txt ./test/README.txt
+		diff ./CHANGES.txt ./test/CHANGES.txt
+		ls ./test/emptydir
+		rm ./test/*.txt
+
+		./fcom un7z ./test/test.7z -C ./test --member='R*.txt'
+		test -f ./test/README.txt
+		test ! -f ./test/CHANGES.txt
+		rm ./test/*.txt
+
+		./fcom un7z ./test/test.7z -C ./test --member='README.txt;CHANGES.txt'
+		test -f ./test/README.txt
+		test -f ./test/CHANGES.txt
 
 	elif test "$CMD" = "gz" ; then
-		$FCOM gz ./README.txt -o $TESTDIR/test.gz
-		cat $TESTDIR/test.gz $TESTDIR/test.gz > $TESTDIR/test-double.gz
+		./fcom gz ./README.txt -o ./test/test.gz
+		cat ./test/test.gz ./test/test.gz > ./test/test-double.gz
 
-		$FCOM ungz $TESTDIR/test.gz -C $TESTDIR
-		diff ./README.txt $TESTDIR/README.txt
+		./fcom ungz ./test/test.gz -C ./test
+		diff ./README.txt ./test/README.txt
 
-		rm -f $TESTDIR/*.txt
-		$FCOM ungz $TESTDIR/test-double.gz -C $TESTDIR
-		cat ./README.txt ./README.txt > $TESTDIR/README.double.txt
-		diff $TESTDIR/README.double.txt $TESTDIR/README.txt
+		rm -f ./test/*.txt
+		./fcom ungz ./test/test-double.gz -C ./test
+		cat ./README.txt ./README.txt > ./test/README.double.txt
+		diff ./test/README.double.txt ./test/README.txt
 
 	elif test "$CMD" = "iso" ; then
 
-		$FCOM iso mod/ ./README.txt ./CHANGES.txt -o $TESTDIR/test.iso
+		./fcom iso mod/ ./README.txt ./CHANGES.txt -o ./test/test.iso
 
-		$FCOM uniso $TESTDIR/test.iso -C $TESTDIR
-		diff ./README.txt $TESTDIR/README.txt
-		diff ./CHANGES.txt $TESTDIR/CHANGES.txt
+		./fcom uniso ./test/test.iso -C ./test
+		diff ./README.txt ./test/README.txt
+		diff ./CHANGES.txt ./test/CHANGES.txt
 
 	elif test "$CMD" = "tar" ; then
 
-		$FCOM tar mod/ ./README.txt ./CHANGES.txt -o $TESTDIR/test.tar
+		./fcom tar mod/ ./README.txt ./CHANGES.txt -o ./test/test.tar
 
-		$FCOM untar $TESTDIR/test.tar -C $TESTDIR
-		diff ./README.txt $TESTDIR/README.txt
-		diff ./CHANGES.txt $TESTDIR/CHANGES.txt
+		./fcom untar ./test/test.tar -C ./test
+		diff ./README.txt ./test/README.txt
+		diff ./CHANGES.txt ./test/CHANGES.txt
 
 	elif test "$CMD" = "tar-gz" ; then
 
-		$FCOM tar mod/ ./README.txt ./CHANGES.txt -o $TESTDIR/test.tar.gz
+		./fcom tar mod/ ./README.txt ./CHANGES.txt -o ./test/test.tar.gz
 
-		$FCOM untar $TESTDIR/test.tar.gz -C $TESTDIR
-		diff ./README.txt $TESTDIR/README.txt
-		diff ./CHANGES.txt $TESTDIR/CHANGES.txt
+		./fcom untar ./test/test.tar.gz -C ./test
+		diff ./README.txt ./test/README.txt
+		diff ./CHANGES.txt ./test/CHANGES.txt
 
 	elif test "$CMD" = "tar-zstd" ; then
 
-		$FCOM tar mod/ ./README.txt ./CHANGES.txt -o $TESTDIR/test.tar.zst
+		./fcom tar mod/ ./README.txt ./CHANGES.txt -o ./test/test.tar.zst
 
-		$FCOM untar $TESTDIR/test.tar.zst -C $TESTDIR
-		diff ./README.txt $TESTDIR/README.txt
-		diff ./CHANGES.txt $TESTDIR/CHANGES.txt
+		./fcom untar ./test/test.tar.zst -C ./test
+		diff ./README.txt ./test/README.txt
+		diff ./CHANGES.txt ./test/CHANGES.txt
 
 	elif test "$CMD" = "zip-store" ; then
 
-		$FCOM zip --compression-method=store mod/ ./README.txt ./CHANGES.txt -o $TESTDIR/test.zip
+		./fcom zip --compression-method=store mod/ ./README.txt ./CHANGES.txt -o ./test/test.zip
 
-		$FCOM unzip $TESTDIR/test.zip -C $TESTDIR
-		diff ./README.txt $TESTDIR/README.txt
-		diff ./CHANGES.txt $TESTDIR/CHANGES.txt
+		./fcom unzip ./test/test.zip -C ./test
+		diff ./README.txt ./test/README.txt
+		diff ./CHANGES.txt ./test/CHANGES.txt
 
 	elif test "$CMD" = "zip-deflate" ; then
 
-		$FCOM zip --compression-method=deflate mod/ ./README.txt ./CHANGES.txt -o $TESTDIR/test.zip
+		./fcom zip --compression-method=deflate mod/ ./README.txt ./CHANGES.txt -o ./test/test.zip
 
-		$FCOM unzip $TESTDIR/test.zip -C $TESTDIR
-		diff ./README.txt $TESTDIR/README.txt
-		diff ./CHANGES.txt $TESTDIR/CHANGES.txt
+		./fcom unzip ./test/test.zip -C ./test
+		diff ./README.txt ./test/README.txt
+		diff ./CHANGES.txt ./test/CHANGES.txt
 
 	elif test "$CMD" = "zip-zstd" ; then
 
-		$FCOM zip --compression-method=zstd mod/ ./README.txt ./CHANGES.txt -o $TESTDIR/test.zip
+		./fcom zip --compression-method=zstd mod/ ./README.txt ./CHANGES.txt -o ./test/test.zip
 
-		$FCOM unzip $TESTDIR/test.zip -C $TESTDIR
-		diff ./README.txt $TESTDIR/README.txt
-		diff ./CHANGES.txt $TESTDIR/CHANGES.txt
+		./fcom unzip ./test/test.zip -C ./test
+		diff ./README.txt ./test/README.txt
+		diff ./CHANGES.txt ./test/CHANGES.txt
 
 	elif test "$CMD" = "xz" ; then
-		mkdir -p $TESTDIR
-		xz -c ./README.txt > $TESTDIR/README.txt.xz
+		mkdir -p ./test
+		xz -c ./README.txt > ./test/README.txt.xz
 
-		$FCOM unxz $TESTDIR/README.txt.xz -C $TESTDIR
-		diff ./README.txt $TESTDIR/README.txt
+		./fcom unxz ./test/README.txt.xz -C ./test
+		diff ./README.txt ./test/README.txt
 
 	elif test "$CMD" = "crypt" ; then
-		$FCOM encrypt --password=123456 ./fcom -o $TESTDIR/fcom-encrypt
-		$FCOM decrypt --password=123456 $TESTDIR/fcom-encrypt -o $TESTDIR/fcom-decrypt
-		diff ./fcom $TESTDIR/fcom-decrypt
+		./fcom encrypt --password=123456 ./fcom -o ./test/fcom-encrypt
+		./fcom decrypt --password=123456 ./test/fcom-encrypt -o ./test/fcom-decrypt
+		diff ./fcom ./test/fcom-decrypt
 
 	else
 		echo "Invalid command: $CMD"
@@ -110,5 +115,5 @@ do
 
 done
 
-$RM $TESTDIR
+rm -rf ./test
 echo DONE

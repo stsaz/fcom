@@ -15,6 +15,7 @@ struct uniso {
 	ffisoread iso;
 	ffarr fn;
 	uint init :1;
+	struct members members;
 };
 
 static void uniso_showinfo(struct uniso *o, const ffisoread_fileinfo_t *f, uint show);
@@ -28,6 +29,7 @@ static void* uniso_open(fcom_cmd *cmd)
 	if (NULL == ffarr_alloc(&o->fn, 4096))
 		goto err;
 
+	members_optimize(&o->members, cmd->members);
 	return o;
 
 err:
@@ -41,6 +43,7 @@ static void uniso_close(void *p, fcom_cmd *cmd)
 	if (o->init)
 		ffisoread_close(&o->iso);
 	ffarr_free(&o->fn);
+	members_destroy(&o->members);
 	ffmem_free(o);
 }
 
@@ -122,7 +125,7 @@ again:
 		case FFISOREAD_FILEMETA:
 			f = ffisoread_fileinfo(&o->iso);
 
-			if (!arc_need_member(&cmd->members, 0, &f->name))
+			if (!members_check(&o->members, f->name))
 				continue;
 
 			if (cmd->show || fcom_logchk(core->conf->loglev, FCOM_LOGVERB))

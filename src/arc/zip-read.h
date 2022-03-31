@@ -21,6 +21,7 @@ struct unzip1 {
 	ffarr fn;
 	ffstr in;
 	uint64 total_comp, total_uncomp;
+	struct members members;
 };
 
 #define FILT_NAME  "unzip"
@@ -38,6 +39,9 @@ static void* unzip1_open(fcom_cmd *cmd)
 	z->zip.codepage = FFUNICODE_WIN1252;
 	z->zip.log = zip_log;
 	z->zip.timezone_offset = core->conf->tz.real_offset;
+	cmd->skip_err = 1;
+
+	members_optimize(&z->members, cmd->members);
 	return z;
 }
 
@@ -47,6 +51,7 @@ static void unzip1_close(void *p, fcom_cmd *cmd)
 	ffvec_free(&z->files);
 	ffarr_free(&z->fn);
 	ffzipread_close(&z->zip);
+	members_destroy(&z->members);
 	ffmem_free(z);
 }
 
@@ -130,7 +135,7 @@ again:
 				&& (f->compressed_size != 0 || f->uncompressed_size != 0))
 				fcom_warnlog(FILT_NAME, "directory %S has non-zero size", &f->name);
 
-			if (!arc_need_member(&cmd->members, 0, &f->name))
+			if (!members_check(&z->members, f->name))
 				break;
 
 			if (cmd->show || fcom_logchk(core->conf->loglev, FCOM_LOGVERB))

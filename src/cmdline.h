@@ -103,7 +103,7 @@ static int arg_servers(ffcmdarg_scheme *as, void *obj, const ffstr *val)
 	ffarr a = {};
 	while (s.len != 0) {
 		ffstr_nextval3(&s, &wc, ';');
-		if (NULL == (dst = ffarr_pushgrowT(&a, 4, ffstr)))
+		if (NULL == (dst = ffarr_pushT(&a, ffstr)))
 			goto end;
 		*dst = wc;
 	}
@@ -123,12 +123,40 @@ static int arg_member(ffcmdarg_scheme *as, void *obj, const ffstr *val)
 	char **dst;
 	while (s.len != 0) {
 		ffstr_nextval3(&s, &wc, ';');
-		if (NULL == (dst = ffarr_pushgrowT(&g->conf.members, 4, char*)))
+		if (NULL == (dst = ffvec_pushT(&g->conf.members, char*)))
 			return FFCMDARG_ERROR;
-		if (NULL == (*dst = ffsz_alcopystr(&wc)))
+		if (NULL == (*dst = ffsz_dupstr(&wc)))
 			return FFCMDARG_ERROR;
 	}
 	return 0;
+}
+
+static int arg_members_from_file(ffcmdarg_scheme *as, void *obj, const char *fn)
+{
+	int rc = FFCMDARG_ERROR;
+	ffvec v = {};
+	if (0 != fffile_readwhole(fn, &v, -1)) {
+		syserrlog("file read: %s", fn);
+		goto end;
+	}
+	ffstr s = FFSTR_INITSTR(&v);
+	while (s.len != 0) {
+		ffstr ln;
+		ffstr_splitby(&s, '\n', &ln, &s);
+		ffstr_trimwhite(&ln);
+		if (ln.len != 0) {
+			char **dst;
+			if (NULL == (dst = ffvec_pushT(&g->conf.members, char*)))
+				goto end;
+			if (NULL == (*dst = ffsz_dupstr(&ln)))
+				goto end;
+		}
+	}
+	rc = 0;
+
+end:
+	ffvec_free(&v);
+	return rc;
 }
 
 #define CMDHELP_FN  "help.txt"
@@ -255,6 +283,7 @@ static const ffcmdarg_arg cmdline_args[] = {
 
 	// ARCHIVE READING
 	{ 0, "member",	TSTR | FFCMDARG_FMULTI,	F(arg_member) },
+	{ 0, "members-from-file",	TSTRZ | FFCMDARG_FMULTI,	F(arg_members_from_file) },
 	{ 0, "show",	TSWITCH,	O(show) },
 
 	// ARCHIVE WRITING

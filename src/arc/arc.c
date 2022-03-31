@@ -198,33 +198,54 @@ end:
 	return r;
 }
 
-/** Check if --member items contain wildcards. */
-ffbool arc_members_wildcard(const ffslice *members)
+int map_keyeq(void *opaque, const void *key, ffsize keylen, void *val)
 {
-	const char **pm;
-	FFSLICE_WALK(members, pm) {
-		size_t n = ffsz_len(*pm);
-		if (*pm + n != ffs_findof(*pm, n, "*?", 2))
-			return 1;
-	}
+	if (!ffs_icmpz(key, keylen, val))
+		return 1;
 	return 0;
 }
 
-/** Check if --member item matches the file name. */
-ffbool arc_need_member(const ffslice *members, ffbool member_wildcard, const ffstr *fn)
+void members_optimize(struct members *m, ffslice data)
 {
-	if (members->len == 0)
-		return 1;
-
-	const char **pm;
-	FFSLICE_WALK(members, pm) {
-		ffstr m;
-		ffstr_setz(&m, *pm);
-		if (0 == ffs_wildcard(m.ptr, m.len, fn->ptr, fn->len, FFS_WC_ICASE)
-			|| ffpath_match(fn, &m, FFPATH_CASE_ISENS)) {
-			return 1;
+	ffmap_init(&m->members, map_keyeq);
+	ffmap_alloc(&m->members, data.len);
+	const char **it;
+	FFSLICE_WALK(&data, it) {
+		ffstr s = FFSTR_INITZ(*it);
+		if (ffstr_findany(&s, "*?", 2) < 0) {
+			ffmap_add(&m->members, s.ptr, s.len, (void*)s.ptr);
+		} else {
+			ffstr *wc = ffvec_pushT(&m->members_wildcard, ffstr);
+			*wc = s;
 		}
 	}
+}
+
+void members_destroy(struct members *m)
+{
+	ffmap_free(&m->members);
+	ffvec_free(&m->members_wildcard);
+}
+
+ffbool members_check(struct members *m, ffstr fn)
+{
+	if (m->members.len == 0 && m->members_wildcard.len == 0)
+		return 1;
+
+	if (m->members.len != 0
+		&& NULL != ffmap_find(&m->members, fn.ptr, fn.len, NULL))
+		return 1;
+
+	if (m->members_wildcard.len != 0) {
+		const ffstr *it;
+		FFSLICE_WALK(&m->members_wildcard, it) {
+			if (0 == ffs_wildcard(it->ptr, it->len, fn.ptr, fn.len, FFS_WC_ICASE)) {
+				fcom_dbglog(0, "arc", "matched %S by wildcard %s", &fn, *it);
+				return 1;
+			}
+		}
+	}
+
 	return 0;
 }
 

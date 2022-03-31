@@ -62,7 +62,8 @@ INPUT
 
 ARCHIVE READING
  --member='WILDCARD[;WILDCARD]'
-                    Names of the archive members to process
+ --members-from-file=FILE
+                    Names and wildcards (all case-insensitive) of the archive members to process
  --show             Just show file listing, don't unpack files
 
 ARCHIVE WRITING

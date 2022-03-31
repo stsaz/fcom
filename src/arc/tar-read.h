@@ -23,6 +23,7 @@ typedef struct untar {
 	ffarr fn;
 	ffstr in;
 	uint skipfile :1;
+	struct members members;
 } untar;
 
 static void* untar1_open(fcom_cmd *cmd)
@@ -39,6 +40,7 @@ static void* untar1_open(fcom_cmd *cmd)
 		return FCOM_OPEN_SYSERR;
 	}
 
+	members_optimize(&t->members, cmd->members);
 	return t;
 }
 
@@ -47,6 +49,7 @@ static void untar1_close(void *p, fcom_cmd *cmd)
 	untar *t = p;
 	fftarread_close(&t->tar);
 	ffarr_free(&t->fn);
+	members_destroy(&t->members);
 	ffmem_free(t);
 }
 
@@ -94,7 +97,7 @@ again:
 		case FFTARREAD_FILEHEADER:
 			f = fftarread_fileinfo(&t->tar);
 
-			if (!arc_need_member(&cmd->members, 0, &f->name)) {
+			if (!members_check(&t->members, f->name)) {
 				t->skipfile = 1;
 				continue;
 			}
