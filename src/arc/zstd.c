@@ -82,7 +82,7 @@ static int zstd_outfn(struct zstd_wctx *z, fcom_cmd *cmd)
 	int r;
 	if (FCOM_DATA != (r = fn_out(cmd, &name, &z->buf)))
 		return r;
-	z->buf.len = name.len;
+	z->buf.len = ffsz_len(z->buf.ptr);
 	ffvec_addfmt((ffvec*)&z->buf, ".zst%Z");
 	return FCOM_DATA;
 }
