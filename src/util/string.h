@@ -1,14 +1,11 @@
-/** String operations.
-Copyright (c) 2013 Simon Zolin
-*/
-
 #pragma once
-
+#include "ffos-compat/types.h"
 #include <FFOS/string.h>
-#include <FFOS/mem.h>
 #include <FFOS/error.h>
 #include <ffbase/string.h>
 #include <ffbase/stringz.h>
+
+#define FFSLEN(s)  FFS_LEN(s)
 
 /** Protect against division by zero. */
 #define FFINT_DIVSAFE(val, by) \

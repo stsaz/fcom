@@ -8,8 +8,8 @@ Copyright (c) 2017 Simon Zolin */
 #include <FFOS/process.h>
 #include <FFOS/file.h>
 #include <FFOS/thread.h>
-#include <FFOS/sig.h>
 #include <FFOS/dirscan.h>
+#include <FFOS/signal.h>
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, "main", fmt, __VA_ARGS__)

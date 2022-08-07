@@ -366,7 +366,7 @@ static int scan1(struct dir *d, char *name, ffchain_item **dirs)
 	fcom_dbglog(0, FILT_NAME, "opening directory %s", name);
 
 	if (0 != ffdirscan_open(&dr, name, 0)) {
-		if (fferr_last() != ENOMOREFILES) {
+		if (fferr_last() != FFERR_NOMOREFILES) {
 			syserrlog("%s: %s", ffdir_open_S, name);
 			return -1;
 		}

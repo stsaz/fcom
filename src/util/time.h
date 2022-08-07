@@ -4,7 +4,7 @@ Copyright (c) 2013 Simon Zolin
 
 #pragma once
 
-#include <FFOS/types.h>
+#include "ffos-compat/types.h"
 #include <FFOS/time.h>
 
 

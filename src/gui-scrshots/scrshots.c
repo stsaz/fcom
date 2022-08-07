@@ -9,6 +9,7 @@ Copyright (c) 2017 Simon Zolin
 #include <pic/util/bmp.h>
 #include <util/time.h>
 #include <util/path.h>
+#include <util/svar.h>
 
 
 extern const fcom_core *core;
@@ -262,54 +263,20 @@ static const char* const vars[] = {
 	"time",
 };
 
-typedef struct ffsvar {
-	ffstr val;
-} ffsvar;
-
-enum FFSVAR {
-	FFSVAR_TEXT,
-	FFSVAR_S,
-};
-
-/** Process input string of the format "...text $var text...".
-Return enum FFSVAR. */
-static inline int ffsvar_parse(ffsvar *p, const char *data, size_t *plen)
-{
-	if (*data != '$') {
-		const char *s = ffs_find(data, *plen, '$');
-		p->val.ptr = (char*)data;
-		p->val.len = s - data;
-		*plen = p->val.len;
-		return FFSVAR_TEXT;
-	}
-
-	size_t i;
-	for (i = 1 /*skip $*/;  i != *plen;  i++) {
-		if (!ffchar_isname(data[i]))
-			break;
-	}
-	p->val.ptr = (char*)&data[1];
-	p->val.len = i - 1;
-	*plen = i;
-	return FFSVAR_S;
-}
-
 /** Expand $-variables. */
 static int Svar_expand(ffarr *out, const ffstr *in)
 {
 	int r, ivar, have_dt = 0;
 	ffstr s = *in;
-	ffsvar p;
 	ffdtm dt;
 
 	while (s.len != 0) {
-		size_t n = s.len;
-		r = ffsvar_parse(&p, s.ptr, &n);
-		ffstr_shift(&s, n);
+		ffstr val;
+		r = svar_split(&s, &val);
 
 		switch ((enum FFSVAR)r) {
 		case FFSVAR_S:
-			ivar = ffszarr_findsorted(vars, FFCNT(vars), p.val.ptr, p.val.len);
+			ivar = ffszarr_findsorted(vars, FFCNT(vars), val.ptr, val.len);
 			if (ivar < 0)
 				return -1;
 
@@ -340,7 +307,7 @@ static int Svar_expand(ffarr *out, const ffstr *in)
 			break;
 
 		case FFSVAR_TEXT:
-			if (NULL == ffarr_append(out, p.val.ptr, p.val.len))
+			if (NULL == ffarr_append(out, val.ptr, val.len))
 				return -1;
 			break;
 		}

@@ -3,6 +3,7 @@ Copyright (c) 2013 Simon Zolin
 */
 
 #include "path.h"
+#include "string.h"
 #include <FFOS/dir.h>
 
 

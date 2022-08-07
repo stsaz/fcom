@@ -6,8 +6,8 @@ Copyright 2019 Simon Zolin
 
 #include "array.h"
 #include "list.h"
+#include "ffos-compat/asyncio.h"
 #include <FFOS/timerqueue.h>
-#include <FFOS/asyncio.h>
 #include <ffbase/rbtree.h>
 
 

@@ -6,6 +6,7 @@ Copyright (c) 2017 Simon Zolin */
 #include <util/array.h>
 #include <util/conf2-scheme.h>
 #include <util/taskqueue.h>
+#include <util/ffos-compat/asyncio.h>
 #include <FFOS/file.h>
 #include <FFOS/timerqueue.h>
 

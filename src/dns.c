@@ -7,6 +7,7 @@ Copyright (c) 2020 Simon Zolin */
 #include <util/dns.h>
 #include <util/ipaddr.h>
 #include <FFOS/netconf.h>
+#include <FFOS/random.h>
 
 
 #define errlog(mod, fmt, ...)  fcom_errlog(mod, fmt, __VA_ARGS__)
@@ -112,6 +113,14 @@ static void dnscl_timer(fftimerqueue_node *tmr, uint value_ms)
 
 static void* dnscl_open(fcom_cmd *cmd)
 {
+	static int rand_init;
+	if (!rand_init) {
+		rand_init = 1;
+		fftime now;
+		fftime_now(&now);
+		ffrand_seed(now.sec);
+	}
+
 	dnscl *c = ffmem_new(dnscl);
 	ffdnscl_conf conf;
 	ffdnscl_conf_init(&conf);

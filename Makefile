@@ -66,9 +66,11 @@ else ifeq "$(OSFULL)" "freebsd"
 else
 	FF_O +=	$(OBJ_DIR)/ffunix.o $(OBJ_DIR)/fflinux.o
 endif
-GLOB_HDRS := $(SRCDIR)/fcom.h
+GLOB_HDRS := $(SRCDIR)/fcom.h \
+	$(wildcard $(SRCDIR)/util/*.h) $(wildcard $(SRCDIR)/util/ffos-compat/*.h) \
+	$(wildcard $(FFBASE)/ffbase/*.h) $(wildcard $(FFOS)/FFOS/*.h)
 
-$(OBJ_DIR)/%.o: $(SRCDIR)/%.c $(SRCDIR)/*.h $(FF_HDR)
+$(OBJ_DIR)/%.o: $(SRCDIR)/%.c $(SRCDIR)/*.h
 	$(C) $(CFLAGS) $< -o $@
 $(OBJ_DIR)/%.o: $(SRCDIR)/core/%.c $(SRCDIR)/core/*.h $(GLOB_HDRS)
 	$(C) $(CFLAGS) $< -o $@
@@ -88,7 +90,7 @@ $(OBJ_DIR)/%.o: $(SRCDIR)/util/%.c
 	$(C) $(CFLAGS) $< -o $@
 $(OBJ_DIR)/%.o: $(SRCDIR)/util/%.c
 	$(C) $(CFLAGS) $< -o $@
-$(OBJ_DIR)/%.o: $(FFOS)/FFOS/%.c
+$(OBJ_DIR)/%.o: $(SRCDIR)/util/ffos-compat/%.c
 	$(C) $(CFLAGS) $< -o $@
 $(OBJ_DIR)/%.o: $(CRYPTOLIB3)/../sha1/%.c
 	$(C) $(CFLAGS) $< -o $@

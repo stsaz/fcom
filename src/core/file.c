@@ -11,7 +11,6 @@ Copyright (c) 2017 Simon Zolin
 #include <FFOS/error.h>
 #include <FFOS/file.h>
 #include <FFOS/dir.h>
-#include <FFOS/asyncio.h>
 
 
 #define dbglog(dbglev, fmt, ...)  fcom_dbglog(dbglev, FILT_NAME, fmt, __VA_ARGS__)

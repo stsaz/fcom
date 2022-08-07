@@ -4,7 +4,6 @@ Copyright (c) 2013 Simon Zolin
 
 #pragma once
 
-#include <FFOS/mem.h>
 #include "string.h"
 #include "chain.h"
 #include <FFOS/file.h>

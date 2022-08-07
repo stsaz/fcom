@@ -1,12 +1,6 @@
-/** Ring buffer.
-Copyright (c) 2017 Simon Zolin
-*/
-
 #pragma once
 #include "string.h"
-#include <FFOS/atomic.h>
-#include <FFOS/mem.h>
-
+#include "ffos-compat/atomic.h"
 
 /** Circular array of pointers with fixed number of elements.
 Readers and writers can run in parallel.

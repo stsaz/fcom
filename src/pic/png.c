@@ -36,7 +36,7 @@ struct pngi {
 static void* pngi_open(fcom_cmd *cmd)
 {
 	struct pngi *p;
-	if (NULL == (p = ffmem_tcalloc1(struct pngi)))
+	if (NULL == (p = ffmem_new(struct pngi)))
 		return NULL;
 	ffpng_open(&p->png);
 	p->png.info.total_size = cmd->input.size;

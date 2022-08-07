@@ -144,7 +144,6 @@ static int set_rootdir(char **argv)
 
 const fcom_core* core_create(fcom_log log, char **argv, char **env)
 {
-	fflk_setup();
 	if (NULL == (g = ffmem_new(struct fcom)))
 		return NULL;
 	g->log = log;
@@ -428,7 +427,7 @@ static int core_timer(fftimerqueue_node *t, int interval, uint flags)
 		return 0;
 	}
 
-	uint period = ffabs(interval);
+	uint period = ffint_abs(interval);
 
 	if (period < w->timer_period) {
 		fftimer_stop(w->timer, w->kq);
