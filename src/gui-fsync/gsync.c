@@ -845,7 +845,7 @@ static void list_setdata()
 	ffarr buf = {};
 	char *fullname = NULL;
 	ffstr d = {};
-	LVITEM *it = gg->wsync.vlist.dispinfo_item;
+	LVITEMW *it = gg->wsync.vlist.dispinfo_item;
 
 	const struct fsync_cmp *c = list_getobj(it->iItem);
 	uint st = c->status & _FSYNC_ST_MASK;

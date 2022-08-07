@@ -31,7 +31,7 @@ enum {
 
 static void show_listitem()
 {
-	LVITEM *it = gg->wtree.vlist.dispinfo_item;
+	LVITEMW *it = gg->wtree.vlist.dispinfo_item;
 	char buf[255];
 	ffstr d = {};
 

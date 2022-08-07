@@ -141,7 +141,7 @@ static int std_log(uint flags, void *ctx, const char *fmt, va_list va)
 	s = ffs_copyc(s, end, '\n');
 
 	fffd fd = (lev <= FCOM_LOGWARN || g->stdout_busy) ? ffstderr : ffstdout;
-	fffile_write(fd, buf, s - buf);
+	ffstd_write(fd, buf, s - buf);
 	return 0;
 }
 
@@ -225,7 +225,7 @@ static const char* in_next(struct job *c, uint flags)
 	return e->fn;
 }
 
-static const ffuint signals[] = { SIGINT };
+static const ffuint signals[] = { FFSIG_INT };
 
 static void cmds_free(void)
 {
@@ -382,6 +382,11 @@ end:
 int main(int argc, char **argv, char **env)
 {
 	int r = 1;
+	char **win_argv = NULL;
+	(void)win_argv;
+#ifdef FF_WIN
+	argv = win_argv = ffcmdarg_from_linew(GetCommandLineW(), &argc);
+#endif
 
 	if (NULL == (g = ffmem_new(struct job)))
 		return 1;
@@ -443,5 +448,6 @@ done:
 	}
 	FF_SAFECLOSE(g->core_dl, NULL, ffdl_close);
 	cmds_free();
+	ffmem_free(win_argv);
 	return r;
 }

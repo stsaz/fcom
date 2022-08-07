@@ -87,6 +87,7 @@ static const void* gui_iface(const char *name)
 
 /** Global GUI context. */
 struct ggui {
+	fcom_cmd *cmd;
 	fftask tsk;
 	ffthd th;
 	gui_func wnd_creator;
@@ -95,20 +96,22 @@ static struct ggui *gg;
 
 static void* gui_open(fcom_cmd *cmd)
 {
-	return FCOM_OPEN_DUMMY;
+	gg = ffmem_new(struct ggui);
+	gg->cmd = cmd;
+	return gg;
 }
 static void gui_close(void *p, fcom_cmd *cmd)
 {
 }
 static int gui_process(void *p, fcom_cmd *cmd)
 {
+	if (gg->th != FFTHREAD_NULL)
+		return FCOM_DONE;
+
 #ifndef _DEBUG
 	if (!fcom_logchk(core->conf->loglev, FCOM_LOGDBG))
 		ffterm_detach();
 #endif
-
-	if (NULL == (gg = ffmem_new(struct ggui)))
-		return FCOM_SYSERR;
 
 	const struct cmd *c;
 	FFARRS_FOREACH(cmds, c) {
@@ -161,5 +164,5 @@ done:
 /** GUI thread has exitted. */
 static void gui_exit(void *param)
 {
-	core->cmd(FCOM_STOP, 0);
+	com->ctrl(gg->cmd, FCOM_CMD_RUNASYNC);
 }

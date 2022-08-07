@@ -273,10 +273,10 @@ INSTALL
 
 2. Download all needed source repositories:
 
-		git clone https://github.com/stsaz/ffbase
-		git clone https://github.com/stsaz/ffpack
-		git clone https://github.com/stsaz/ffos
-		git clone https://github.com/stsaz/fcom
+		git clone --depth=1 https://github.com/stsaz/ffbase
+		git clone --depth=1 https://github.com/stsaz/ffpack
+		git clone --depth=1 https://github.com/stsaz/ffos
+		git clone --depth=1 https://github.com/stsaz/fcom
 
 3. Build ffpack libs, cryptolib3, piclib3 (3rd-party libraries) or use the binaries from the previous fcom release.
 

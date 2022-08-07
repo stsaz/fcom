@@ -26,7 +26,7 @@ static int disk_process(void *p, fcom_cmd *cmd)
 	ffarr_allocT(&names, MAX_PATH + 1, ffsyschar);
 	ffarr_alloc(&out, 1024);
 
-	if (FF_BADFD == (hvol = FindFirstVolume((void*)buf.ptr, buf.cap))) {
+	if (FF_BADFD == (hvol = FindFirstVolumeW((void*)buf.ptr, buf.cap))) {
 		syserrlog("FindFirstVolume", 0);
 		goto end;
 	}
@@ -34,7 +34,7 @@ static int disk_process(void *p, fcom_cmd *cmd)
 		const ffsyschar *volname = (void*)buf.ptr;
 		ffstr_catfmt(&out, "%q:  ", volname);
 
-		uint type = GetDriveType(volname);
+		uint type = GetDriveTypeW(volname);
 		static const char*const types[] = {
 			"", "", "removable", "fixed", "remote", "cdrom", "ramdisk"
 		};
@@ -42,11 +42,11 @@ static int disk_process(void *p, fcom_cmd *cmd)
 			, (type < FFCNT(types)) ? types[type] : "");
 
 		ffsyschar fs[64];
-		if (GetVolumeInformation(volname, NULL, 0, NULL, NULL, NULL, fs, FFCNT(fs)))
+		if (GetVolumeInformationW(volname, NULL, 0, NULL, NULL, NULL, fs, FFCNT(fs)))
 			ffstr_catfmt(&out, "fs:%q  ", fs);
 
 		DWORD sectors_cluster, bytes_sector, clusters_free, clusters_total;
-		if (GetDiskFreeSpace(volname, &sectors_cluster, &bytes_sector, &clusters_free, &clusters_total)) {
+		if (GetDiskFreeSpaceW(volname, &sectors_cluster, &bytes_sector, &clusters_free, &clusters_total)) {
 			uint bytes_cluster = sectors_cluster * bytes_sector;
 			double free_percent = FFINT_DIVSAFE((double)clusters_free * 100, clusters_total);
 			ffstr_catfmt(&out, "(cluster:%u: total:%U  free:%U (%.02F%%)) "
@@ -57,7 +57,7 @@ static int disk_process(void *p, fcom_cmd *cmd)
 
 		for (;;) {
 			DWORD size;
-			if (!GetVolumePathNamesForVolumeName(volname, (void*)names.ptr, names.cap, &size)) {
+			if (!GetVolumePathNamesForVolumeNameW(volname, (void*)names.ptr, names.cap, &size)) {
 				if (fferr_last() == ERROR_MORE_DATA) {
 					ffarr_free(&names);
 					if (NULL == ffarr_allocT(&names, size, ffsyschar))
@@ -73,7 +73,7 @@ static int disk_process(void *p, fcom_cmd *cmd)
 			break;
 		}
 
-		if (!FindNextVolume(hvol, (void*)buf.ptr, buf.cap)) {
+		if (!FindNextVolumeW(hvol, (void*)buf.ptr, buf.cap)) {
 			if (fferr_last() == ERROR_NO_MORE_FILES)
 				break;
 			syserrlog("FindNextVolume", 0);

@@ -47,7 +47,7 @@ static int f_crc_process(void *p, fcom_cmd *cmd)
 	c->cur = crc32((void*)cmd->in.ptr, cmd->in.len, c->cur);
 
 	if (cmd->in_last) {
-		fcom_infolog(FILT_NAME, "%s: CRC32:%xu"
+		fcom_userlog("%s: CRC32:%xu"
 			, cmd->input.fn, c->cur);
 		c->state = I_NEXTFILE;
 	}

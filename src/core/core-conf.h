@@ -43,6 +43,7 @@ static const ffconf_arg conf_args[] = {
 
 static int readconf(const char *fn)
 {
+	int r = -1;
 	char *fullfn;
 	if (NULL == (fullfn = core_getpath(fn, ffsz_len(fn))))
 		goto end;
@@ -50,8 +51,7 @@ static int readconf(const char *fn)
 	dbglog(0, "reading config file %s", fullfn);
 
 	ffstr errmsg = {};
-	int r = ffconf_parse_file(conf_args, &g->conf, fullfn, 0, &errmsg);
-	if (r != 0) {
+	if (0 != ffconf_parse_file(conf_args, &g->conf, fullfn, 0, &errmsg)) {
 		errlog("parse config: %s: %S", fullfn, &errmsg);
 		goto end;
 	}

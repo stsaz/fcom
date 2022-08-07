@@ -21,7 +21,7 @@ $(DIR): $(PKG)
 	touch $(DIR)
 
 # build
-CFLAGS := -O3 -I$(DIR)
+CFLAGS := -O3 -I$(DIR) -fPIC
 
 SRC := \
 	$(DIR)/aescrypt.c \

@@ -9,7 +9,7 @@ FFBASE := $(ROOT)/ffbase
 FFOS := $(ROOT)/ffos
 FFPACK := $(ROOT)/ffpack
 
-include $(FFOS)/makeconf
+include $(PROJDIR)/makeconf
 LINK := $(LD)
 LINKFLAGS := $(LDFLAGS)
 
@@ -31,15 +31,20 @@ ifeq ($(OPT),0)
 endif
 # CFLAGS += -fsanitize=address
 # LINKFLAGS += -fsanitize=address -ldl
-CFLAGS += -DFFBASE_HAVE_FFERR_STR -Wno-maybe-uninitialized
+CFLAGS += -DFFBASE_HAVE_FFERR_STR
 
-CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-stringop-overflow \
+ifeq "$(OS)" "bsd"
+	CFLAGS += -pthread
+	LINKFLAGS += -pthread
+endif
+
+CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers \
 	-I$(SRCDIR) \
 	-I$(PICLIB3)/.. \
 	-I$(CRYPTOLIB3)/.. \
 	-I$(FFBASE) -I$(FFPACK) -I$(FFOS)
 
-LINKFLAGS += -Wno-stringop-overflow \
+LINKFLAGS += \
 	-L$(FFPACK)/zlib -L$(FFPACK)/lzma -L$(FFPACK)/zstd \
 	-L$(PICLIB3) \
 	-L$(CRYPTOLIB3)
@@ -61,7 +66,7 @@ ifeq "$(OSFULL)" "windows"
 	FFOS_SKT := $(OBJ_DIR)/ffwin-skt.o
 else ifeq "$(OSFULL)" "macos"
 	FF_O +=	$(OBJ_DIR)/ffapple.o
-else ifeq "$(OSFULL)" "freebsd"
+else ifeq "$(OSFULL)" "bsd"
 	FF_O +=	$(OBJ_DIR)/ffbsd.o
 else
 	FF_O +=	$(OBJ_DIR)/ffunix.o $(OBJ_DIR)/fflinux.o
@@ -128,7 +133,7 @@ CORE_O := \
 	$(OBJ_DIR)/ffthpool.o
 
 core.$(SO): $(CORE_O)
-	$(LINK) -shared $(CORE_O) $(LINKFLAGS) $(LD_LDL) -o $@
+	$(LINK) -shared $(CORE_O) $(LINKFLAGS) $(LD_LPTHREAD) $(LD_LDL) -o $@
 
 
 FILE_O := $(OBJ_DIR)/fop.o \
@@ -233,14 +238,12 @@ gui.$(SO): $(GUI_O)
 endif
 
 ifeq ($(OS),linux)
-CFLAGS_GTK := -I/usr/include/gtk-3.0 -I/usr/include/pango-1.0 -I/usr/include/glib-2.0 -I/usr/lib64/glib-2.0/include -I/usr/include/fribidi -I/usr/include/cairo -I/usr/include/pixman-1 -I/usr/include/freetype2 -I/usr/include/libpng16 -I/usr/include/uuid -I/usr/include/harfbuzz -I/usr/include/gdk-pixbuf-2.0 -I/usr/include/gio-unix-2.0/ -I/usr/include/libdrm -I/usr/include/valgrind -I/usr/include/atk-1.0 -I/usr/include/at-spi2-atk/2.0 -I/usr/include/at-spi-2.0 -I/usr/include/dbus-1.0 -I/usr/lib64/dbus-1.0/include
-LIBS_GTK := -lgtk-3 -lgdk-3 -lpangocairo-1.0 -lpango-1.0 -lfribidi -latk-1.0 -lcairo-gobject -lcairo -lgdk_pixbuf-2.0 -lgio-2.0 -lgobject-2.0 -lglib-2.0
 $(OBJ_DIR)/%.o: $(SRCDIR)/gui-gtk/%.c $(GLOB_HDRS)
-	$(C) $(CFLAGS) $(CFLAGS_GTK) $< -o $@
+	$(C) $(CFLAGS) `pkg-config --cflags gtk+-3.0` $< -o $@
 $(OBJ_DIR)/%.o: $(SRCDIR)/gui-fsync-gtk/%.c $(GLOB_HDRS)
-	$(C) $(CFLAGS) $(CFLAGS_GTK) $< -o $@
+	$(C) $(CFLAGS) `pkg-config --cflags gtk+-3.0` $< -o $@
 $(OBJ_DIR)/%.o: $(SRCDIR)/util/gui-gtk/%.c $(GLOB_HDRS)
-	$(C) $(CFLAGS) $(CFLAGS_GTK) $< -o $@
+	$(C) $(CFLAGS) `pkg-config --cflags gtk+-3.0` $< -o $@
 GUI_O := $(OBJ_DIR)/gui-gtk.o \
 	$(OBJ_DIR)/gsync.o \
 	$(OBJ_DIR)/ffgui-gtk-loader.o \
@@ -248,7 +251,7 @@ GUI_O := $(OBJ_DIR)/gui-gtk.o \
 	$(OBJ_DIR)/ffpath.o \
 	$(FF_O)
 gui.$(SO): $(GUI_O)
-	$(LINK) -shared $(GUI_O) $(LINKFLAGS) $(LIBS_GTK) -pthread -o $@
+	$(LINK) -shared $(GUI_O) $(LINKFLAGS) `pkg-config --libs gtk+-3.0` -pthread -o $@
 endif
 
 TEST_O := $(OBJ_DIR)/tester.o \
