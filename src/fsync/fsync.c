@@ -5,12 +5,7 @@ Copyright (c) 2017 Simon Zolin
 #include <fsync/fsync.h>
 #include <util/path.h>
 #include <util/time.h>
-#include <util/rbtree.h>
-#include <util/crc.h>
 #include <FFOS/dirscan.h>
-
-/** Fast CRC32 implementation using 8k table. */
-extern uint crc32(const void *buf, size_t size, uint crc);
 
 const fcom_core *core;
 static const fcom_command *com;
@@ -30,27 +25,13 @@ static void fsync_close(void *p, fcom_cmd *cmd);
 static int fsync_process(void *p, fcom_cmd *cmd);
 static const fcom_filter fsync_filt = { &fsync_open, &fsync_close, &fsync_process };
 
-// SYNC-SNAPSHOT
-static void* fsyncss_open(fcom_cmd *cmd);
-static void fsyncss_close(void *p, fcom_cmd *cmd);
-static int fsyncss_process(void *p, fcom_cmd *cmd);
-static const fcom_filter fsyncss_filt = { &fsyncss_open, &fsyncss_close, &fsyncss_process };
-
 struct fsync_ctx;
-struct cursor;
-struct mv;
-static void cur_init(struct cursor *c, struct dir *d);
-static void cur_init2(struct cursor *c, struct dir *d);
-static struct file* cur_next2(struct cursor *c);
 
 static struct dir* scan_tree(const char *fn, uint flags);
 static fsync_dir* combine(fsync_dir *a, fsync_dir *b, uint flags);
 static void* cmp_init(fsync_dir *left, fsync_dir *right, uint flags);
 static int cmp_trees(struct fsync_ctx *c, struct fsync_cmp *cmp);
 static void cmp_show(struct fsync_ctx *c, struct fsync_cmp *cmp);
-static int mv_index(struct fsync_ctx *c);
-static struct file* mv_find(struct mv *mv, struct file *f, uint flags);
-static void mv_add(struct mv *mv, struct file *f, uint flags);
 static void tree_free(struct dir *d);
 static void* getprop(uint cmd, ...);
 #define isdir(a) !!((a) & FFUNIX_FILE_DIR)
@@ -60,12 +41,24 @@ const fcom_fsync fsync_if = {
 	&scan_tree, &combine, &cmp_init, (void*)&cmp_trees, &tree_free, &getprop
 };
 
+#include <fsync/test.h>
 
 FF_EXP const fcom_mod* fcom_getmod(const fcom_core *_core)
 {
+	test_ffpath_parent();
+	test_ffpath_cmp();
 	core = _core;
 	return &fsync_mod;
 }
+
+struct dir {
+	char *path;
+	ffarr files; //struct file[]
+	ffchain_item sib;
+};
+
+#include <fsync/cursor.h>
+#include <fsync/snapshot-save.h>
 
 struct cmd {
 	const char *name;
@@ -111,42 +104,8 @@ static const void* fsync_iface(const char *name)
 #undef FILT_NAME
 #define FILT_NAME  "sync"
 
-static void file_destroy(struct file *f)
-{
-	ffmem_safefree(f->name);
-}
-
-struct dir {
-	char *path;
-	ffarr files; //struct file[]
-	ffchain_item sib;
-};
-
-struct cur_ctx {
-	struct dir *d;
-	struct file *next;
-};
-
-struct cursor {
-	struct file *f, *cur;
-	struct cur_ctx ctx[50];
-	uint ictx;
-};
-
-/** Detect renamed/moved files. */
-struct mv {
-	ffrbtree names_index; /** File name (without path) index */
-	ffrbtree props_index; /** size+mtime index */
-};
-
-typedef struct fsync_ctx {
-	struct dir *src;
-	struct dir *dst;
-	ffarr fn;
-	struct cursor curL, curR;
-	struct mv mvL, mvR;
-	uint flags; // enum FSYNC_CMP
-} fsync_ctx;
+#include <fsync/file.h>
+#include <fsync/move.h>
 
 static void* fsync_open(fcom_cmd *cmd)
 {
@@ -263,7 +222,7 @@ static void* getprop(uint cmd, ...)
 	switch ((enum FSYNC_CMD)cmd) {
 	case FSYNC_FULLNAME: {
 		const struct file *f = va_arg(va, struct file*);
-		rc = ffsz_alfmt("%s/%s", f->parent->path, f->name);
+		rc = ffsz_alfmt("%s%c%s", f->parent->path, FFPATH_SLASH, f->name);
 		break;
 	}
 	case FSYNC_DIRNAME: {
@@ -393,14 +352,7 @@ static int scan1(struct dir *d, char *name, ffchain_item **dirs)
 		ffmem_free(fullname);
 		fullname = ffsz_allocfmt("%s/%s", name, fn);
 		if (0 == fffile_infofn(fullname, &fi)) {
-#ifdef FF_UNIX
-			e->attr = fffile_infoattr(&fi);
-#else
-			e->attr = fffile_isdir(fffile_infoattr(&fi)) ? FFUNIX_FILE_DIR : FFUNIX_FILE_REG;
-			e->attr |= 0755;
-#endif
-			e->size = fffile_infosize(&fi);
-			e->mtime = fffile_infomtime(&fi);
+			file_info_set(e, &fi);
 			if (isdir(e->attr)) {
 				e->sib.next = last->next;
 				last->next = &e->sib;
@@ -447,8 +399,8 @@ static struct dir* scan_tree(const char *name, uint flags)
 		if (NULL == (d = ffmem_new(struct dir)))
 			goto end;
 		fil->dir = d;
-		if (NULL == (d->path = ffsz_alfmt("%s/%s"
-			, fil->parent->path, fil->name)))
+		if (NULL == (d->path = ffsz_alfmt("%s%c%s"
+			, fil->parent->path, FFPATH_SLASH, fil->name)))
 			goto end;
 
 		if (0 != scan1(d, d->path, &last))
@@ -524,200 +476,27 @@ static fsync_dir* combine(fsync_dir *a, fsync_dir *b, uint flags)
 	return parent;
 }
 
-
-static struct file* cur_nextfile(struct cursor *c);
-
-static void cur_init(struct cursor *c, struct dir *d)
-{
-	c->ictx = 0;
-	c->ctx[0].d = d;
-	c->ctx[0].next = NULL;
-	c->f = (void*)d->files.ptr;
-	c->cur = cur_nextfile(c);
-}
-
-#define cur_get(c)  ((c)->cur)
-
-#define cur_dir(c)  (c)->ctx[(c)->ictx].d
-
-/** Get the next file at this level. */
-static struct file* cur_nextfile(struct cursor *c)
-{
-	const struct cur_ctx *cx = &c->ctx[c->ictx];
-	if (c->f == ffarr_endT(&cx->d->files, struct file)) {
-		c->cur = NULL;
-		return NULL;
-	}
-	c->cur = c->f++;
-	return c->cur;
-}
-
-/** Get the next directory. */
-static struct file* cur_nextdir(struct cursor *c)
-{
-	struct file *f;
-	for (;;) {
-		f = cur_nextfile(c);
-		if (f == NULL)
-			return NULL;
-		if (isdir(f->attr))
-			break;
-	}
-	return f;
-}
-
-static void cur_push(struct cursor *c, struct dir *d)
-{
-	c->ictx++;
-	FF_ASSERT(c->ictx != FFCNT(c->ctx));
-	c->ctx[c->ictx].d = d;
-	c->ctx[c->ictx].next = NULL;
-	c->f = (void*)d->files.ptr;
-}
-
-static void* cur_pop(struct cursor *c)
-{
-	if (c->ictx == 0)
-		return NULL;
-	c->ctx[c->ictx].next = NULL;
-	c->ictx--;
-	return &c->ctx[c->ictx];
-}
-
-/** Get next entry (post-increment algorithm).
-Phase 1: Return all entries at this level
-Phase 2: Recursively return all entries from sub-directories
-Return NULL if no more entries. */
-static struct file* cur_next(struct cursor *c)
-{
-	struct file *f;
-	struct cur_ctx *cx;
-
-	for (;;) {
-		cx = &c->ctx[c->ictx];
-
-		if (cx->next == NULL) {
-			f = cur_nextfile(c);
-			if (f != NULL)
-				return f;
-
-			c->f = (void*)cx->d->files.ptr;
-			if (c->f == NULL) {
-				// empty dir
-				if (NULL == cur_pop(c))
-					return NULL;
-				continue;
-			}
-			cx->next = c->f;
-			continue;
-		}
-
-		c->f = cx->next;
-		f = cur_nextdir(c);
-		if (f == NULL) {
-			if (NULL == cur_pop(c))
-				return NULL;
-			continue;
-		}
-		cx->next = c->f;
-		if (f->dir != NULL)
-			cur_push(c, f->dir);
-	}
-}
-
-static void cur_init2(struct cursor *c, struct dir *d)
-{
-	c->ictx = 0;
-	c->ctx[0].d = d;
-	c->ctx[0].next = (void*)d->files.ptr;
-}
-
-static void cur_push2(struct cursor *c, struct dir *d)
-{
-	c->ictx++;
-	FF_ASSERT(c->ictx != FFCNT(c->ctx));
-	c->ctx[c->ictx].d = d;
-	c->ctx[c->ictx].next = (void*)d->files.ptr;
-}
-
-static struct file* cur_nextfile2(struct cursor *c)
-{
-	struct cur_ctx *cx = &c->ctx[c->ictx];
-	if (cx->next == ffarr_endT(&cx->d->files, struct file))
-		return NULL;
-	return cx->next++;
-}
-
-/** Walk through a file tree.
-. If file is a directory, enter it (increase level)
-. Return file (not directory) entries at this level
-. After the last entry at this level, decrease level, return the parent file entry
-*/
-static struct file* cur_next2(struct cursor *c)
-{
-	struct file *f;
-	for (;;) {
-		f = cur_nextfile2(c);
-		if (f == NULL) {
-			if (NULL == cur_pop(c))
-				return NULL;
-			return c->ctx[c->ictx].next - 1;
-		}
-
-		if (f->dir != NULL) {
-			cur_push2(c, f->dir);
-			continue;
-		}
-
-		return f;
-	}
-}
-
-#define ffint_cmp(a, b) \
-	(((a) == (b)) ? 0 : ((a) < (b)) ? -1 : 1)
-
-/** Compare attributes of 2 files.
-Return enum FSYNC_ST. */
-static int cmp_file(const struct file *f1, const struct file *f2, uint flags)
-{
-	if (isdir(f1->attr) != isdir(f2->attr))
-		return FSYNC_ST_NEQ;
-
-	int r;
-	uint m = 0;
-	if ((flags & FSYNC_CMP_SIZE)
-		&& !isdir(f1->attr)
-		&& f1->size != f2->size) {
-		m |= (f1->size < f2->size) ? FSYNC_ST_SMALLER : FSYNC_ST_LARGER;
-	}
-
-	r = 0;
-	if (flags & FSYNC_CMP_MTIME) {
-		if (flags & FSYNC_CMP_MTIME_SEC)
-			r = ffint_cmp(f1->mtime.sec, f2->mtime.sec);
-		else
-			r = fftime_cmp(&f1->mtime, &f2->mtime);
-	}
-	if (r != 0)
-		m |= (r < 0) ? FSYNC_ST_OLDER : FSYNC_ST_NEWER;
-
-	if ((flags & FSYNC_CMP_ATTR) && f1->attr != f2->attr)
-		m |= FSYNC_ST_ATTR;
-
-	return (m != 0) ? FSYNC_ST_NEQ | m : FSYNC_ST_EQ;
-}
-
-static int path_cmp(fsync_ctx *c, const struct file *f1, const struct file *f2)
+int path_cmp(fsync_ctx *c, const struct file *f1, const struct file *f2)
 {
 	int rcmp;
 	ffstr n1, n2;
 	ffstr_setz(&n1, cur_dir(&c->curL)->path + ffsz_len(c->src->path));
 	ffstr_setz(&n2, cur_dir(&c->curR)->path + ffsz_len(c->dst->path));
-	rcmp = ffpath_cmp(&n1, &n2, 0);
+
+	int f = 0;
+#ifdef FF_WIN
+	f = FFPATH_SUPPORT_BACKSLASH;
+#endif
+
+	rcmp = ffpath_cmp(&n1, &n2, f);
+	fcom_dbglog(0, FILT_NAME, "ffpath_cmp: '%S'  and  '%S': %d"
+		, &n1, &n2, rcmp);
 	if (rcmp == 0) {
 		ffstr_setz(&n1, f1->name);
 		ffstr_setz(&n2, f2->name);
-		rcmp = ffpath_cmp(&n1, &n2, 0);
+		rcmp = ffpath_cmp(&n1, &n2, f);
+		fcom_dbglog(0, FILT_NAME, "ffpath_cmp 2: '%S'  and  '%S': %d"
+			, &n1, &n2, rcmp);
 	}
 	return rcmp;
 }
@@ -788,7 +567,7 @@ static int cmp_trees(fsync_ctx *c, struct fsync_cmp *cmp)
 		if (NULL != (l = mv_find(&c->mvL, r, c->flags)))
 			st2 = FSYNC_ST_MOVED | FSYNC_ST_MOVED_DST;
 	} else
-		st = st2 = cmp_file(l, r, c->flags);
+		st = st2 = file_cmp(l, r, c->flags);
 
 	cmp->left = l;
 	cmp->right = r;
@@ -867,238 +646,6 @@ static void cmp_show(fsync_ctx *c, struct fsync_cmp *cmp)
 
 	core->log(FCOM_LOGINFO | FCOM_LOGNOPFX, FILT_NAME ": %S", &c->fn);
 	c->fn.len = 0;
-}
-
-
-/** Add entry to a "moved files" table in case left and right files have different names. */
-static int mv_index1(fsync_ctx *c)
-{
-	int rcmp;
-	struct file *l, *r;
-	uint st = 0;
-
-	l = cur_get(&c->curL);
-	r = cur_get(&c->curR);
-	if (l == NULL && r == NULL)
-		return -1;
-	else if (l != NULL && r != NULL) {
-		fcom_dbglog(0, FILT_NAME, "cmp: %s/%s  and  %s/%s"
-			, l->parent->path, l->name, r->parent->path, r->name);
-		rcmp = path_cmp(c, l, r);
-	} else {
-		rcmp = (l == NULL) ? 1 : -1;
-		if (l != NULL)
-			fcom_dbglog(0, FILT_NAME, "cmp: %s/%s  and  -"
-				, l->parent->path, l->name);
-		else
-			fcom_dbglog(0, FILT_NAME, "cmp: -  and  %s/%s"
-				, r->parent->path, r->name);
-	}
-
-	if (rcmp < 0) {
-		st = FSYNC_ST_SRC;
-		mv_add(&c->mvL, l, c->flags);
-	} else if (rcmp > 0) {
-		st = FSYNC_ST_DEST;
-		mv_add(&c->mvR, r, c->flags);
-	}
-
-	if (st != FSYNC_ST_DEST) {
-		cur_next(&c->curL);
-	}
-	if (st != FSYNC_ST_SRC) {
-		cur_next(&c->curR);
-	}
-
-	return 0;
-}
-
-/** Build indexes for unique items. */
-static int mv_index(fsync_ctx *c)
-{
-	for (;;) {
-		if (0 != mv_index1(c))
-			return 0;
-	}
-	return 0;
-}
-
-/** Get name hash. */
-static ffrbtkey mv_namehash(struct file *f)
-{
-	return crc32(f->name, ffsz_len(f->name), 0);
-}
-
-/** Get properties hash. */
-static ffrbtkey mv_hash(struct file *f, uint flags)
-{
-	uint k = crc32(&f->size, sizeof(f->size), 0);
-	if (flags & FSYNC_CMP_MTIME) {
-		if (flags & FSYNC_CMP_MTIME_SEC)
-			k = crc32(&f->mtime.sec, sizeof(f->mtime.sec), k);
-		else
-			k = crc32(&f->mtime, sizeof(f->mtime), k);
-	}
-	return k;
-}
-
-/** Find an entry with the same properties in table.
-. Find candidate entries with the same properties and, possibly, names.
-. If names match, this is a moved file.
-. If names don't match, this is a renamed or moved file. */
-static struct file* mv_find(struct mv *mv, struct file *f, uint flags)
-{
-	ffrbtl_node *nod_name, *nod;
-
-	if (NULL == (nod = (void*)ffrbt_find(&mv->props_index, mv_hash(f, flags))))
-		return NULL;
-	nod_name = (void*)ffrbt_find(&mv->names_index, mv_namehash(f));
-
-	if (nod_name != NULL) {
-		ffrbtl_node *it;
-		FFRBTL_FOR_SIB(nod, it) {
-
-			struct file *nf = FF_GETPTR(struct file, nod_props, it);
-			if (nf->moved || FSYNC_ST_EQ != cmp_file(f, nf, flags))
-				continue;
-
-			ffrbtl_node *it_name;
-			FFRBTL_FOR_SIB(nod_name, it_name) {
-				struct file *nf_name = FF_GETPTR(struct file, nod_name, it_name);
-				if (nf == nf_name && ffsz_eq(nf->name, nf_name->name)) {
-					nf->moved = 1;
-					return nf;
-				}
-			}
-		}
-	}
-
-	ffrbtl_node *it;
-	FFRBTL_FOR_SIB(nod, it) {
-		struct file *nf = FF_GETPTR(struct file, nod_props, it);
-		if (nf->moved || FSYNC_ST_EQ != cmp_file(f, nf, flags))
-			continue;
-		nf->moved = 1;
-		return nf;
-	}
-
-	return NULL;
-}
-
-/** Add file to table. */
-static void mv_add(struct mv *mv, struct file *f, uint flags)
-{
-	ffrbtl_insert_withhash(&mv->names_index, &f->nod_name, mv_namehash(f));
-	ffrbtl_insert_withhash(&mv->props_index, &f->nod_props, mv_hash(f, flags));
-}
-
-#undef FILT_NAME
-
-
-#define FILT_NAME  "syncss"
-
-struct fsyncss {
-	uint state;
-	struct dir *tree;
-	struct cursor cur;
-	ffconfw cw;
-	void *curdir;
-};
-
-static void* fsyncss_open(fcom_cmd *cmd)
-{
-	struct fsyncss *f;
-	if (NULL == (f = ffmem_new(struct fsyncss)))
-		return FCOM_OPEN_SYSERR;
-	ffconfw_init(&f->cw, 0);
-	return f;
-}
-
-static void fsyncss_close(void *p, fcom_cmd *cmd)
-{
-	struct fsyncss *f = p;
-	tree_free(f->tree);
-	ffconfw_close(&f->cw);
-	ffmem_free(f);
-}
-
-static int fsyncss_process(void *p, fcom_cmd *cmd)
-{
-	struct fsyncss *f = p;
-
-	for (;;) {
-	switch (f->state) {
-	case 0: {
-		char *fn;
-		if (NULL == (fn = com->arg_next(cmd, 0))) {
-			if (f->tree == NULL) {
-				errlog("no input files");
-				return FCOM_ERR;
-			}
-			goto done;
-		}
-
-		if (f->tree == NULL) {
-			if (cmd->output.fn == NULL) {
-				errlog("output file isn't specified", 0);
-				return FCOM_ERR;
-			}
-
-			com->ctrl(cmd, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(cmd));
-
-			ffconfw_addlinez(&f->cw, "# fcom file tree snapshot");
-		}
-
-		tree_free(f->tree);
-		if (NULL == (f->tree = scan_tree(fn, 0)))
-			return FCOM_ERR;
-
-		cur_init(&f->cur, f->tree);
-
-		f->curdir = NULL;
-	}
-	// fall through
-
-	case 1:
-		for (;;) {
-			const struct file *fl = cur_get(&f->cur);
-			if (fl == NULL)
-				break;
-
-			cur_next(&f->cur);
-
-			if (fl->parent != f->curdir) {
-				// got a file from another directory
-				snapshot_writedir(&f->cw, fl->parent, (f->curdir != NULL));
-				f->curdir = fl->parent;
-			}
-
-			snapshot_writefile(&f->cw, fl);
-
-			ffstr s;
-			ffconfw_output(&f->cw, &s);
-			if (s.len >= 64 * 1024) {
-				cmd->out = s;
-				f->state = 2;
-				return FCOM_DATA;
-			}
-		}
-		f->state = 0;
-		break;
-
-	case 2:
-		ffconfw_clear(&f->cw);
-		f->state = 1;
-		continue;
-	}
-	}
-
-done:
-	ffconfw_addobj(&f->cw, 0);
-	if (0 != ffconfw_fin(&f->cw))
-		errlog("config write", 0);
-	ffconfw_output(&f->cw, &cmd->out);
-	return FCOM_DONE;
 }
 
 #undef FILT_NAME

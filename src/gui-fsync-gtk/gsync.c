@@ -64,7 +64,8 @@ struct wsync {
 	ffstr show_excl, show_incl;
 	char *opts_fn;
 	ffvec col_width;
-	ffvec cmptbl, cmptbl_filter; // comparison results.  struct fsync_cmp[]
+	ffvec cmptbl; // comparison results.  struct fsync_cmp[]
+	ffvec cmptbl_filter; // struct fsync_cmp*[]
 };
 
 struct ggui {
@@ -427,8 +428,10 @@ static fsync_dir* scan_path(const char *path, uint flags)
 	ffpath_splitpath(path, ffsz_len(path), &dir, &name);
 	dirz = ffsz_dupstr(&dir);
 	de.wildcard = name.ptr;
-	if (0 != ffdirscan_open(&de, dirz, FFDIRSCAN_USEWILDCARD))
+	if (0 != ffdirscan_open(&de, dirz, FFDIRSCAN_USEWILDCARD)) {
+		syserrlog("ffdirscan_open: '%s'  wc: '%s'", dirz, de.wildcard);
 		goto done;
+	}
 
 	while (NULL != (fn = ffdirscan_next(&de))) {
 		ffmem_free(fullname);
@@ -582,14 +585,21 @@ int scan()
 		|| ffsz_len(w->dstfn) == 0)
 		return 1;
 
-	status("Scanning Source...");
-	if (NULL == (w->src = scan_path(w->srcfn, 0)))
-		return 1;
+	status("Scanning source...");
+	if (NULL == (w->src = scan_path(w->srcfn, 0))) {
+		status("Scanning source: failed");
+		goto end;
+	}
 
-	status("Scanning Target...");
-	if (NULL == (w->dst = scan_path(w->dstfn, 0)))
-		return 1;
+	status("Scanning target...");
+	if (NULL == (w->dst = scan_path(w->dstfn, 0))) {
+		status("Scanning target: failed");
+		goto end;
+	}
 	return 0;
+
+end:
+	return 1;
 }
 
 void compare()
@@ -630,8 +640,8 @@ end:
 "src/path/file" -> "dst/path/file"
 
 For wildcards:
-1. "\diff-src\d*": "\diff-src\d1/new" -> "d1/new"
-2. "\diff-tgt\d*": "\diff-tgt" + "d1/new" -> "\diff-tgt\d1/new" */
+1. "/diff-src/d*": "/diff-src/d1/new" -> "d1/new"
+2. "/diff-tgt/d*": "/diff-tgt" + "d1/new" -> "/diff-tgt/d1/new" */
 static char* dst_fn(const char *fnL)
 {
 	struct wsync *w = gg->wsync;
@@ -794,7 +804,7 @@ void sync2(struct sync_s *sc)
 			if (c->status & (FSYNC_ST_SMALLER | FSYNC_ST_LARGER)
 				|| fffile_cmp(fnL, fnR, 0)) {
 				r = copyfile(sc, fnL, fnR, FOP_OVWR | FOP_KEEPDATE);
-				verblog("copy: %s", fnR);
+				verblog("overwrite: %s", fnR);
 
 			} else {
 				f = fsfile(c->left);
@@ -921,6 +931,8 @@ do { \
 	o2 = _tmp; \
 } while (0)
 
+#include <util/fsync.h>
+
 void swap_src_tgt()
 {
 	struct wsync *w = gg->wsync;
@@ -931,17 +943,7 @@ void swap_src_tgt()
 
 	struct fsync_cmp *it;
 	FFSLICE_WALK(&w->cmptbl, it) {
-		if (it->status == FSYNC_ST_SRC)
-			it->status = FSYNC_ST_DEST;
-		else if (it->status == FSYNC_ST_DEST)
-			it->status = FSYNC_ST_SRC;
-		SWAP2(it->left, it->right);
-	}
-	FFSLICE_WALK(&w->cmptbl_filter, it) {
-		if (it->status == FSYNC_ST_SRC)
-			it->status = FSYNC_ST_DEST;
-		else if (it->status == FSYNC_ST_DEST)
-			it->status = FSYNC_ST_SRC;
+		it->status = fsync_cmp_status_swap(it->status);
 		SWAP2(it->left, it->right);
 	}
 

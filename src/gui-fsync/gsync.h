@@ -42,8 +42,6 @@ struct opts {
 	uint showmask; //enum FSYNC_ST
 	uint show_modmask; //enum FSYNC_ST flags for FSYNC_ST_NEQ
 	byte show_dirs_only;
-	byte time_diff;
-	byte time_diff_sec;
 	byte show_done;
 	ffvec list_col_width; // uint[]
 };
@@ -61,6 +59,7 @@ void opts_save(struct opts *c);
 void opts_show(const struct opts *c, ffui_view *v);
 int opts_set(struct opts *c, ffui_view *v, uint sub);
 void list_cols_width_write(ffconfw *conf);
+void wsync_pos_write(ffconfw *conf);
 void wsync_opts_show();
 
 struct wsync {
@@ -69,6 +68,7 @@ struct wsync {
 	ffui_edit e2;
 	ffui_checkbox cbeq, cbnew, cbmod, cbdel, cbmov;
 	ffui_checkbox cbshowdirs, cbshowolder, cbshownewer;
+	ffui_label lexclude, linclude;
 	ffui_edit eexclude, einclude;
 	ffui_view vopts;
 	ffui_view tdirs;
@@ -83,6 +83,12 @@ struct wtree {
 	ffui_edit eaddr;
 	ffui_view vlist;
 	ffui_paned pn;
+};
+
+enum GST {
+	GST_NONE,
+	GST_READY,
+	GST_SYNCING,
 };
 
 struct ggui {
@@ -100,7 +106,10 @@ struct ggui {
 	uint nchecked;
 	char *filter_dirname; // full directory name to show entries in
 
+	fftimerqueue_node tmr_excl_incl;
 	fftask tsk;
+	uint gstatus; // enum GST
+	ffvec wndpos;
 
 	fsync_dir *tree_dirs[50];
 	uint ntree_dirs;

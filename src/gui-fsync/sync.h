@@ -5,6 +5,7 @@ Copyright (c) 2019 Simon Zolin
 #include <util/path.h>
 #include <util/misc.h>
 
+#define verblog(fmt, ...)  fcom_verblog("gsync", fmt, __VA_ARGS__)
 
 struct sync_ctx {
 	struct fsync_cmp *cmp;
@@ -37,10 +38,12 @@ static void sync_free(struct sync_ctx *sc)
 {
 	sync_reset(sc);
 	ffmem_free(sc);
+	gg->gstatus = GST_READY;
+	update_status();
 }
 
 /** Operation on a file is complete. */
-static void sync_result(struct sync_ctx *sc, int r)
+static void sync_result(struct sync_ctx *sc, int idx, int r)
 {
 	if (r != 0) {
 		sc->cmp->status |= FSYNC_ST_ERROR;
@@ -49,7 +52,7 @@ static void sync_result(struct sync_ctx *sc, int r)
 		sc->cmp->status |= FSYNC_ST_DONE;
 		gg->nchecked--;
 	}
-	ffui_view_redraw(&gg->wsync.vlist, sc->row_index, sc->row_index);
+	ffui_view_redraw(&gg->wsync.vlist, idx, idx);
 
 	update_status();
 }
@@ -58,7 +61,7 @@ static void sync_cmdmon_onsig(fcom_cmd *cmd, uint sig)
 {
 	struct sync_ctx *sc = (void*)com->ctrl(cmd, FCOM_CMD_UDATA);
 	int r = (!cmd->err) ? 0 : -1;
-	sync_result(sc, r);
+	sync_result(sc, sc->row_index, r);
 	sync_reset(sc);
 	sync(sc);
 }
@@ -117,6 +120,7 @@ static char* dst_fn(const char *fnL)
 	}
 
 	if (0 != ffs_wildcard(src.ptr, src.len, fn.ptr, fn.len, 0)) {
+		errlog("src: '%S'  fn: '%S'", &src, &fn);
 		FF_ASSERT(0);
 		return NULL;
 	}
@@ -133,6 +137,29 @@ static char* dst_fn(const char *fnL)
 	return ffsz_alfmt("%S\\%S", &dst, &fn);
 }
 
+struct delitem {
+	int row_index;
+	struct fsync_cmp *cmp;
+};
+
+void dellist_del_setresult(struct sync_ctx *sc, ffvec *names, ffvec *items)
+{
+	int r = fops->del_many(names->ptr, names->len, FOP_TRASH);
+
+	struct delitem *di;
+	FFSLICE_WALK(items, di) {
+		sc->cmp = di->cmp;
+		sync_result(sc, di->row_index, r);
+	}
+	items->len = 0;
+
+	char **it;
+	FFSLICE_WALK(names, it) {
+		verblog("delete: %s", *it);
+		ffmem_free(*it);
+	}
+	names->len = 0;
+}
 
 /** Synchronize checked files (src => dst).
 FSYNC_ST_NEQ: if file size has changed or contents don't match, copy file;
@@ -143,11 +170,14 @@ static void sync(struct sync_ctx *sc)
 {
 	struct fsync_cmp *cmp;
 	struct fsync_file *f;
-	int r;
-	ffvec toremove = {};
+	int r, no_result;
+	ffvec dellist = {}, dellist_items = {};
+
+	gg->gstatus = GST_SYNCING;
 
 	for (uint i = sc->row_index + 1;  i != gg->cmptbl_filter.len;  i++) {
 
+		no_result = 0;
 		sc->row_index = i;
 		sc->cmp = cmp = list_getobj(i);
 		if (!(cmp->status & FSYNC_ST_CHECKED))
@@ -170,8 +200,10 @@ static void sync(struct sync_ctx *sc)
 
 			if (isdir(f->attr))
 				r = fops->mkdir(sc->fnR, 0);
-			else
+			else {
 				r = sync_copy(sc, sc->fnL, sc->fnR, FOP_KEEPDATE);
+				verblog("copy: %s", sc->fnR);
+			}
 			break;
 
 		case FSYNC_ST_NEQ:
@@ -184,6 +216,7 @@ static void sync(struct sync_ctx *sc)
 				|| !!fffile_cmp(sc->fnL, sc->fnR, 0)) {
 
 				r = sync_copy(sc, sc->fnL, sc->fnR, FOP_OVWR | FOP_KEEPDATE);
+				verblog("overwrite: %s", sc->fnR);
 
 			} else {
 				fffileinfo fi;
@@ -212,6 +245,7 @@ static void sync(struct sync_ctx *sc)
 			if (sc->fnL == NULL || sc->fnR == NULL)
 				goto end;
 			r = fops->move(sc->fnL, sc->fnR, FOP_OVWR | FOP_RECURS);
+			verblog("move: %s", sc->fnR);
 			break;
 		}
 
@@ -219,16 +253,16 @@ static void sync(struct sync_ctx *sc)
 			sc->fnR = fsync->get(FSYNC_FULLNAME, cmp->right);
 			if (sc->fnR == NULL)
 				goto end;
-			if (toremove.len == 20) {
-				r = fops->del_many(toremove.ptr, toremove.len, FOP_TRASH);
-				char **it;
-				FFSLICE_WALK(&toremove, it) {
-					ffmem_free(*it);
-				}
-				toremove.len = 0;
+			if (dellist.len == 20) {
+				dellist_del_setresult(sc, &dellist, &dellist_items);
 			}
-			*ffvec_pushT(&toremove, char*) = sc->fnR;
+			*ffvec_pushT(&dellist, char*) = sc->fnR;
+			struct delitem * di = ffvec_pushT(&dellist_items, struct delitem);
+			di->cmp = cmp;
+			di->row_index = i;
 			sc->fnR = NULL;
+			no_result = 1;
+			r = 0;
 			break;
 
 		default:
@@ -239,7 +273,8 @@ static void sync(struct sync_ctx *sc)
 			goto end2;
 		}
 
-		sync_result(sc, r);
+		if (!no_result)
+			sync_result(sc, i, r);
 		sync_reset(sc);
 	}
 
@@ -247,12 +282,9 @@ end:
 	sync_free(sc);
 
 end2:
-	if (toremove.len != 0) {
-		fops->del_many(toremove.ptr, toremove.len, FOP_TRASH);
+	if (dellist.len != 0) {
+		dellist_del_setresult(sc, &dellist, &dellist_items);
 	}
-	char **it;
-	FFSLICE_WALK(&toremove, it) {
-		ffmem_free(*it);
-	}
-	ffvec_free(&toremove);
+	ffvec_free(&dellist);
+	ffvec_free(&dellist_items);
 }

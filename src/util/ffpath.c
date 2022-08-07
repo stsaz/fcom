@@ -193,13 +193,15 @@ ffstr ffpath_next(ffstr *path)
 */
 int ffpath_cmp(const ffstr *p1, const ffstr *p2, uint flags)
 {
-	if (flags == FFPATH_CASE_DEF) {
+	if ((flags&0x0f) == FFPATH_CASE_DEF) {
 #if defined FF_UNIX
-		flags = FFPATH_CASE_SENS;
+		flags |= FFPATH_CASE_SENS;
 #elif defined FF_WIN
-		flags = FFPATH_CASE_ISENS;
+		flags |= FFPATH_CASE_ISENS;
 #endif
 	}
+
+	uint bslash = (flags & FFPATH_SUPPORT_BACKSLASH) ? '\\' : '/';
 
 	const byte *left = (void*)p1->ptr, *right = (void*)p2->ptr;
 	uint n = ffmin(p1->len, p2->len);
@@ -209,9 +211,9 @@ int ffpath_cmp(const ffstr *p1, const ffstr *p2, uint flags)
 		if (l == r)
 			continue;
 
-		if (l == '/')
+		if (l == '/' || l == bslash)
 			return -1; // "a/" < "aa/"
-		else if (r == '/')
+		else if (r == '/' || r == bslash)
 			return 1; // "aa/" > "a/"
 
 		ll = ffchar_isup(l) ? ffchar_lower(l) : l;
@@ -230,14 +232,32 @@ int ffpath_cmp(const ffstr *p1, const ffstr *p2, uint flags)
 int ffpath_parent(const ffstr *p1, const ffstr *p2, ffstr *dir)
 {
 	size_t n = ffmin(p1->len, p2->len);
+	if (n == 0)
+		return -1;
 	ssize_t i = ffs_cmpn(p1->ptr, p2->ptr, n);
 	if (i == 0) {
-		ffstr_set(dir, p1->ptr, n);
-		return 0;
+		if (p1->len == p2->len) {
+			ffstr_setstr(dir, p1);
+			return 0;
+		}
+
+		const char *s = (n == p1->len) ? p2->ptr : p1->ptr;
+		int bslash = '/';
+#ifdef FF_WIN
+		bslash = '\\';
+#endif
+		if (s[n] == '/' || s[n] == bslash) {
+			dir->ptr = (n == p1->len) ? p1->ptr : p2->ptr;
+			dir->len = n;
+			return 0;
+		}
+
+		i = n;
+	} else if (i < 0) {
+		i = -i - 1;
+	} else {
+		i--;
 	}
-	if (i < 0)
-		i = -i;
-	i--;
 
 	const char *sl = ffpath_rfindslash(p1->ptr, i);
 	if (sl == p1->ptr + i)

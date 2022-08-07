@@ -67,6 +67,8 @@ static const ffui_ldr_ctl wsync_ctls[] = {
 	FFUI_LDR_CTL(struct wsync, cbshownewer),
 	FFUI_LDR_CTL(struct wsync, eexclude),
 	FFUI_LDR_CTL(struct wsync, einclude),
+	FFUI_LDR_CTL(struct wsync, lexclude),
+	FFUI_LDR_CTL(struct wsync, linclude),
 	FFUI_LDR_CTL(struct wsync, vopts),
 	FFUI_LDR_CTL(struct wsync, tdirs),
 	FFUI_LDR_CTL(struct wsync, vlist),
@@ -237,6 +239,8 @@ do { \
 	o2 = _tmp; \
 } while (0)
 
+#include <util/fsync.h>
+
 void swap_src_tgt()
 {
 	struct wsync *w = &gg->wsync;
@@ -247,21 +251,31 @@ void swap_src_tgt()
 
 	struct fsync_cmp *it;
 	FFSLICE_WALK(&gg->cmptbl, it) {
-		if (it->status == FSYNC_ST_SRC)
-			it->status = FSYNC_ST_DEST;
-		else if (it->status == FSYNC_ST_DEST)
-			it->status = FSYNC_ST_SRC;
-		SWAP2(it->left, it->right);
-	}
-	FFSLICE_WALK(&gg->cmptbl_filter, it) {
-		if (it->status == FSYNC_ST_SRC)
-			it->status = FSYNC_ST_DEST;
-		else if (it->status == FSYNC_ST_DEST)
-			it->status = FSYNC_ST_SRC;
+		it->status = fsync_cmp_status_swap(it->status);
 		SWAP2(it->left, it->right);
 	}
 
 	gsync_showresults(0);
+}
+
+void tmr_excl_incl_fired(void *param)
+{
+	gsync_showresults(SHOW_TREE_FILTER);
+}
+
+void wsync_theme_dark()
+{
+	struct wsync *w = &gg->wsync;
+	ffui_wnd_bgcolor(&w->wsync, 0x303030);
+	ffui_view_clr_text(&w->vlist, 0xffffff);
+	ffui_view_clr_bg(&w->vlist, 0x303030);
+	ListView_SetExtendedListViewStyleEx(w->vlist.h, LVS_EX_GRIDLINES, 0);
+}
+
+void wsync_redraw()
+{
+	struct wsync *w = &gg->wsync;
+	RedrawWindow(w->wsync.h, NULL, NULL, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
 }
 
 static void wsync_action(ffui_wnd *wnd, int id)
@@ -336,6 +350,7 @@ static void wsync_action(ffui_wnd *wnd, int id)
 
 	case A_EXEC:
 	case A_EXEC_RIGHT:
+	case A_EXEC_ANY:
 	case A_OPENDIR:
 	case A_OPENDIR_RIGHT:
 	case A_CLIPCOPY:
@@ -361,6 +376,18 @@ static void wsync_action(ffui_wnd *wnd, int id)
 
 	case A_DISPINFO:
 		list_setdata();
+		break;
+
+	case A_EXCLUDE_CHANGE:
+	case A_INCLUDE_CHANGE:
+		gg->tmr_excl_incl.func = tmr_excl_incl_fired;
+		gg->tmr_excl_incl.param = NULL;
+		core->timer(&gg->tmr_excl_incl, -500, 0);
+		break;
+
+	case A_THEME_DARK:
+		wsync_theme_dark();
+		wsync_redraw();
 		break;
 
 	case A_SHOWEQ:
@@ -412,6 +439,7 @@ static void wsync_destroy(ffui_wnd *wnd)
 	fsync->tree_free(gg->dst);
 	ffarr_free(&gg->cmptbl);
 	ffarr_free(&gg->cmptbl_filter);
+	ffvec_free(&gg->wndpos);
 	ffmem_free0(gg);
 }
 
@@ -445,12 +473,14 @@ static fsync_dir* scan(const char *path, uint flags)
 	ffpath_splitpath(path, ffsz_len(path), &dir, &name);
 	dirz = ffsz_dupstr(&dir);
 	de.wildcard = name.ptr;
-	if (0 != ffdirscan_open(&de, dirz, FFDIRSCAN_USEWILDCARD))
+	if (0 != ffdirscan_open(&de, dirz, FFDIRSCAN_USEWILDCARD)) {
+		syserrlog("ffdirscan_open: '%s'  wc: '%s'", dirz, de.wildcard);
 		goto done;
+	}
 
 	while (NULL != (fn = ffdirscan_next(&de))) {
 		ffmem_free(fullname);
-		fullname = ffsz_allocfmt("%s/%s", dirz, fn);
+		fullname = ffsz_allocfmt("%s\\%s", dirz, fn);
 		if (NULL == (d = fsync->scan_tree(fullname, flags)))
 			goto done;
 		if (parent != NULL) {
@@ -546,13 +576,17 @@ static void gsync_scancmp(void *udata)
 
 	gsync_reset();
 
-	gsync_status("Scanning Source...");
-	if (NULL == (gg->src = scan(gg->opts.srcfn, 0)))
+	gsync_status("Scanning source...");
+	if (NULL == (gg->src = scan(gg->opts.srcfn, 0))) {
+		gsync_status("Scanning source: failed");
 		goto end;
+	}
 
-	gsync_status("Scanning Target...");
-	if (NULL == (gg->dst = scan(gg->opts.dstfn, 0)))
+	gsync_status("Scanning target...");
+	if (NULL == (gg->dst = scan(gg->opts.dstfn, 0))) {
+		gsync_status("Scanning target: failed");
 		goto end;
+	}
 
 	gsync_status("Comparing...");
 	struct fsync_cmp cmp, *c;
@@ -579,6 +613,7 @@ static void gsync_scancmp(void *udata)
 
 	cmpstat_fin(&n);
 
+	gg->gstatus = GST_READY;
 	gsync_showresults(0);
 
 end:
@@ -603,8 +638,12 @@ static int gsync_finfo(const struct fsync_file *e, ffarr *buf)
 
 void update_status()
 {
+	static const char *sstatus[] = { "", "Ready.", "Synchronizing..." };
+	FF_ASSERT(gg->gstatus < FF_COUNT(sstatus));
+
 	ffarr buf = {};
-	ffstr_catfmt(&buf, "Results: %L/%L (%L)%Z"
+	ffstr_catfmt(&buf, "%s Results: %L/%L (%L)%Z"
+		, sstatus[gg->gstatus]
 		, (size_t)gg->nchecked
 		, (size_t)gg->cmptbl_filter.len, gg->cmptbl.len);
 	gsync_status(buf.ptr);
@@ -653,6 +692,22 @@ static const char* cmp_status_str(char *buf, size_t cap, const struct fsync_cmp 
 	return cmp_sstatus[st & _FSYNC_ST_MASK];
 }
 
+ffbool excl_incl_match(ffstr strlist, ffstr n1, ffstr n2)
+{
+	while (strlist.len != 0) {
+		ffstr part;
+		ffstr_splitby(&strlist, ' ', &part, &strlist);
+		ffstr_trimwhite(&part);
+		if (part.len == 0)
+			continue;
+		if (ffstr_ifindstr(&n1, &part) >= 0
+			|| ffstr_ifindstr(&n2, &part) >= 0) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 /** Apply exclude-include name filters */
 static ffbool excl_incl(const struct fsync_cmp *c)
 {
@@ -666,40 +721,18 @@ static ffbool excl_incl(const struct fsync_cmp *c)
 		ffstr_setz(&n2, fullname);
 	}
 
-	ffbool skip = 0;
-	ffstr strlist = gg->opts.exclude;
-	if (gg->opts.include.len != 0)
-		strlist = gg->opts.include;
-
-	while (strlist.len != 0) {
-		ffstr part;
-		ffstr_splitby(&strlist, ' ', &part, &strlist);
-		ffstr_trimwhite(&part);
-		if (part.len == 0)
-			continue;
-
-		if (ffstr_ifindstr(&n1, &part) >= 0
-			|| ffstr_ifindstr(&n2, &part) >= 0) {
-			// matched
-			if (gg->opts.include.len != 0) {
-				skip = 0;
-				goto fin;
-			}
-			skip = 1; // excluded
-			break;
-		} else {
-			// not matched
-			if (gg->opts.include.len != 0)
-				skip = 1; // not included
-		}
+	ffbool show;
+	if (gg->opts.include.len != 0) {
+		show = excl_incl_match(gg->opts.include, n1, n2);
+		if (!show)
+			goto fin;
 	}
+	show = !excl_incl_match(gg->opts.exclude, n1, n2);
 
 fin:
 	ffmem_free(n1.ptr);
 	ffmem_free(n2.ptr);
-	if (skip)
-		return 0;
-	return 1;
+	return show;
 }
 
 /** Check whether we should show the entry:
@@ -834,7 +867,7 @@ static void list_setdata()
 
 	case L_ACTN:
 		if (c->status & FSYNC_ST_DONE)
-			ffstr_setz(&d, "Done");
+			ffstr_setz(&d, "");
 		else if (c->status & FSYNC_ST_ERROR)
 			ffstr_setz(&d, "Error");
 		else if (c->status & FSYNC_ST_PENDING)
@@ -906,6 +939,9 @@ end:
 . Create a list of filtered entries */
 static void gsync_showresults(uint flags)
 {
+	if (gg->gstatus != GST_READY)
+		return;
+
 	struct fsync_file *e1;
 	struct fsync_cmp *c;
 	ffarr buf = {0};
@@ -1048,6 +1084,11 @@ static void gsync_fnop(uint id)
 
 		obj = c->left;
 		switch (id) {
+		case A_EXEC_ANY:
+			if (c->left == NULL)
+				obj = c->right;
+			break;
+
 		case A_EXEC_RIGHT:
 		case A_OPENDIR_RIGHT:
 		case A_CLIPFN_RIGHT:
@@ -1064,6 +1105,7 @@ static void gsync_fnop(uint id)
 
 		case A_EXEC:
 		case A_EXEC_RIGHT:
+		case A_EXEC_ANY:
 			if (0 != ffui_shellexec(fullname, SW_SHOWNORMAL)) {
 				fcom_syserrlog("gsync", "ffui_shellexec: %s", fullname);
 			}
@@ -1137,6 +1179,16 @@ void list_cols_width_write(ffconfw *conf)
 	struct wsync *w = &gg->wsync;
 	for (uint i = 0;  i != _L_LAST;  i++) {
 		ffconfw_addint(conf, ffui_view_col_width(&w->vlist, i));
+	}
+}
+
+void wsync_pos_write(ffconfw *conf)
+{
+	ffui_pos r;
+	ffui_getpos(&gg->wsync.wsync, &r);
+	const int *p = (void*)&r;
+	for (uint i = 0;  i != 4;  i++) {
+		ffconfw_addint(conf, p[i]);
 	}
 }
 

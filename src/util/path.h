@@ -98,13 +98,18 @@ enum FFPATH_CASE {
 	FFPATH_CASE_ISENS,
 };
 
+enum {
+	FFPATH_SUPPORT_BACKSLASH = 0x10,
+};
+
 /** Compare normalized file paths.
-Note: backslash ('\\') isn't supported.
-@flags: enum FFPATH_CASE
+@flags: enum FFPATH_CASE | FFPATH_SUPPORT_BACKSLASH
 Return 0 if equal;  <0 if p1 < p2;  >0 otherwise. */
 FF_EXTERN int ffpath_cmp(const ffstr *p1, const ffstr *p2, uint flags);
 
-/** Get max. shared parent directory (without the last slash). */
+/** Get max. shared parent directory (without the last slash).
+p1,p2: Normalized paths
+Return !=0 if the paths don't have a shared parent. */
 FF_EXTERN int ffpath_parent(const ffstr *p1, const ffstr *p2, ffstr *dir);
 
 /** Check if a path is a parent of another path.

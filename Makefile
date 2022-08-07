@@ -214,7 +214,7 @@ net.$(SO): $(NET_O)
 ifeq ($(OS),win)
 $(OBJ_DIR)/%.o: $(SRCDIR)/gui-winapi/%.c $(GLOB_HDRS)
 	$(C) $(CFLAGS) $< -o $@
-$(OBJ_DIR)/%.o: $(SRCDIR)/gui-fsync/%.c $(GLOB_HDRS)
+$(OBJ_DIR)/%.o: $(SRCDIR)/gui-fsync/%.c $(GLOB_HDRS) $(wildcard $(SRCDIR)/gui-fsync/*.h)
 	$(C) $(CFLAGS) $< -o $@
 $(OBJ_DIR)/%.o: $(SRCDIR)/gui-scrshots/%.c $(GLOB_HDRS)
 	$(C) $(CFLAGS) $< -o $@
@@ -314,9 +314,8 @@ install: all
 	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) strip
 	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) install-only
 
-package:
-	rm -f $(PROJ)-$(VER)-$(OS)-$(ARCH).$(PACK_EXT) \
-		&&  $(PACK) $(PROJ)-$(VER)-$(OS)-$(ARCH).$(PACK_EXT) $(INSTDIR)
+package: $(INSTDIR)
+	$(PACK) $(PROJ)-$(VER)-$(OS)-$(ARCH).$(PACK_EXT) $(INSTDIR)
 	$(PACK) $(PROJ)-$(VER)-$(OS)-$(ARCH)-debug.$(PACK_EXT) ./*.debug
 
 install-package: install

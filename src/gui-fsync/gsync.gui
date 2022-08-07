@@ -32,10 +32,14 @@ menu mcmd {
 	}
 	item "-" {
 	}
-	item "Swap Source & Target" {
+	item "S&wap Source && Target" {
+		hotkey "Ctrl+W"
 		action A_SWAP
 	}
 	item "-" {
+	}
+	item "Theme: Dark" {
+		action A_THEME_DARK
 	}
 	item "Exit" {
 		action A_EXIT
@@ -47,10 +51,10 @@ menu mfile {
 		action A_EXEC
 	}
 	item "Show in Explorer (Source)" {
+		hotkey "Ctrl+E"
 		action A_OPENDIR
 	}
 	item "Copy To Clipboard (Source)" {
-		hotkey "Ctrl+Shift+C"
 		action A_CLIPCOPY
 	}
 	item "Copy Filename To Clipboard (Source)" {
@@ -65,6 +69,7 @@ menu mfile {
 		action A_EXEC_RIGHT
 	}
 	item "Show in Explorer (Target)" {
+		hotkey "Ctrl+Shift+E"
 		action A_OPENDIR_RIGHT
 	}
 	item "Copy To Clipboard (Target)" {
@@ -162,18 +167,30 @@ window wsync {
 		action A_SHOW_NEWER
 	}
 
-	editbox eexclude {
+	label linclude {
 		size 100 25
-		tooltip "Exclude words"
+		text "Include Only:"
 	}
 	editbox einclude {
 		size 100 25
 		style horizontal
 		tooltip "Include only words"
+		onchange A_INCLUDE_CHANGE
+	}
+	label lexclude {
+		size 100 25
+		style horizontal
+		text "Exclude:"
+	}
+	editbox eexclude {
+		size 100 25
+		style horizontal
+		tooltip "Exclude words"
+		onchange A_EXCLUDE_CHANGE
 	}
 
 	listview vopts {
-		size 300 100
+		size 300 50
 		style explorer_theme edit_labels grid_lines
 		lclick A_CONF_EDIT
 		column "Setting" {
@@ -188,7 +205,7 @@ window wsync {
 	}
 
 	treeview tdirs {
-		size 300 100
+		size 300 50
 		style horizontal explorer_theme has_buttons has_lines track_select
 		chsel A_FILTER
 	}
@@ -198,7 +215,7 @@ window wsync {
 		resize cx cy
 		style checkboxes explorer_theme grid_lines multi_select
 		popupmenu mfile
-		dblclick A_EXEC
+		dblclick A_EXEC_ANY
 		oncheck A_ONCHECK
 		column "Action" {
 		}

@@ -12,12 +12,21 @@ int col_width(ffconf_scheme *cs, void *obj, int64 val)
 	return 0;
 }
 
+int wsync_pos(ffconf_scheme *cs, void *obj, int64 val)
+{
+	*ffvec_pushT(&gg->wndpos, int) = val;
+	if (gg->wndpos.len == 4) {
+		const int *p = gg->wndpos.ptr;
+		ffui_setpos(&gg->wsync.wsync, p[0], p[1], p[2], p[3], 0);
+		ffvec_free(&gg->wndpos);
+	}
+	return 0;
+}
+
 #define OFF(m)  FF_OFF(struct opts, m)
 static const ffconf_arg opts_args_conf[] = {
 	{ "Source path",	FFCONF_TSTRZ, OFF(srcfn) },
 	{ "Target path",	FFCONF_TSTRZ, OFF(dstfn) },
-	{ "Compare: Time Diff",	FFCONF_TINT8, OFF(time_diff) },
-	{ "Compare: Time Diff in Seconds",	FFCONF_TINT8, OFF(time_diff_sec) },
 
 	{ "Filter Name",	FFCONF_TSTR, OFF(filter_name) },
 	{ "Filter",	FFCONF_TSTR, OFF(filter) },
@@ -26,8 +35,8 @@ static const ffconf_arg opts_args_conf[] = {
 	// { "Show Modified by Size",	FFCONF_TINT | FFPARS_SETBIT(1), OFF(show_modmask) },
 	// { "Show Modified by Attr",	FFCONF_TINT | FFPARS_SETBIT(2), OFF(show_modmask) },
 	{ "Show Only Directories",	FFCONF_TINT8, OFF(show_dirs_only) },
-	{ "Show \"Done\"",	FFCONF_TINT8, OFF(show_done) },
 	{ "Column Width",	FFCONF_TINT16 | FFCONF_FLIST, (ffsize)(col_width) },
+	{ "wsync_pos",	FFCONF_TINT16 | FFCONF_FLIST, (ffsize)wsync_pos },
 	{}
 };
 #undef OFF
@@ -39,6 +48,7 @@ int opts_init(struct opts *c)
 	c->showmask = (1<<FSYNC_ST_SRC) | (1<<FSYNC_ST_DEST) | (1<<FSYNC_ST_MOVED) | (1<<FSYNC_ST_NEQ)
 		| SHOWMASK_DIRS | SHOWMASK_OLDER | SHOWMASK_NEWER;
 	c->show_modmask = -1;
+	c->show_done = 1;
 	return 0;
 }
 
@@ -84,6 +94,9 @@ void opts_save(struct opts *c)
 
 		if (ffsz_eq(a->name, "Column Width")) {
 			list_cols_width_write(&conf);
+			continue;
+		} else if (ffsz_eq(a->name, "wsync_pos")) {
+			wsync_pos_write(&conf);
 			continue;
 		}
 
