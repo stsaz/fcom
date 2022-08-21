@@ -312,3 +312,32 @@ struct fcom_file {
 	By default, don't fail if the directory already exists. */
 	int (*dir_create)(const char *name, uint flags);
 };
+
+
+// HASH
+
+typedef void fcom_hash_obj;
+typedef struct fcom_hash {
+	fcom_hash_obj* (*create)();
+	void (*update)(fcom_hash_obj *obj, const void *data, ffsize size);
+	void (*fin)(fcom_hash_obj *obj, byte *result, ffsize result_cap);
+	void (*close)(fcom_hash_obj *obj);
+} fcom_hash;
+
+
+// AES
+
+enum FCOM_AES_MODE {
+	FCOM_AES_CBC,
+	FCOM_AES_CFB,
+	FCOM_AES_OFB,
+};
+
+typedef void fcom_aes_obj;
+typedef struct fcom_aes {
+	/**
+	flags: enum FCOM_AES_MODE */
+	fcom_aes_obj* (*create)(const byte *key, ffsize key_len, uint flags);
+	int (*process)(fcom_aes_obj *obj, const void *in, void *out, ffsize len, byte *iv);
+	void (*close)(fcom_aes_obj *obj);
+} fcom_aes;

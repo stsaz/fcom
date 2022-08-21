@@ -8,7 +8,8 @@ FFOS_DIR := $(ROOT)/ffos
 include $(FFBASE_DIR)/test/makeconf
 
 BIN := fcom$(DOTEXE)
-MODS :=
+MODS := \
+	crypto.$(SO)
 BINS := $(BIN) core.$(SO) $(MODS)
 
 CFLAGS := -I$(FCOM_DIR)/src -I$(FFOS_DIR) -I$(FFBASE_DIR) \
@@ -24,6 +25,7 @@ else
 	LINKFLAGS := -s
 endif
 
+3PT_DIR := $(FCOM_DIR)/3pt/_$(OS)-amd64
 
 # build, install
 default: $(BINS)
@@ -49,6 +51,23 @@ $(BIN): main.o args.o
 		$(FCOM_DIR)/Makefile
 	$(C) $(CFLAGS) $< -o $@
 core.$(SO): com.o core.o file.o
+	$(LINK) -shared $+ $(LINKFLAGS) -o $@
+
+# ops
+%.o: $(FCOM_DIR)/src/ops/%.c \
+		$(FCOM_DIR)/src/fcom.h \
+		$(wildcard $(FCOM_DIR)/src/util/*.h) \
+		$(FCOM_DIR)/Makefile
+	$(C) $(CFLAGS) $< -o $@
+
+# mod.crypto
+crypto.$(SO): \
+		aes.o \
+		md5.o \
+		sha512.o \
+		$(3PT_DIR)/MD5.a \
+		$(3PT_DIR)/SHA512.a \
+		$(3PT_DIR)/AES.a
 	$(LINK) -shared $+ $(LINKFLAGS) -o $@
 
 test: test.o
