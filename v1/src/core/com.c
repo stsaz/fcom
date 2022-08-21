@@ -1,0 +1,506 @@
+/** fcom: core: operation manager; fcom_command implementation.
+2022, Simon Zolin */
+
+#include <fcom.h>
+#include <util/cmdarg-scheme.h>
+#include <FFOS/std.h>
+#include <ffbase/map.h>
+#include <util/fntree.h>
+
+extern fcom_core *core;
+static int cmd_args_parse(fcom_cominfo *cmd, const ffcmdarg_arg *args, void *obj);
+
+#define syserrlog(fmt, ...)  fcom_syserrlog("com: " fmt, ##__VA_ARGS__)
+#define errlog(fmt, ...)  fcom_errlog("com: " fmt, ##__VA_ARGS__)
+#define dbglog(fmt, ...)  fcom_dbglog("com: " fmt, ##__VA_ARGS__)
+
+#define HELP_TXT "help.txt"
+
+struct com {
+	fflist cmds; // struct cmd*[]
+	ffmap mods; // "name" -> struct mod*
+};
+static struct com com;
+
+#include <core/mods.h>
+
+struct cmd {
+	ffchain_item sib;
+	fcom_cominfo cmd;
+	const struct fcom_operation *opif;
+	fcom_op *op;
+
+	fntree_block *ftree;
+	fntree_cursor ftree_cur;
+	ffvec ftree_name;
+	fffd ftree_dir;
+	uint isdir :1;
+	uint set_ftree :1;
+};
+
+void com_init()
+{
+	fflist_init(&com.cmds);
+	mods_init();
+}
+
+void com_destroy()
+{
+	mods_free();
+}
+
+static void com_signal_all(uint signal)
+{
+	ffchain_item *it;
+	FFLIST_WALK(&com.cmds, it) {
+		struct cmd *c = FF_STRUCTPTR(struct cmd, sib, it);
+		if (c->op == NULL)
+			continue;
+		c->opif->signal(c->op, signal);
+	}
+}
+
+static fcom_cominfo* cmd_create()
+{
+	struct cmd *c = ffmem_new(struct cmd);
+	c->cmd.input_fd = FFFILE_NULL;
+	ffstr path = {};
+	c->ftree = fntree_create(path);
+	c->ftree_dir = FFFILE_NULL;
+	fflist_add(&com.cmds, &c->sib);
+	return &c->cmd;
+}
+
+static void cmd_destroy(fcom_cominfo *cmd)
+{
+	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
+	ffstr *it;
+
+	FFSLICE_WALK(&cmd->input, it) {
+		ffstr_free(it);
+	}
+	ffvec_free(&cmd->input);
+
+	FFSLICE_WALK(&cmd->include, it) {
+		ffstr_free(it);
+	}
+	ffvec_free(&cmd->include);
+
+	FFSLICE_WALK(&cmd->exclude, it) {
+		ffstr_free(it);
+	}
+	ffvec_free(&cmd->exclude);
+
+	fntree_free_all(c->ftree);
+	ffvec_free(&c->ftree_name);
+	if (c->ftree_dir != FFFILE_NULL)
+		fffile_close(c->ftree_dir);
+	ffstr_free(&cmd->output);
+	ffstr_free(&cmd->chdir);
+	if (cmd->input_fd != FFFILE_NULL && cmd->input_fd != ffstdin)
+		fffile_close(cmd->input_fd);
+	ffmem_free(cmd->operation);
+	fflist_rm(&com.cmds, &c->sib);
+	ffmem_free(c);
+}
+
+#ifdef FF_WIN
+static int wc_expand(struct fcom_cominfo *cmd, ffstr *s)
+{
+	int rc = FFCMDARG_ERROR;
+	ffstr dir, name;
+	ffpath_splitpath(s->ptr, s->len, &dir, &name);
+	if (dir.len == 0)
+		ffstr_setz(&dir, ".");
+	char *dirz = ffsz_dupstr(&dir);
+
+	ffdirscan ds = {};
+	ds.wildcard = ffsz_dupstr(&name);
+	if (0 != ffdirscan_open(&ds, dirz, FFDIRSCAN_USEWILDCARD)) {
+		syserrlog("dir open: %s", dirz);
+		goto err;
+	}
+
+	const char *fn;
+	while (NULL != (fn = ffdirscan_next(&ds))) {
+		dbglog("wildcard expand: %s", fn);
+		ffstr *p = ffvec_pushT(&cmd->input, ffstr);
+		ffsize cap = 0;
+		ffstr_null(p);
+		ffstr_growfmt(p, &cap, "%S\\%s", &dir, fn);
+	}
+
+	rc = 0;
+
+err:
+	ffmem_free(dirz);
+	ffmem_free((char*)ds.wildcard);
+	ffdirscan_close(&ds);
+	return rc;
+}
+#endif
+
+static int args_input(ffcmdarg_scheme *as, struct fcom_cominfo *cmd, ffstr *s)
+{
+	if (cmd->operation == NULL) {
+		cmd->operation = ffsz_dupstr(s);
+		return 0;
+	}
+
+	if (s->len != 0 && s->ptr[0] == '@') {
+		if (cmd->input_fd != FFFILE_NULL) {
+			errlog("Only 1 '@' notation for input files is supported");
+			return FFCMDARG_ERROR;
+		}
+		if (s->len == 1) {
+			cmd->input_fd = ffstdin;
+			dbglog("reading input names from STDIN");
+		} else {
+			const char *fn = s->ptr + 1;
+			if (FFFILE_NULL == (cmd->input_fd = fffile_open(fn, FFFILE_READONLY))) {
+				syserrlog("file open: %s", fn);
+				return FFCMDARG_ERROR;
+			}
+			dbglog("reading input names from file '%s'", fn);
+		}
+		return 0;
+
+#ifdef FF_WIN
+	} else if (ffstr_findany(s, "*?", 2) >= 0) {
+		return wc_expand(cmd, s);
+#endif
+
+	}
+
+	ffstr *p = ffvec_pushT(&cmd->input, ffstr);
+	ffstr_dupstr(p, s);
+	return 0;
+}
+
+static int args_include(ffcmdarg_scheme *as, struct fcom_cominfo *cmd, ffstr *s)
+{
+	ffstr *p = ffvec_pushT(&cmd->include, ffstr);
+	ffstr_dupstr(p, s);
+	return 0;
+}
+
+static int args_exclude(ffcmdarg_scheme *as, struct fcom_cominfo *cmd, ffstr *s)
+{
+	ffstr *p = ffvec_pushT(&cmd->exclude, ffstr);
+	ffstr_dupstr(p, s);
+	return 0;
+}
+
+static int args_buffer(ffcmdarg_scheme *as, struct fcom_cominfo *cmd, ffint64 i)
+{
+	if (!ffint_ispower2(i))
+		return FFCMDARG_ERROR;
+	return 0;
+}
+
+#define R_DONE 100
+
+#if defined FF_WIN
+	#define OS_STR  "windows"
+#elif defined FF_BSD
+	#define OS_STR  "freebsd"
+#elif defined FF_APPLE
+	#define OS_STR  "macos"
+#else
+	#define OS_STR  "linux"
+#endif
+
+static const char* app_ver()
+{
+	return "fcom v" FCOM_VER " (" OS_STR ")\n";
+}
+
+static int args_help(ffcmdarg_scheme *as, struct fcom_cominfo *cmd)
+{
+	if (cmd->operation != NULL) {
+		cmd->help = 1;
+		return 0;
+	}
+
+	char *fn = core->path(HELP_TXT);
+	ffvec d = {};
+	if (0 != fffile_readwhole(fn, &d, 64*1024)) {
+		syserrlog("file read: %s", fn);
+		return FFCMDARG_ERROR;
+	}
+	ffstdout_write(app_ver(), ffsz_len(app_ver()));
+	ffstdout_write(d.ptr, d.len);
+	ffvec_free(&d);
+	ffmem_free(fn);
+	return R_DONE;
+}
+
+static int args_parse(struct cmd *c)
+{
+	static const ffcmdarg_arg args[] = {
+		// input
+		{ 0,	"",	FFCMDARG_TSTR | FFCMDARG_FMULTI, (ffsize)args_input },
+		{ 'I',	"include",	FFCMDARG_TSTR | FFCMDARG_FMULTI, (ffsize)args_include },
+		{ 'E',	"exclude",	FFCMDARG_TSTR | FFCMDARG_FMULTI, (ffsize)args_exclude },
+		{ 'R',	"recursive",	FFCMDARG_TSWITCH, FF_OFF(struct fcom_cominfo, recursive) },
+
+		// output
+		{ 'o',	"output",	FFCMDARG_TSTR, FF_OFF(struct fcom_cominfo, output) },
+		{ 'C',	"chdir",	FFCMDARG_TSTR, FF_OFF(struct fcom_cominfo, chdir) },
+		{ 'f',	"overwrite",	FFCMDARG_TSWITCH, FF_OFF(struct fcom_cominfo, overwrite) },
+		{ 'T',	"test",	FFCMDARG_TSWITCH, FF_OFF(struct fcom_cominfo, test) },
+		{ 0,	"no-prealloc",	FFCMDARG_TSWITCH, FF_OFF(struct fcom_cominfo, no_prealloc) },
+
+		// shared
+		{ 0,	"buffer",	FFCMDARG_TSIZE32, (ffsize)args_buffer },
+		{ 0,	"directio",	FFCMDARG_TSWITCH, FF_OFF(struct fcom_cominfo, directio) },
+		{ 'h',	"help",	FFCMDARG_TSWITCH, (ffsize)args_help },
+		{}
+	};
+
+	if (0 != cmd_args_parse(&c->cmd, args, &c->cmd))
+		return -1;
+
+	if (c->cmd.operation == NULL) {
+		ffstdout_write(app_ver(), ffsz_len(app_ver()));
+		const char *short_help =
+			"General usage:\n"
+			"\n"
+			"  fcom OPERATION [INPUT] [-o OUTPUT] [OPTIONS]\n"
+			"\n"
+			"Use -h for help.\n";
+		ffstdout_write(short_help, ffsz_len(short_help));
+		return 1;
+	}
+
+	if (c->cmd.input.len == 0) {
+		c->cmd.stdin = 1;
+	}
+
+	if (ffstr_eqz(&c->cmd.output, "STDOUT")) {
+		ffstr_free(&c->cmd.output);
+		c->cmd.stdout = 1;
+	}
+
+	return 0;
+}
+
+static int cmd_run(fcom_cominfo *cmd)
+{
+	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
+
+	if (0 != args_parse(c))
+		goto err;
+
+	if (NULL == (c->opif = com_provide(cmd->operation)))
+		goto err;
+
+	if (cmd->help) {
+		const char *s = c->opif->help();
+		ffstdout_write(s, ffsz_len(s));
+		goto err;
+	}
+
+	if (NULL == (c->op = c->opif->create(cmd)))
+		goto err;
+	c->opif->run(c->op);
+	return 0;
+
+err:
+	cmd_destroy(cmd);
+	return -1;
+}
+
+static int input_names_read(struct cmd *c)
+{
+	fcom_cominfo *cmd = &c->cmd;
+	int rc = -1;
+	ffvec in_list = {};
+
+	for (;;) {
+		ffvec_grow(&in_list, 64*1024, 1);
+		ffssize r = fffile_read(cmd->input_fd, ffslice_end(&in_list, 1), ffvec_unused(&in_list));
+		if (r == 0) {
+			break;
+		} else if (r < 0) {
+			syserrlog("file read");
+			goto end;
+		}
+		dbglog("input names file: read %L bytes", r);
+		in_list.len += r;
+	}
+
+	if (cmd->input_fd != ffstdin) {
+		fffile_close(cmd->input_fd), cmd->input_fd = FFFILE_NULL;
+	}
+
+	ffstr view = FFSTR_INITSTR(&in_list);
+	while (view.len != 0) {
+		ffstr name;
+		ffstr_splitby(&view, '\n', &name, &view);
+		ffstr_trimwhite(&name);
+		if (name.len == 0)
+			continue;
+
+		if (NULL == (c->ftree = fntree_add(c->ftree, name))) {
+			fcom_errlog("fntree_add");
+			goto end;
+		}
+	}
+
+	rc = 0;
+
+end:
+	ffvec_free(&in_list);
+	return rc;
+}
+
+static int incl_excl(struct cmd *c, ffstr name)
+{
+	fcom_cominfo *cmd = &c->cmd;
+	int k = 1;
+	ffstr *it;
+	uint flags = FFS_WC_ICASE;
+
+	if (cmd->include.len != 0) {
+		k = 0;
+		FFSLICE_WALK(&cmd->include, it) {
+			if (0 == ffs_wildcard(it->ptr, it->len, name.ptr, name.len, flags)) {
+				dbglog("include: '%S' by '%S'", &name, it);
+				k = 1;
+				break;
+			}
+		}
+
+		if (!k)
+			return -1;
+	}
+
+	FFSLICE_WALK(&cmd->exclude, it) {
+		if (0 == ffs_wildcard(it->ptr, it->len, name.ptr, name.len, flags)) {
+			dbglog("exclude: '%S' by '%S'", &name, it);
+			k = 0;
+			break;
+		}
+	}
+
+	if (!k)
+		return -1;
+	return 0;
+}
+
+static int cmd_input_next(fcom_cominfo *cmd, ffstr *name, ffstr *base, uint flags)
+{
+	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
+
+	if (!c->set_ftree) {
+		c->set_ftree = 1;
+		ffstr *it;
+		FFSLICE_WALK(&c->cmd.input, it) {
+			if (NULL == (c->ftree = fntree_add(c->ftree, *it))) {
+				fcom_errlog("fntree_add: '%S'", it);
+				return -1;
+			}
+		}
+	}
+
+	if (c->cmd.input_fd != FFFILE_NULL) {
+		if (0 != input_names_read(c))
+			return -1;
+		if (cmd->input_fd != ffstdin) {
+			fffile_close(cmd->input_fd),  cmd->input_fd = FFFILE_NULL;
+		}
+	}
+
+	if (c->isdir) {
+		c->isdir = 0;
+		ffdirscan ds = {};
+		uint flags = 0;
+
+#ifdef FF_LINUX
+		if (c->ftree_dir != FFFILE_NULL) {
+			ds.fd = c->ftree_dir;
+			c->ftree_dir = FFFILE_NULL;
+			flags = FFDIRSCAN_USEFD;
+		}
+#endif
+
+		if (0 != ffdirscan_open(&ds, c->ftree_name.ptr, flags)) {
+			fcom_syserrlog("ffdirscan_open");
+			return -1;
+		}
+		ffstr path = FFSTR_INITZ(c->ftree_name.ptr);
+		fntree_block *b = fntree_from_dirscan(path, &ds);
+		fntree_attach(c->ftree_cur.cur, b);
+		ffdirscan_close(&ds);
+	}
+
+	for (;;) {
+		fntree_block *b = c->ftree;
+		fntree_entry *it = fntree_next_r(&c->ftree_cur, &b);
+		if (it == NULL) {
+			fcom_dbglog("no more input files");
+			return -1;
+		}
+
+		ffstr nm = FFSTR_INITN(it->name, it->name_len);
+		ffstr path = fntree_path(b);
+		c->ftree_name.len = 0;
+		if (path.len != 0)
+			ffvec_addfmt(&c->ftree_name, "%S%c", &path, FFPATH_SLASH);
+		ffvec_addfmt(&c->ftree_name, "%S%Z", &nm);
+
+		if (NULL != _fntr_cur_i(&c->ftree_cur, 0)) {
+			fntree_block *bbase = _fntr_cur_i(&c->ftree_cur, 1);
+			if (bbase == NULL)
+				bbase = b;
+			if (0 != incl_excl(c, nm))
+				continue;
+			*base = fntree_path(bbase);
+		} else {
+			ffstr_null(base);
+		}
+
+		ffstr_set(name, c->ftree_name.ptr, c->ftree_name.len - 1);
+		break;
+	}
+
+	dbglog("input file name: '%S' / '%S'", name, base);
+	return 0;
+}
+
+static void cmd_input_dir(fcom_cominfo *cmd, fffd dir)
+{
+	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
+	c->isdir = 1;
+
+#ifdef FF_LINUX
+	if (c->cmd.recursive) {
+		c->ftree_dir = dir;
+		return;
+	}
+#endif
+
+	fffile_close(dir);
+}
+
+static int cmd_args_parse(fcom_cominfo *cmd, const ffcmdarg_arg *args, void *obj)
+{
+	ffstr errmsg = {};
+	int r = ffcmdarg_parse_object(args, obj, (const char**)cmd->argv, cmd->argc, FFCMDARG_SCF_SKIP_UNKNOWN, &errmsg);
+	if (r < 0 && r != -R_DONE) {
+		errlog("command-line: %S", &errmsg);
+	}
+	ffstr_free(&errmsg);
+	return r;
+}
+
+const struct fcom_command _fcom_com = {
+	com_provide,
+	com_signal_all,
+	cmd_create,
+	cmd_run,
+	cmd_destroy,
+	cmd_input_next, cmd_input_dir,
+	cmd_args_parse,
+};

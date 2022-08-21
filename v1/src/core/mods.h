@@ -1,0 +1,104 @@
+/** fcom: core: modules
+2022, Simon Zolin */
+
+#include <FFOS/dylib.h>
+
+struct mod {
+	char *name;
+	ffdl dl;
+	struct fcom_module *mod;
+};
+
+static int modmap_keyeq(void *opaque, const void *key, ffsize keylen, void *val)
+{
+	struct mod *m = val;
+	return !ffs_cmpz(key, keylen, m->name);
+}
+
+void mods_init()
+{
+	ffmap_init(&com.mods, modmap_keyeq);
+}
+
+static void mod_free(struct mod *m)
+{
+	if (m->mod != NULL)
+		m->mod->destroy();
+	if (m->dl != NULL) {
+		ffdl_close(m->dl);
+		dbglog("closed module %s", m->name);
+	}
+	ffmem_free(m->name);
+	ffmem_free(m);
+}
+
+void mods_free()
+{
+	struct _ffmap_item *it;
+	FFMAP_WALK(&com.mods, it) {
+		if (!_ffmap_item_occupied(it))
+			continue;
+		struct mod *m = it->val;
+		mod_free(m);
+	}
+	ffmap_free(&com.mods);
+}
+
+struct mod* mod_load(ffstr modname)
+{
+	struct mod *m = ffmem_new(struct mod);
+	char *name = ffsz_allocfmt("ops%c%S." FFDL_EXT, FFPATH_SLASH, &modname);
+	char *fn = core->path(name);
+
+	dbglog("loading '%s'...", fn);
+	if (NULL == (m->dl = ffdl_open(fn, FFDL_SELFDIR))) {
+		errlog("dl open: %s: %s", fn, ffdl_errstr());
+		goto err;
+	}
+
+	if (NULL == (m->mod = ffdl_addr(m->dl, "fcom_module"))) {
+		errlog("dl addr '%s': %s: %s", "fcom_module", fn, ffdl_errstr());
+		goto err;
+	}
+
+	m->name = ffsz_dupstr(&modname);
+	dbglog("initializing module '%s'...", m->name);
+	m->mod->init(core);
+	dbglog("initialized module '%s' v%s", m->name, m->mod->version);
+	ffmem_free(name);
+	ffmem_free(fn);
+	return m;
+
+err:
+	ffmem_free(name);
+	ffmem_free(fn);
+	mod_free(m);
+	return NULL;
+}
+
+/**
+"a" -> "ops/a.so".addr("a")
+"a.b" -> "ops/a.so".addr("b")
+*/
+const void* com_provide(const char *operation)
+{
+	ffstr op = FFSTR_INITZ(operation), modname, opname;
+	if (-1 == ffstr_splitby(&op, '.', &modname, &opname))
+		opname = modname;
+
+	struct mod *m;
+	if (NULL == (m = ffmap_find(&com.mods, modname.ptr, modname.len, NULL))) {
+		if (NULL == (m = mod_load(modname)))
+			return NULL;
+		ffmap_add(&com.mods, modname.ptr, modname.len, m);
+	}
+
+	dbglog("requesting operation '%s' from module '%s'...", opname.ptr, m->name);
+	const void *opif;
+	if (NULL == (opif = ffdl_addr(m->dl, opname.ptr))) {
+		errlog(": no registered operation '%s': %S: %s", opname.ptr, &modname, ffdl_errstr());
+		return NULL;
+	}
+
+	return opif;
+}

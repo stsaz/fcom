@@ -16,6 +16,8 @@
 
 fcom_core _fcom_core;
 fcom_core *core = &_fcom_core;
+extern void com_init();
+extern void com_destroy();
 
 struct core {
 	struct fcom_core_conf conf;
@@ -148,6 +150,8 @@ static fcom_core* core_conf(struct fcom_core_conf *conf)
 	fftimerqueue_init(&gcore->tq);
 	tmr_func(NULL);
 
+	com_init();
+
 	return &_fcom_core;
 
 err:
@@ -212,12 +216,15 @@ static void core_destroy()
 		fftimer_close(gcore->tmr, gcore->kq);
 	if (gcore->kq != FFKQ_NULL)
 		ffkq_close(gcore->kq);
+	com_destroy();
 	ffmem_free(gcore->conf.app_path);
 	ffmem_free(gcore);  gcore = NULL;
 }
 
+extern const fcom_command _fcom_com;
 extern const fcom_file _fcom_file;
 fcom_core _fcom_core = {
+	&_fcom_com,
 	&_fcom_file,
 	core_exit,
 	core_path,

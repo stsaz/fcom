@@ -1,0 +1,38 @@
+General usage:
+
+  fcom OPERATION [INPUT] [-o OUTPUT] [OPTIONS]
+
+OPERATION:
+
+INPUT:
+  ""                    Process data from STDIN
+  FILE                  File name (relative or absolute)
+    OPTIONS:
+        --directio      Use direct I/O, bypassing system cache
+        --buffer=N      Set file buffer size (=64k)
+  DIR                   Directory name (relative or absolute)
+    OPTIONS:
+    -R, --recursive     Expand subdirectories recursively
+    -I, --include=WILDCARD
+                        Include only matching names of files and directories (-R)
+    -E, --exclude=WILDCARD
+                        Exclude matching names of files and directories (-R)
+  "@"                   Get FILE and DIR names from STDIN
+  "@FILE"               Get FILE and DIR names from FILE (can be specified only once)
+  WILDCARD              Expands to a set of FILE or DIR (meaningful only for cmd.exe on Windows)
+
+OUTPUT:
+  "STDOUT"              Print data to STDOUT
+  FILE                  File name (relative or absolute)
+    OPTIONS:
+    -f, --overwrite     Overwrite
+    -C, --chdir=DIR     Change (logically) current directory
+    -T, --test          Test mode: don't actually write anything (BUG: creates new files)
+        --directio      Use direct I/O, bypassing system cache
+        --buffer=N      Set file buffer size (=64k)
+        --no-prealloc   Don't preallocate disk space
+
+General options:
+  -v, --verbose         Print more information to stdout
+  -D, --debug           Print debug log messages to stdout
+  -h, --help            Show general help or for a specific operation (use `fcom OPERATION -h`)

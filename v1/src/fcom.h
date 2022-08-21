@@ -8,9 +8,12 @@
 #include <FFOS/file.h>
 #include <FFOS/timerqueue.h>
 #include <FFOS/time.h>
+#include <ffbase/vector.h>
 
 #define FCOM_VER "1.0beta1"
 
+#undef stdin
+#undef stdout
 typedef ffbyte byte;
 typedef ffuint uint;
 typedef ffuint64 uint64;
@@ -50,6 +53,7 @@ struct fcom_coreinit {
 	int (*run)();
 };
 
+typedef struct fcom_command fcom_command;
 typedef struct fcom_file fcom_file;
 typedef fftask fcom_task;
 typedef fftimerqueue_node fcom_timer;
@@ -73,6 +77,8 @@ enum FCOM_CORE_CLOCK {
 
 /** Core runtime interface */
 struct fcom_core {
+	/** Operation command interface */
+	const fcom_command *com;
 	/** File submodule interface */
 	const fcom_file *file;
 
@@ -115,6 +121,96 @@ struct fcom_core {
 	do { if (core->verbose) (core)->log(FCOM_LOG_VERBOSE, fmt, ##__VA_ARGS__); } while (0)
 #define fcom_dbglog(fmt, ...) \
 	do { if (core->debug) (core)->log(FCOM_LOG_DBG, fmt, ##__VA_ARGS__); } while (0)
+
+
+// COMMAND
+
+/** Shared data for all active modules */
+typedef struct fcom_cominfo {
+	char **argv;
+	uint argc;
+
+	char *operation;
+
+	// input file names
+	ffvec input; // ffstr[], NULL-terminated
+	ffvec include, exclude; // ffstr[]
+	/** Read input file names from this fd */
+	fffd input_fd;
+
+	// input file
+	byte stdin;
+	byte recursive;
+
+	ffstr output;
+	ffstr chdir;
+	byte stdout;
+	byte overwrite;
+	byte test;
+	byte no_prealloc;
+
+	uint buffer_size;
+	byte directio;
+	byte help;
+} fcom_cominfo;
+
+/** This submodule executes new operations and manages all running operations. */
+struct fcom_command {
+	/** Find interface for primary/secondary operation in a module, loading it if necessary. */
+	const void* (*provide)(const char *operation);
+
+	/** Pass the signal to all active operations */
+	void (*signal_all)(uint signal);
+
+	/** Create operation context */
+	fcom_cominfo* (*create)();
+
+	/** Begin operation execution */
+	int (*run)(fcom_cominfo *c);
+
+	/** Destroy object */
+	void (*destroy)(fcom_cominfo *c);
+
+	/** Get next input file name.
+	Return -1 if no more input files */
+	int (*input_next)(fcom_cominfo *c, ffstr *name, ffstr *base, uint flags);
+
+	/** File name returned by input_next() is a directory.
+	This is required for recursive input file names scanning.
+	dir: directory descriptor.  Don't use it afterwards! */
+	void (*input_dir)(fcom_cominfo *c, fffd dir);
+
+	/** Parse command-line arguments */
+	int (*args_parse)(fcom_cominfo *cmd, const ffcmdarg_arg *args, void *obj);
+};
+
+
+// MODULE & OPERATION
+
+/*
+Operations:
+  * Primary: the one that is directly responsible for executing command-line operation from user.
+  * Secondary: provide support for primary operations of this module or any external module.
+*/
+
+/** The module exports this interface as "fcom_module" */
+struct fcom_module {
+	const char *version;
+	void (*init)(const fcom_core *core);
+	void (*destroy)();
+};
+
+typedef void fcom_op;
+
+/** Primary operation interface used by fcom_command */
+typedef struct fcom_operation fcom_operation;
+struct fcom_operation {
+	fcom_op* (*create)(fcom_cominfo *cmd);
+	void (*close)(fcom_op *op);
+	void (*run)(fcom_op *op);
+	void (*signal)(fcom_op *op, uint signal);
+	const char* (*help)();
+};
 
 
 // FILE
