@@ -21,11 +21,17 @@ struct copy {
 	byte preserve_date;
 	byte rename_source;
 	uint stop;
+
+	byte verify;
+	const fcom_hash *md5;
+	fcom_hash_obj *md5_obj;
+	byte md5_result_r[16];
 };
 
 static int args_parse(struct copy *c, fcom_cominfo *cmd)
 {
 	static const ffcmdarg_arg args[] = {
+		{ 'y',	"verify",	FFCMDARG_TSWITCH, FF_OFF(struct copy, verify) },
 		{ 0,	"rename-source",	FFCMDARG_TSWITCH, FF_OFF(struct copy, rename_source) },
 		{}
 	};
@@ -41,6 +47,9 @@ Uses large '--buffer' by default.\n\
 Usage:\n\
   fcom copy INPUT... [-o OUTPUT_FILE] [-C OUTPUT_DIR] [OPTIONS]\n\
     OPTIONS:\n\
+    -y, --verify        Verify data consistency with MD5.\n\
+                        Implies '--directio' on output file.\n\
+                        Prints hash sums with '--verbose'.\n\
         --rename-source\n\
                         Rename source file to *.deleted after successful operation\n\
 ";
@@ -65,6 +74,15 @@ static fcom_op* copy_create(fcom_cominfo *cmd)
 	c->in = core->file->create(&fc);
 	c->out = core->file->create(&fc);
 
+	if (c->verify) {
+		if (cmd->stdout) {
+			fcom_errlog("STDOUT output can't be used with --verify");
+			goto end;
+		}
+		if (NULL == (c->md5 = core->com->provide("crypto.md5")))
+			goto end;
+	}
+
 	c->cmd = cmd;
 	return c;
 
@@ -78,6 +96,10 @@ static void copy_reset(struct copy *c)
 	c->total = 0;
 	c->in_off = c->out_off = 0;
 
+	if (c->md5_obj != NULL) {
+		c->md5->close(c->md5_obj),  c->md5_obj = NULL;
+	}
+
 	ffmem_free0(c->iname);
 	ffmem_free0(c->oname);
 }
@@ -87,9 +109,7 @@ static void copy_close(fcom_op *op)
 	struct copy *c = op;
 	core->file->destroy(c->in);
 	core->file->destroy(c->out);
-
-	ffmem_free(c->iname);
-	ffmem_free(c->oname);
+	copy_reset(c);
 	ffmem_free(c);
 }
 
@@ -97,6 +117,23 @@ static void copy_signal(fcom_op *op, uint signal)
 {
 	struct copy *c = op;
 	FFINT_WRITEONCE(c->stop, 1);
+}
+
+static int verify_result(struct copy *c)
+{
+	byte result_w[16];
+	c->md5->fin(c->md5_obj, result_w, 16);
+
+	fcom_verblog("%*xb *%s", (ffsize)16, c->md5_result_r, c->iname);
+	fcom_verblog("%*xb *%s", (ffsize)16, result_w, c->oname);
+
+	if (0 != ffmem_cmp(c->md5_result_r, result_w, 16)) {
+		fcom_errlog("MD5 verification failed.  '%s': %*xb  '%s': %*xb"
+			, c->iname, (ffsize)16, c->md5_result_r
+			, c->oname, (ffsize)16, result_w);
+		return 1;
+	}
+	return 0;
 }
 
 static char* out_name(struct copy *c, ffstr in, ffstr base)
@@ -139,7 +176,7 @@ static void copy_run(fcom_op *op)
 	int r, k = 0;
 	enum {
 		I_SRC, I_OPEN_IN, I_MKDIR, I_OPEN_OUT,
-		I_READ, I_WRITE, I_RD_DONE, I_DONE,
+		I_READ, I_WRITE, I_RD_DONE, I_VERIFY, I_DONE,
 	};
 	while (!FFINT_READONCE(c->stop)) {
 		switch (c->st) {
@@ -196,6 +233,8 @@ static void copy_run(fcom_op *op)
 
 		case I_OPEN_OUT: {
 			uint flags = FCOM_FILE_WRITE;
+			if (c->verify)
+				flags = FCOM_FILE_READWRITE | FCOM_FILE_DIRECTIO;
 			flags |= fcom_file_cominfo_flags_o(c->cmd);
 
 			r = core->file->open(c->out, c->oname, flags);
@@ -212,6 +251,10 @@ static void copy_run(fcom_op *op)
 			}
 
 			core->file->behaviour(c->in, FCOM_FBEH_SEQ);
+
+			if (c->verify)
+				c->md5_obj = c->md5->create();
+
 			c->st++;
 		}
 			// fallthrough
@@ -224,6 +267,9 @@ static void copy_run(fcom_op *op)
 				continue;
 			}
 			c->in_off += c->data.len;
+
+			if (c->md5_obj != NULL)
+				c->md5->update(c->md5_obj, c->data.ptr, c->data.len);
 
 			c->st = I_WRITE;
 			continue;
@@ -245,7 +291,31 @@ static void copy_run(fcom_op *op)
 					core->file->mtime_set(c->out, &mtime);
 			}
 
+			if (c->md5_obj != NULL) {
+				c->md5->fin(c->md5_obj, c->md5_result_r, 16);
+				c->md5->close(c->md5_obj);
+				c->md5_obj = c->md5->create();
+				c->out_off = 0;
+
+				c->st = I_VERIFY;
+				continue;
+			}
+
 			c->st = I_DONE;
+			continue;
+
+		case I_VERIFY:
+			r = core->file->read(c->out, &c->data, c->out_off);
+			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_EOF) {
+				if (0 != verify_result(c))
+					goto end;
+				c->st = I_DONE;
+				continue;
+			}
+
+			c->md5->update(c->md5_obj, c->data.ptr, c->data.len);
+			c->out_off += c->data.len;
 			continue;
 
 		case I_DONE:
