@@ -22,6 +22,14 @@ struct copy {
 	byte rename_source;
 	uint stop;
 
+	ffstr encrypt, decrypt;
+	fcom_aes_obj *aes_obj;
+	const fcom_aes *aes;
+	byte aes_iv[16];
+	ffstr aes_in;
+	ffvec aes_buf;
+	const fcom_hash *sha512;
+
 	byte verify;
 	const fcom_hash *md5;
 	fcom_hash_obj *md5_obj;
@@ -31,6 +39,8 @@ struct copy {
 static int args_parse(struct copy *c, fcom_cominfo *cmd)
 {
 	static const ffcmdarg_arg args[] = {
+		{ 'e',	"encrypt",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, FF_OFF(struct copy, encrypt) },
+		{ 'd',	"decrypt",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, FF_OFF(struct copy, decrypt) },
 		{ 'y',	"verify",	FFCMDARG_TSWITCH, FF_OFF(struct copy, verify) },
 		{ 0,	"rename-source",	FFCMDARG_TSWITCH, FF_OFF(struct copy, rename_source) },
 		{}
@@ -47,6 +57,10 @@ Uses large '--buffer' by default.\n\
 Usage:\n\
   fcom copy INPUT... [-o OUTPUT_FILE] [-C OUTPUT_DIR] [OPTIONS]\n\
     OPTIONS:\n\
+    -e, --encrypt=PASSWORD\n\
+                        Encrypt data (AES256CFB key=SHA512[0:32] iv=SHA512[32:48])\n\
+    -d, --decrypt=PASSWORD\n\
+                        Decrypt data\n\
     -y, --verify        Verify data consistency with MD5.\n\
                         Implies '--directio' on output file.\n\
                         Prints hash sums with '--verbose'.\n\
@@ -56,6 +70,44 @@ Usage:\n\
 }
 
 static void copy_close(fcom_op *op);
+
+static int crypt_init(struct copy *c)
+{
+	if (c->encrypt.len != 0 && c->decrypt.len != 0) {
+		fcom_errlog("both --encrypt and --decrypt can't be together");
+		return -1;
+	}
+
+	if (NULL == (c->sha512 = core->com->provide("crypto.sha512")))
+		return -1;
+
+	const char *opname = (c->encrypt.len != 0) ? "crypto.aes_encrypt" : "crypto.aes_decrypt";
+	if (NULL == (c->aes = core->com->provide(opname)))
+		return -1;
+
+	ffvec_alloc(&c->aes_buf, 64*1024, 1);
+	return 0;
+}
+
+static void sha512_hash(struct copy *c, const void *data, ffsize size, byte result[64])
+{
+	fcom_hash_obj *h = c->sha512->create();
+	c->sha512->update(h, data, size);
+	c->sha512->fin(h, result, 64);
+	c->sha512->close(h);
+}
+
+static int crypt_open(struct copy *c)
+{
+	ffstr pw = (c->encrypt.len != 0) ? c->encrypt : c->decrypt;
+	byte key[64];
+	sha512_hash(c, pw.ptr, pw.len, key);
+	ffmem_copy(c->aes_iv, key+32, 16);
+	if (NULL == (c->aes_obj = c->aes->create(key, 32, FCOM_AES_CFB)))
+		return -1;
+	ffmem_zero_obj(key);
+	return 0;
+}
 
 static fcom_op* copy_create(fcom_cominfo *cmd)
 {
@@ -73,6 +125,11 @@ static fcom_op* copy_create(fcom_cominfo *cmd)
 	fc.n_buffers = 1;
 	c->in = core->file->create(&fc);
 	c->out = core->file->create(&fc);
+
+	if (c->encrypt.len != 0 || c->decrypt.len != 0) {
+		if (0 != crypt_init(c))
+			goto end;
+	}
 
 	if (c->verify) {
 		if (cmd->stdout) {
@@ -96,6 +153,13 @@ static void copy_reset(struct copy *c)
 	c->total = 0;
 	c->in_off = c->out_off = 0;
 
+	ffstr_free(&c->encrypt);
+	ffstr_free(&c->decrypt);
+	ffvec_free(&c->aes_buf);
+	if (c->aes_obj != NULL) {
+		c->aes->close(c->aes_obj),  c->aes_obj = NULL;
+	}
+
 	if (c->md5_obj != NULL) {
 		c->md5->close(c->md5_obj),  c->md5_obj = NULL;
 	}
@@ -109,6 +173,8 @@ static void copy_close(fcom_op *op)
 	struct copy *c = op;
 	core->file->destroy(c->in);
 	core->file->destroy(c->out);
+	ffmem_zero(c->encrypt.ptr, c->encrypt.len);
+	ffmem_zero(c->decrypt.ptr, c->decrypt.len);
 	copy_reset(c);
 	ffmem_free(c);
 }
@@ -124,12 +190,16 @@ static int verify_result(struct copy *c)
 	byte result_w[16];
 	c->md5->fin(c->md5_obj, result_w, 16);
 
-	fcom_verblog("%*xb *%s", (ffsize)16, c->md5_result_r, c->iname);
+	const char *iname = c->iname;
+	if (c->aes_obj == NULL) {
+		fcom_verblog("%*xb *%s", (ffsize)16, c->md5_result_r, c->iname);
+		iname = "should be";
+	}
 	fcom_verblog("%*xb *%s", (ffsize)16, result_w, c->oname);
 
 	if (0 != ffmem_cmp(c->md5_result_r, result_w, 16)) {
 		fcom_errlog("MD5 verification failed.  '%s': %*xb  '%s': %*xb"
-			, c->iname, (ffsize)16, c->md5_result_r
+			, iname, (ffsize)16, c->md5_result_r
 			, c->oname, (ffsize)16, result_w);
 		return 1;
 	}
@@ -176,7 +246,7 @@ static void copy_run(fcom_op *op)
 	int r, k = 0;
 	enum {
 		I_SRC, I_OPEN_IN, I_MKDIR, I_OPEN_OUT,
-		I_READ, I_WRITE, I_RD_DONE, I_VERIFY, I_DONE,
+		I_READ, I_CRYPT, I_WRITE, I_RD_DONE, I_VERIFY, I_DONE,
 	};
 	while (!FFINT_READONCE(c->stop)) {
 		switch (c->st) {
@@ -252,6 +322,8 @@ static void copy_run(fcom_op *op)
 
 			core->file->behaviour(c->in, FCOM_FBEH_SEQ);
 
+			if (c->aes != NULL)
+				crypt_open(c);
 			if (c->verify)
 				c->md5_obj = c->md5->create();
 
@@ -268,11 +340,36 @@ static void copy_run(fcom_op *op)
 			}
 			c->in_off += c->data.len;
 
+			if (c->aes_obj != NULL) {
+				c->aes_in = c->data;
+				c->st = I_CRYPT;
+				continue;
+			}
+
 			if (c->md5_obj != NULL)
 				c->md5->update(c->md5_obj, c->data.ptr, c->data.len);
 
 			c->st = I_WRITE;
 			continue;
+
+		case I_CRYPT: {
+			if (c->aes_in.len == 0) {
+				c->st = I_READ;
+				continue;
+			}
+
+			uint n = ffmin(c->aes_in.len, c->aes_buf.cap);
+			if (0 != c->aes->process(c->aes_obj, (byte*)c->aes_in.ptr, c->aes_buf.ptr, n, c->aes_iv))
+				goto end;
+			ffstr_shift(&c->aes_in, n);
+			ffstr_set(&c->data, c->aes_buf.ptr, n);
+
+			if (c->md5_obj != NULL)
+				c->md5->update(c->md5_obj, c->data.ptr, c->data.len);
+
+			c->st = I_WRITE;
+		}
+			// fallthrough
 
 		case I_WRITE:
 			r = core->file->write(c->out, c->data, c->out_off);
@@ -281,6 +378,8 @@ static void copy_run(fcom_op *op)
 			c->total += c->data.len;
 
 			c->st = I_READ;
+			if (c->aes_obj != NULL)
+				c->st = I_CRYPT;
 			continue;
 
 		case I_RD_DONE:
