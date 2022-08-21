@@ -9,6 +9,7 @@ include $(FFBASE_DIR)/test/makeconf
 
 BIN := fcom$(DOTEXE)
 MODS := \
+	copy.$(SO) \
 	crypto.$(SO)
 BINS := $(BIN) core.$(SO) $(MODS)
 
@@ -59,6 +60,10 @@ core.$(SO): com.o core.o file.o
 		$(wildcard $(FCOM_DIR)/src/util/*.h) \
 		$(FCOM_DIR)/Makefile
 	$(C) $(CFLAGS) $< -o $@
+
+# mod.copy
+copy.$(SO): copy.o
+	$(LINK) -shared $+ $(LINKFLAGS) -o $@
 
 # mod.crypto
 crypto.$(SO): \

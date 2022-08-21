@@ -3,6 +3,7 @@ General usage:
   fcom OPERATION [INPUT] [-o OUTPUT] [OPTIONS]
 
 OPERATION:
+  copy                  Copy files from one place to another, plus encryption & verification
 
 INPUT:
   ""                    Process data from STDIN
