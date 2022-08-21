@@ -5,6 +5,7 @@
 #include <FFOS/error.h>
 #include <util/taskqueue.h>
 #include <util/cmdarg-scheme.h>
+#include <FFOS/file.h>
 #include <FFOS/timerqueue.h>
 #include <FFOS/time.h>
 
@@ -49,6 +50,7 @@ struct fcom_coreinit {
 	int (*run)();
 };
 
+typedef struct fcom_file fcom_file;
 typedef fftask fcom_task;
 typedef fftimerqueue_node fcom_timer;
 typedef void (*fcom_task_func)(void *param);
@@ -71,6 +73,9 @@ enum FCOM_CORE_CLOCK {
 
 /** Core runtime interface */
 struct fcom_core {
+	/** File submodule interface */
+	const fcom_file *file;
+
 	/** Exit from fcom_coreinit.run() */
 	void (*exit)(int exit_code);
 
@@ -110,3 +115,104 @@ struct fcom_core {
 	do { if (core->verbose) (core)->log(FCOM_LOG_VERBOSE, fmt, ##__VA_ARGS__); } while (0)
 #define fcom_dbglog(fmt, ...) \
 	do { if (core->debug) (core)->log(FCOM_LOG_DBG, fmt, ##__VA_ARGS__); } while (0)
+
+
+// FILE
+
+struct fcom_file_conf {
+	uint buffer_size;
+	uint n_buffers;
+};
+
+enum FCOM_FILE_OPEN {
+	FCOM_FILE_READ,
+	FCOM_FILE_WRITE,
+	FCOM_FILE_READWRITE,
+	FCOM_FILE_CREATENEW = 4,
+	FCOM_FILE_CREATE = 8,
+	FCOM_FILE_STDIN = 0x10,
+	FCOM_FILE_STDOUT = 0x20,
+	FCOM_FILE_DIRECTIO = 0x40,
+	FCOM_FILE_FAKEWRITE = 0x80,
+	FCOM_FILE_NO_PREALLOC = 0x0100,
+};
+
+static inline uint fcom_file_cominfo_flags_i(fcom_cominfo *cmd)
+{
+	uint f = 0;
+	if (cmd->stdin)
+		f |= FCOM_FILE_STDIN;
+	if (cmd->directio)
+		f |= FCOM_FILE_DIRECTIO;
+	return f;
+}
+
+static inline uint fcom_file_cominfo_flags_o(fcom_cominfo *cmd)
+{
+	uint f = 0;
+	if (cmd->overwrite)
+		f |= FCOM_FILE_CREATE;
+	else
+		f |= FCOM_FILE_CREATENEW;
+
+	if (cmd->stdout)
+		f |= FCOM_FILE_STDOUT;
+	if (cmd->test)
+		f |= FCOM_FILE_FAKEWRITE;
+	if (cmd->directio)
+		f |= FCOM_FILE_DIRECTIO;
+	return f;
+}
+
+enum FCOM_FILE_RET {
+	FCOM_FILE_OK,
+	FCOM_FILE_EOF,
+	FCOM_FILE_ASYNC,
+	FCOM_FILE_ERR,
+};
+
+enum FCOM_FILE_BEH {
+	FCOM_FBEH_SEQ, // Sequential access behaviour
+	FCOM_FBEH_RANDOM, // Rando access behaviour
+	FCOM_FBEH_TRUNC_PREALLOC, // Truncate the currently preallocated space
+};
+
+enum FCOM_FILE_FD {
+	FCOM_FILE_GET,
+	FCOM_FILE_ACQUIRE, // Acquire descriptor.  Only open() can be called afterwards.
+};
+
+typedef void fcom_file_obj;
+
+/** Bufferred file I/O interface.
+This interface allows:
+* Completely asynchronous file operations
+* User-space data caching on reading and writing
+* Controlling kernel caching behaviour */
+struct fcom_file {
+	fcom_file_obj* (*create)(struct fcom_file_conf *conf);
+	void (*destroy)(fcom_file_obj *f);
+	/**
+	name_ptr: static name pointer
+	flags: enum FCOM_FILE_OPEN
+	Return enum FCOM_FILE_RET */
+	int (*open)(fcom_file_obj *f, const char *static_name_ptr, uint flags);
+	void (*close)(fcom_file_obj *f);
+	int (*read)(fcom_file_obj *f, ffstr *d, int64 off);
+	int (*write)(fcom_file_obj *f, ffstr d, int64 off);
+	/**
+	flags: enum FCOM_FILE_BEH */
+	int (*behaviour)(fcom_file_obj *f, uint flags);
+	int (*info)(fcom_file_obj *f, fffileinfo *fi);
+
+	/**
+	flags: enum FCOM_FILE_FD */
+	fffd (*fd)(fcom_file_obj *f, uint flags);
+
+	int (*mtime)(fcom_file_obj *f, fftime *mtime);
+	int (*mtime_set)(fcom_file_obj *f, fftime *mtime);
+
+	/** Create directory.
+	By default, don't fail if the directory already exists. */
+	int (*dir_create)(const char *name, uint flags);
+};

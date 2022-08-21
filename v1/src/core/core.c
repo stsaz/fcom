@@ -216,7 +216,9 @@ static void core_destroy()
 	ffmem_free(gcore);  gcore = NULL;
 }
 
+extern const fcom_file _fcom_file;
 fcom_core _fcom_core = {
+	&_fcom_file,
 	core_exit,
 	core_path,
 	core_kq_attach,
