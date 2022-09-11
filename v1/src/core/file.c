@@ -17,6 +17,7 @@ struct file {
 
 	struct fcache fcache;
 	uint64 size;
+	uint64 cur_off;
 	uint64 prealloc;
 };
 
@@ -69,17 +70,22 @@ static int file_open(fcom_file_obj *_f, const char *static_name_ptr, uint how)
 	fcache_reset(&f->fcache);
 	f->size = 0;
 	f->prealloc = 0;
+	f->cur_off = 0;
 
 	if (how & FCOM_FILE_STDIN) {
-		fcom_dbglog("using stdin");
+		fcom_dbglog("file: using stdin");
 		f->fd = ffstdin;
 		return FCOM_FILE_OK;
 	}
 	if (how & FCOM_FILE_STDOUT) {
-		fcom_dbglog("using stdout");
+		fcom_dbglog("file: using stdout");
+		f->open_flags |= FCOM_FILE_NO_PREALLOC;
 		f->fd = ffstdout;
 		return FCOM_FILE_OK;
 	}
+
+	if (how & FCOM_FILE_FAKEWRITE)
+		return FCOM_FILE_OK;
 
 	uint flags = FFFILE_READONLY;
 	if ((how & 3) == FCOM_FILE_WRITE)
@@ -132,6 +138,9 @@ static int file_read(fcom_file_obj *_f, ffstr *d, int64 off)
 		goto done;
 	}
 
+	if (off == -1)
+		off = f->cur_off;
+
 	if (off >= f->size)
 		return FCOM_FILE_EOF;
 
@@ -152,6 +161,7 @@ done:
 	fcom_dbglog("%s: read %L @%U", f->name, b->len, b->off);
 	ffstr_set(d, b->ptr, b->len);
 	ffstr_shift(d, off - b->off);
+	f->cur_off = b->off + b->len;
 	if (b->len == 0)
 		return FCOM_FILE_EOF;
 	return FCOM_FILE_OK;
@@ -163,13 +173,20 @@ static int file_write(fcom_file_obj *_f, ffstr d, int64 off)
 	if (f->open_flags & FCOM_FILE_FAKEWRITE)
 		return FCOM_FILE_OK;
 
+	if (off == -1)
+		off = f->cur_off;
+
 	if (!(f->open_flags & FCOM_FILE_NO_PREALLOC) && f->prealloc < off + d.len) {
 		f->prealloc = ffint_align_power2(off + d.len);
 		if (0 != fffile_trunc(f->fd, f->prealloc))
 			fcom_dbglog("fffile_trunc: %E", fferr_last());
 	}
 
-	ffssize r = fffile_writeat(f->fd, d.ptr, d.len, off);
+	ffssize r;
+	if (f->open_flags & FCOM_FILE_STDOUT)
+		r = fffile_write(f->fd, d.ptr, d.len);
+	else
+		r = fffile_writeat(f->fd, d.ptr, d.len, off);
 	if (r < 0) {
 		fcom_syserrlog("file write: %s", f->name);
 		return FCOM_FILE_ERR;
@@ -178,6 +195,7 @@ static int file_write(fcom_file_obj *_f, ffstr d, int64 off)
 
 	if (off + d.len > f->size)
 		f->size = off + d.len;
+	f->cur_off = off + d.len;
 	return FCOM_FILE_OK;
 }
 
@@ -209,7 +227,7 @@ static fffd file_fd(fcom_file_obj *_f, uint flags)
 {
 	struct file *f = _f;
 	fffd fd = f->fd;
-	if (flags & 1)
+	if (flags & FCOM_FILE_ACQUIRE)
 		f->fd = FFFILE_NULL;
 	return fd;
 }
@@ -264,6 +282,36 @@ static int dir_create(const char *name, uint flags)
 	return 0;
 }
 
+static int file_move(ffstr old, ffstr _new, uint flags)
+{
+	int rc = FCOM_FILE_ERR;
+	char *src = ffsz_dupstr(&old);
+	char *dst = ffsz_dupstr(&_new);
+
+	if (1) {
+		fffd fd = fffile_open(dst, FFFILE_READONLY);
+		if (fd != FFFILE_NULL) {
+			fffile_close(fd);
+			fcom_errlog("move: target file already exists: %S", &_new);
+			goto end;
+		}
+	}
+
+	int r = fffile_rename(src, dst);
+	if (r != 0) {
+		fcom_syserrlog("move: %S -> %S", &old, &_new);
+		goto end;
+	}
+
+	fcom_verblog("moved: %S -> %S", &old, &_new);
+	rc = 0;
+
+end:
+	ffmem_free(src);
+	ffmem_free(dst);
+	return rc;
+}
+
 const fcom_file _fcom_file = {
 	file_create,
 	file_destroy,
@@ -273,4 +321,5 @@ const fcom_file _fcom_file = {
 	file_info, file_fd,
 	file_mtime, file_mtime_set,
 	dir_create,
+	file_move,
 };

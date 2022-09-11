@@ -4,28 +4,29 @@
 /*
 fntree_create
 fntree_free_all
-fntree_add
+fntree_add fntree_addz fntree_from_dirscan
 fntree_attach
 fntree_path fntree_name
 fntree_entries
-fntree_next fntree_next_r
-fntree_from_dirscan
+fntree_data
+fntree_cur_depth
+fntree_cur_next fntree_cur_next_r fntree_cur_next_r_ctx
+fntree_cmp_init
+fntree_cmp1 fntree_cmp_next
 */
 
 /** Schematic representation:
 root -> -----------
 block   path="/"
-        size
-        entries
         {
           name_len
-          name[]
+          name="dir1"
           children -> ----------
         }             path="/dir1"
-        -----------   {
-                        name_len
-                        name[]
-                      }
+        {             {
+          ...           name_len
+        }               name
+        -----------   }
                       ----------
 */
 
@@ -33,16 +34,18 @@ block   path="/"
 #include <ffbase/string.h>
 #include <FFOS/dirscan.h> // optional
 
-struct fntree_block;
+typedef struct fntree_block fntree_block;
 
 typedef struct fntree_entry {
-	struct fntree_block *children;
+	fntree_block *children;
 	ffbyte name_len;
+	ffbyte data_len;
 	char name[0];
+	// char data[]
 	// padding[]
 } fntree_entry;
 
-typedef struct fntree_block {
+struct fntree_block {
 	ffuint cap;
 	ffuint size;
 	ffuint path_len;
@@ -53,24 +56,29 @@ typedef struct fntree_block {
 	// fntree_entry[0]{}
 	// fntree_entry[1]{}
 	// ...
-} fntree_block;
+};
 
-static ffuint _fntr_ent_size(ffuint name_len)
+static inline void* fntree_data(const fntree_entry *e)
 {
-	return ffint_align_ceil2(FF_OFF(fntree_entry, name) + 1 + name_len, sizeof(void*));
+	return (char*)e->name + e->name_len;
 }
 
-static fntree_entry* _fntr_ent_first(fntree_block *b)
+static ffuint _fntr_ent_size(ffuint name_len, ffuint data_len)
+{
+	return ffint_align_ceil2(FF_OFF(fntree_entry, name) + 1 + name_len + data_len, sizeof(void*));
+}
+
+static fntree_entry* _fntr_ent_first(const fntree_block *b)
 {
 	return (fntree_entry*)(b->data + ffint_align_ceil2(b->path_len + 1, sizeof(void*)));
 }
 
-static fntree_entry* _fntr_ent_next(fntree_entry *e)
+static fntree_entry* _fntr_ent_next(const fntree_entry *e)
 {
-	return (fntree_entry*)((char*)e + ffint_align_ceil2(FF_OFF(fntree_entry, name) + 1 + e->name_len, sizeof(void*)));
+	return (fntree_entry*)((char*)e + ffint_align_ceil2(FF_OFF(fntree_entry, name) + 1 + e->name_len + e->data_len, sizeof(void*)));
 }
 
-static fntree_entry* _fntr_ent_end(fntree_block *b)
+static fntree_entry* _fntr_ent_end(const fntree_block *b)
 {
 	return (fntree_entry*)((char*)b + b->size);
 }
@@ -95,23 +103,25 @@ static inline fntree_block* fntree_create(ffstr path)
 }
 
 /** Get block name set with fntree_create() */
-static inline ffstr fntree_path(fntree_block *b)
+static inline ffstr fntree_path(const fntree_block *b)
 {
 	ffstr s = FFSTR_INITN(b->data, b->path_len);
 	return s;
 }
 
 /** Reallocate buffer and add new file entry. */
-static inline fntree_block* fntree_add(fntree_block *b, ffstr name)
+static inline fntree_entry* fntree_add(fntree_block **pb, ffstr name, ffuint data_len)
 {
-	if (name.len > 255)
+	if (name.len > 255 || data_len > 255)
 		return NULL;
 
-	ffuint newsize = b->size + _fntr_ent_size(name.len);
+	fntree_block *b = *pb;
+	ffuint newsize = b->size + _fntr_ent_size(name.len, data_len);
 	if (newsize > b->cap) {
 		ffuint cap = b->cap * 2;
 		if (NULL == (b = ffmem_realloc(b, cap)))
 			return NULL;
+		*pb = b;
 		b->cap = cap;
 	}
 
@@ -119,11 +129,34 @@ static inline fntree_block* fntree_add(fntree_block *b, ffstr name)
 	e->children = NULL;
 	e->name_len = name.len;
 	ffmem_copy(e->name, name.ptr, name.len);
+	e->data_len = data_len;
 
 	b->entries++;
 	b->size = newsize;
+	return e;
+}
+
+static inline fntree_entry* fntree_addz(fntree_block **pb, const char *namez, ffuint data_len)
+{
+	ffstr name = FFSTR_INITZ(namez);
+	return fntree_add(pb, name, data_len);
+}
+
+#ifdef _FFOS_DIRSCAN_H
+
+/** Fill entries from ffdirscan object. */
+static inline fntree_block* fntree_from_dirscan(ffstr path, ffdirscan *ds, ffuint data_len)
+{
+	fntree_block *b = fntree_create(path);
+	const char *fn;
+	while (NULL != (fn = ffdirscan_next(ds))) {
+		if (NULL == fntree_addz(&b, fn, data_len))
+			return NULL;
+	}
 	return b;
 }
+
+#endif
 
 /** Attach tree-block to the directory entry.
 Return old block pointer. */
@@ -141,23 +174,25 @@ static inline ffuint fntree_entries(fntree_block *b)
 }
 
 /** Get entry name without path */
-static inline ffstr fntree_name(fntree_entry *e)
+static inline ffstr fntree_name(const fntree_entry *e)
 {
 	ffstr s = FFSTR_INITN(e->name, e->name_len);
 	return s;
 }
 
 typedef struct fntree_cursor {
-	fntree_entry *cur;
-	fntree_block *curblock;
-	fntree_block *block_stk[64];
-	fntree_entry *ent_stk[64];
-	ffuint istk;
+	const fntree_entry *cur;
+	const fntree_block *curblock;
+	const fntree_block *block_stk[64];
+	const fntree_entry *ent_stk[64];
+	ffuint depth;
 } fntree_cursor;
+
+static inline ffuint fntree_cur_depth(fntree_cursor *c) { return c->depth; }
 
 /** Get next entry in the same block.
 Return NULL if done. */
-static inline fntree_entry* fntree_next(fntree_cursor *c, fntree_block *b)
+static inline fntree_entry* fntree_cur_next(fntree_cursor *c, const fntree_block *b)
 {
 	struct fntree_entry *e;
 	if (c->cur == NULL)
@@ -172,42 +207,41 @@ static inline fntree_entry* fntree_next(fntree_cursor *c, fntree_block *b)
 	return e;
 }
 
-static fntree_block* _fntr_cur_push(fntree_cursor *c, fntree_block *b, fntree_entry *e)
+/** Store the current entry in stack.
+Return its subblock or NULL on error. */
+static const fntree_block* _fntr_cur_push(fntree_cursor *c, const fntree_block *b, const fntree_entry *e)
 {
-	if (c->istk == FF_COUNT(c->block_stk))
+	if (c->depth == FF_COUNT(c->block_stk))
 		return NULL;
-	c->block_stk[c->istk] = b;
-	c->ent_stk[c->istk] = e;
-	c->istk++;
+	c->block_stk[c->depth] = b;
+	c->ent_stk[c->depth] = e;
+	c->depth++;
 	c->cur = NULL;
 	c->curblock = e->children;
 	return c->curblock;
 }
 
-static fntree_block* _fntr_cur_pop(fntree_cursor *c)
+/** Restore the current entry from stack.
+Return its block or NULL if stack is empty. */
+static const fntree_block* _fntr_cur_pop(fntree_cursor *c)
 {
-	if (c->istk == 0)
+	if (c->depth == 0)
 		return NULL;
-	c->istk--;
-	c->cur = c->ent_stk[c->istk];
-	c->curblock = c->block_stk[c->istk];
+	c->depth--;
+	c->cur = c->ent_stk[c->depth];
+	c->curblock = c->block_stk[c->depth];
 	return c->curblock;
 }
 
-static fntree_block* _fntr_cur_i(fntree_cursor *c, uint i)
-{
-	if (i >= c->istk)
-		return NULL;
-	return c->block_stk[i];
-}
-
-/** Get next entry (recursive): parent directory BEFORE its children.
+/** Get next entry (recursive): parent directory BEFORE its children:
+  (blk[0], blk[0][0], blk[1], ...)
+root: [input] root directory; [output] current directory
 Return NULL if done. */
-static inline fntree_entry* fntree_next_r(fntree_cursor *c, fntree_block **root)
+static inline fntree_entry* fntree_cur_next_r(fntree_cursor *c, fntree_block **root)
 {
-	fntree_entry *e = c->cur;
+	const fntree_entry *e = c->cur;
 
-	fntree_block *b = *root;
+	const fntree_block *b = *root;
 	if (c->curblock == NULL)
 		c->curblock = b;
 	else
@@ -220,10 +254,10 @@ static inline fntree_entry* fntree_next_r(fntree_cursor *c, fntree_block **root)
 	}
 
 	for (;;) {
-		e = fntree_next(c, b);
+		e = fntree_cur_next(c, b);
 		if (e != NULL) {
-			*root = b;
-			return e; // 1. Return file or directory entry
+			*root = (fntree_block*)b;
+			return (fntree_entry*)e; // 1. Return file or directory entry
 		}
 		// 3. No more entries in this directory - restore parent directory's context and continue
 		if (NULL == (b = _fntr_cur_pop(c)))
@@ -231,13 +265,52 @@ static inline fntree_entry* fntree_next_r(fntree_cursor *c, fntree_block **root)
 	}
 }
 
-/** Get next block (recursive): parent block AFTER subblock.
+/** Get next entry (recursive): all entries in the current directory BEFORE subdirectories:
+  (blk[0], blk[1], ..., blk[N], blk[0][0], ...)
+root: [input] root directory; [output] current directory
+Return NULL if done. */
+static inline fntree_entry* fntree_cur_next_r_ctx(fntree_cursor *c, fntree_block **root)
+{
+	const fntree_block *b = *root;
+	if (c->curblock == NULL)
+		c->curblock = b;
+	else
+		b = c->curblock;
+
+	for (;;) {
+		const fntree_entry *e = fntree_cur_next(c, b);
+		if (e != NULL) {
+			*root = (fntree_block*)b;
+			return (fntree_entry*)e; // 1. Return file or directory entry
+		}
+
+		// 2. No more entries in this directory - scan it again stopping at the first subdirectory
+		c->cur = NULL;
+		for (;;) {
+			e = fntree_cur_next(c, b);
+
+			if (e == NULL) {
+				// 4. Restore position in the parent directory
+				if (NULL == (b = _fntr_cur_pop(c)))
+					return NULL; // 5. Complete
+
+			} else if (e->children != NULL) {
+				// 3. Save the current position and enter subdirectory
+				b = _fntr_cur_push(c, b, e);
+				break;
+			}
+		}
+	}
+}
+
+/** Get next block (recursive): parent block AFTER subblock:
+  (blk[0][0], ..., blk[0][N], blk[0], ...)
 Return NULL if done. */
 static inline fntree_block* _fntr_blk_next_r_post(fntree_cursor *c, fntree_block *root)
 {
-	fntree_entry *e = c->cur;
+	const fntree_entry *e = c->cur;
 
-	fntree_block *b = root;
+	const fntree_block *b = root;
 	if (c->curblock == NULL)
 		c->curblock = b;
 	else
@@ -250,7 +323,7 @@ static inline fntree_block* _fntr_blk_next_r_post(fntree_cursor *c, fntree_block
 	}
 
 	for (;;) {
-		e = fntree_next(c, b);
+		e = fntree_cur_next(c, b);
 		if (e != NULL) {
 			if (e->children != NULL) {
 				// 1. Go inside the directory, remembering the current block and entry
@@ -262,7 +335,7 @@ static inline fntree_block* _fntr_blk_next_r_post(fntree_cursor *c, fntree_block
 
 		b = c->curblock;
 		c->curblock = (void*)-1;
-		return b; // 2. No more entries in this directory - return directory entry
+		return (fntree_block*)b; // 2. No more entries in this directory - return directory entry
 	}
 }
 
@@ -281,19 +354,85 @@ static inline void fntree_free_all(fntree_block *b)
 	}
 }
 
-#ifdef _FFOS_DIRSCAN_H
 
-/** Fill entries from ffdirscan object. */
-static inline fntree_block* fntree_from_dirscan(ffstr path, ffdirscan *ds)
+enum FNTREE_CMP {
+	FNTREE_CMP_DONE = -1,
+	FNTREE_CMP_EQ = 0,
+	FNTREE_CMP_LEFT,
+	FNTREE_CMP_RIGHT,
+	FNTREE_CMP_NEQ,
+};
+
+/**
+Return enum FNTREE_CMP */
+typedef int (*fntree_cmp_func)(void *opaque, const fntree_entry *l, const fntree_entry *r);
+
+/** Dummy compare function */
+static inline int _fntree_cmp_eq(void *opaque, const fntree_entry *l, const fntree_entry *r)
 {
-	fntree_block *b = fntree_create(path);
-	const char *fn;
-	while (NULL != (fn = ffdirscan_next(ds))) {
-		ffstr name = FFSTR_INITZ(fn);
-		if (NULL == (b = fntree_add(b, name)))
-			return NULL;
-	}
-	return b;
+	return FNTREE_CMP_EQ;
 }
 
-#endif
+typedef struct fntree_cmp {
+	fntree_cursor lc, rc;
+	fntree_cmp_func cmp;
+	void *opaque;
+} fntree_cmp;
+
+/** Initialize comparator */
+static inline void fntree_cmp_init(fntree_cmp *c, const fntree_block *lb, const fntree_block *rb, fntree_cmp_func cmp, void *opaque)
+{
+	fntree_cur_next(&c->lc, lb);
+	fntree_cur_next(&c->rc, rb);
+	c->lc.curblock = lb;
+	c->rc.curblock = rb;
+	c->cmp = cmp;
+	c->opaque = opaque;
+}
+
+/** Compare 2 entries.
+Return enum FNTREE_CMP */
+static int fntree_cmp1(fntree_cmp *c, const fntree_entry *l, const fntree_entry *r)
+{
+	if (l == NULL) {
+		if (r == NULL)
+			return FNTREE_CMP_DONE;
+		return FNTREE_CMP_RIGHT;
+	} else if (r == NULL) {
+		return FNTREE_CMP_LEFT;
+	}
+
+	ffstr lname = fntree_name(l), rname = fntree_name(r);
+	int i = ffstr_cmp2(&lname, &rname);
+	if (i < 0)
+		return FNTREE_CMP_LEFT;
+	else if (i > 0)
+		return FNTREE_CMP_RIGHT;
+	return c->cmp(c->opaque, l, r);
+}
+
+/** Recursively compare directories.
+Return enum FNTREE_CMP */
+static inline int fntree_cmp_next(fntree_cmp *c, fntree_entry **l, fntree_entry **r, fntree_block **lb, fntree_block **rb)
+{
+	*l = (fntree_entry*)c->lc.cur,  *r = (fntree_entry*)c->rc.cur;
+	*lb = (fntree_block*)c->lc.curblock,  *rb = (fntree_block*)c->rc.curblock;
+
+	const fntree_entry *l1 = c->lc.cur,  *r1 = c->rc.cur;
+	if (c->lc.depth < c->rc.depth)
+		l1 = NULL; // skip "right" entries until we exit their block
+	else if (c->lc.depth > c->rc.depth)
+		r1 = NULL; // skip "left" entries until we exit their block
+	int i = fntree_cmp1(c, l1, r1);
+
+	fntree_block *b = NULL;
+	if (i != FNTREE_CMP_RIGHT && c->lc.cur != NULL) {
+		c->lc.cur = fntree_cur_next_r(&c->lc, &b);
+	}
+
+	if (i != FNTREE_CMP_LEFT && c->rc.cur != NULL) {
+		c->rc.cur = fntree_cur_next_r(&c->rc, &b);
+	}
+
+	return i;
+}

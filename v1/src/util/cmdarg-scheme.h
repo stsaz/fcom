@@ -87,7 +87,7 @@ typedef struct ffcmdarg_scheme {
 } ffcmdarg_scheme;
 
 enum FFCMDARG_SCHEME_F {
-	FFCMDARG_SCF_SKIP_UNKNOWN = 1,
+	FFCMDARG_SCF_SKIP_UNKNOWN = 1, // skip unknown keys
 };
 
 /** Initialize parser object
@@ -123,6 +123,8 @@ static inline const ffcmdarg_arg* _ffcmdarg_arg_find_short(const ffcmdarg_arg *a
 	}
 	return NULL;
 }
+
+#define FFCMDARG_ESCHEME  2
 
 #define _FFCMDARG_ERR(a, msg) \
 	(a)->errmsg = msg,  -FFCMDARG_ESCHEME
@@ -180,15 +182,19 @@ static inline int ffcmdarg_scheme_process(ffcmdarg_scheme *as, int r)
 		if (as->arg != NULL)
 			return _FFCMDARG_ERR(as, "expected value for the previous argument");
 
-		if (r == FFCMDARG_RKEYSHORT)
-			as->arg = _ffcmdarg_arg_find_short(as->args, val.ptr[0]);
-		else
-			as->arg = _ffcmdarg_arg_find(as->args, val);
+		if (r == FFCMDARG_RKEYSHORT) {
+			if (val.len > 2)
+				return _FFCMDARG_ERR(as, "short options must be of '-x' format");
+			as->arg = _ffcmdarg_arg_find_short(as->args, val.ptr[1]);
+		} else {
+			ffstr v = FFSTR_INITN(val.ptr+2, val.len-2);
+			as->arg = _ffcmdarg_arg_find(as->args, v);
+		}
 
 		if (as->arg == NULL) {
 			if (as->flags & FFCMDARG_SCF_SKIP_UNKNOWN)
 				return r;
-			return _FFCMDARG_ERR(as, "no such key in scheme");
+			return _FFCMDARG_ERR(as, "unknown key");
 		}
 
 		ffuint i = as->arg - as->args;
@@ -373,7 +379,7 @@ static inline int ffcmdarg_parse_object(const ffcmdarg_arg *args, void *obj, con
 
 	if (r != 0 && errmsg != NULL) {
 		ffsize cap = 0;
-		const char *err = ffcmdarg_errstr(r);
+		const char *err = "";
 		if (r == -FFCMDARG_ESCHEME)
 			err = as.errmsg;
 		ffstr_growfmt(errmsg, &cap, "near '%S': %s"

@@ -7,10 +7,8 @@
 #include <FFOS/path.h>
 #include <FFOS/perf.h>
 #include <FFOS/ffos-extern.h>
-#include <assert.h>
 
-#define FCOM_ASSERT assert
-#define syserrlog(fmt, ...)  core_log(FCOM_LOG_SYSERR, "core: " fmt, ##__VA_ARGS__)
+#define syserrlog(fmt, ...)  core_log(FCOM_LOG_ERR | FCOM_LOG_SYSERR, "core: " fmt, ##__VA_ARGS__)
 #define errlog(fmt, ...)  core_log(FCOM_LOG_ERR, "core: " fmt, ##__VA_ARGS__)
 #define dbglog(fmt, ...)  fcom_dbglog("core: " fmt, ##__VA_ARGS__)
 

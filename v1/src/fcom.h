@@ -1,4 +1,4 @@
-/** fcom: public interface
+/** fcom: public interface for inter-module communication
 2022, Simon Zolin */
 
 #pragma once
@@ -9,8 +9,9 @@
 #include <FFOS/timerqueue.h>
 #include <FFOS/time.h>
 #include <ffbase/vector.h>
+#include <assert.h>
 
-#define FCOM_VER "1.0beta1"
+#define FCOM_VER "1.0beta2"
 
 #undef stdin
 #undef stdout
@@ -20,14 +21,16 @@ typedef ffuint64 uint64;
 
 // CORE
 
+#define FCOM_ASSERT  assert
+
 enum FCOM_LOG {
 	FCOM_LOG_FATAL,
-	FCOM_LOG_SYSERR,
 	FCOM_LOG_ERR,
 	FCOM_LOG_WARN,
 	FCOM_LOG_INFO,
 	FCOM_LOG_VERBOSE,
 	FCOM_LOG_DBG,
+	FCOM_LOG_SYSERR = 0x10,
 };
 
 /**
@@ -114,7 +117,9 @@ struct fcom_core {
 	uint verbose :1;
 };
 
-#define fcom_syserrlog(fmt, ...)  (core)->log(FCOM_LOG_SYSERR, fmt, ##__VA_ARGS__)
+#define fcom_sysfatlog(fmt, ...)  (core)->log(FCOM_LOG_FATAL | FCOM_LOG_SYSERR, fmt, ##__VA_ARGS__)
+#define fcom_fatlog(fmt, ...)  (core)->log(FCOM_LOG_FATAL, fmt, ##__VA_ARGS__)
+#define fcom_syserrlog(fmt, ...)  (core)->log(FCOM_LOG_ERR | FCOM_LOG_SYSERR, fmt, ##__VA_ARGS__)
 #define fcom_errlog(fmt, ...)  (core)->log(FCOM_LOG_ERR, fmt, ##__VA_ARGS__)
 #define fcom_infolog(fmt, ...)  (core)->log(FCOM_LOG_INFO, fmt, ##__VA_ARGS__)
 #define fcom_verblog(fmt, ...) \
@@ -152,12 +157,35 @@ typedef struct fcom_cominfo {
 	uint buffer_size;
 	byte directio;
 	byte help;
+
+	fcom_task_func on_complete;
+	void *opaque;
 } fcom_cominfo;
+
+enum FCOM_COM_PROVIDE {
+	FCOM_COM_PROVIDE_PRIM = 1, // require `fcom_operation` interface
+};
+
+enum FCOM_COM_INPUT {
+	/** Default behaviour: process directory then enter it:
+	  (dir[0], dir[0][0], dir[1], ...) */
+
+	/** Process complete current directory's contents BEFORE entering subdirectories:
+	  (dir[0], dir[1], ..., dir[N], dir[0][0], ...) */
+	FCOM_COM_INPUT_DIRFIRST = 1,
+};
+
+enum FCOM_COM_RINPUT {
+	FCOM_COM_RINPUT_ERR = -2,
+	FCOM_COM_RINPUT_NOMORE = -1, // no more input files
+	FCOM_COM_RINPUT_OK,
+};
 
 /** This submodule executes new operations and manages all running operations. */
 struct fcom_command {
-	/** Find interface for primary/secondary operation in a module, loading it if necessary. */
-	const void* (*provide)(const char *operation);
+	/** Find interface for primary/secondary operation in a module, loading it if necessary.
+	flags: enum FCOM_COM_PROVIDE */
+	const void* (*provide)(const char *operation, uint flags);
 
 	/** Pass the signal to all active operations */
 	void (*signal_all)(uint signal);
@@ -172,7 +200,10 @@ struct fcom_command {
 	void (*destroy)(fcom_cominfo *c);
 
 	/** Get next input file name.
-	Return -1 if no more input files */
+	name: NULL-terminated file path
+	base: [optional] user-specified base directory
+	flags: enum FCOM_COM_INPUT
+	Return enum FCOM_COM_RINPUT */
 	int (*input_next)(fcom_cominfo *c, ffstr *name, ffstr *base, uint flags);
 
 	/** File name returned by input_next() is a directory.
@@ -190,20 +221,22 @@ struct fcom_command {
 /*
 Operations:
   * Primary: the one that is directly responsible for executing command-line operation from user.
-  * Secondary: provide support for primary operations of this module or any external module.
+  * Secondary: provide on-demand support for the primary operations.
 */
+
+typedef struct fcom_operation fcom_operation;
 
 /** The module exports this interface as "fcom_module" */
 struct fcom_module {
 	const char *version;
 	void (*init)(const fcom_core *core);
 	void (*destroy)();
+	const fcom_operation* (*provide_op)(const char *name);
 };
 
 typedef void fcom_op;
 
 /** Primary operation interface used by fcom_command */
-typedef struct fcom_operation fcom_operation;
 struct fcom_operation {
 	fcom_op* (*create)(fcom_cominfo *cmd);
 	void (*close)(fcom_op *op);
@@ -288,14 +321,20 @@ This interface allows:
 struct fcom_file {
 	fcom_file_obj* (*create)(struct fcom_file_conf *conf);
 	void (*destroy)(fcom_file_obj *f);
+
 	/**
 	name_ptr: static name pointer
 	flags: enum FCOM_FILE_OPEN
 	Return enum FCOM_FILE_RET */
 	int (*open)(fcom_file_obj *f, const char *static_name_ptr, uint flags);
+
 	void (*close)(fcom_file_obj *f);
 	int (*read)(fcom_file_obj *f, ffstr *d, int64 off);
+
+	/**
+	off: -1: use the current offset */
 	int (*write)(fcom_file_obj *f, ffstr d, int64 off);
+
 	/**
 	flags: enum FCOM_FILE_BEH */
 	int (*behaviour)(fcom_file_obj *f, uint flags);
@@ -311,6 +350,9 @@ struct fcom_file {
 	/** Create directory.
 	By default, don't fail if the directory already exists. */
 	int (*dir_create)(const char *name, uint flags);
+
+	/** Move file */
+	int (*move)(ffstr old, ffstr _new, uint flags);
 };
 
 

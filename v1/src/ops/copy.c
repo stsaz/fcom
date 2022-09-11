@@ -28,7 +28,7 @@ struct copy {
 	byte aes_iv[16];
 	ffstr aes_in;
 	ffvec aes_buf;
-	const fcom_hash *sha512;
+	const fcom_hash *sha256, *sha1;
 
 	byte verify;
 	const fcom_hash *md5;
@@ -51,14 +51,14 @@ static int args_parse(struct copy *c, fcom_cominfo *cmd)
 static const char* copy_help()
 {
 	return "\
-Copy files from one place to another.\n\
+Copy files from one place to another, plus encryption & verification.\n\
 Implies '--recursive'.\n\
 Uses large '--buffer' by default.\n\
 Usage:\n\
   fcom copy INPUT... [-o OUTPUT_FILE] [-C OUTPUT_DIR] [OPTIONS]\n\
     OPTIONS:\n\
     -e, --encrypt=PASSWORD\n\
-                        Encrypt data (AES256CFB key=SHA512[0:32] iv=SHA512[32:48])\n\
+                        Encrypt data (AES256CFB key=SHA256(password) iv=SHA1(key))\n\
     -d, --decrypt=PASSWORD\n\
                         Decrypt data\n\
     -y, --verify        Verify data consistency with MD5.\n\
@@ -78,31 +78,45 @@ static int crypt_init(struct copy *c)
 		return -1;
 	}
 
-	if (NULL == (c->sha512 = core->com->provide("crypto.sha512")))
+	if (NULL == (c->sha256 = core->com->provide("crypto.sha256", 0)))
+		return -1;
+	if (NULL == (c->sha1 = core->com->provide("crypto.sha1", 0)))
 		return -1;
 
 	const char *opname = (c->encrypt.len != 0) ? "crypto.aes_encrypt" : "crypto.aes_decrypt";
-	if (NULL == (c->aes = core->com->provide(opname)))
+	if (NULL == (c->aes = core->com->provide(opname, 0)))
 		return -1;
 
 	ffvec_alloc(&c->aes_buf, 64*1024, 1);
 	return 0;
 }
 
-static void sha512_hash(struct copy *c, const void *data, ffsize size, byte result[64])
+#define SHA1_LENGTH 20
+
+static void sha1_hash(struct copy *c, const void *data, ffsize size, byte result[SHA1_LENGTH])
 {
-	fcom_hash_obj *h = c->sha512->create();
-	c->sha512->update(h, data, size);
-	c->sha512->fin(h, result, 64);
-	c->sha512->close(h);
+	fcom_hash_obj *h = c->sha1->create();
+	c->sha1->update(h, data, size);
+	c->sha1->fin(h, result, SHA1_LENGTH);
+	c->sha1->close(h);
+}
+
+static void sha256_hash(struct copy *c, const void *data, ffsize size, byte result[32])
+{
+	fcom_hash_obj *h = c->sha256->create();
+	c->sha256->update(h, data, size);
+	c->sha256->fin(h, result, 32);
+	c->sha256->close(h);
 }
 
 static int crypt_open(struct copy *c)
 {
 	ffstr pw = (c->encrypt.len != 0) ? c->encrypt : c->decrypt;
-	byte key[64];
-	sha512_hash(c, pw.ptr, pw.len, key);
-	ffmem_copy(c->aes_iv, key+32, 16);
+	byte key[32];
+	sha256_hash(c, pw.ptr, pw.len, key);
+	byte sha1[SHA1_LENGTH];
+	sha1_hash(c, key, 16, sha1);
+	ffmem_copy(c->aes_iv, sha1, 16);
 	if (NULL == (c->aes_obj = c->aes->create(key, 32, FCOM_AES_CFB)))
 		return -1;
 	ffmem_zero_obj(key);
@@ -118,7 +132,8 @@ static fcom_op* copy_create(fcom_cominfo *cmd)
 
 	if (0 != args_parse(c, cmd))
 		goto end;
-	cmd->recursive = 1;
+	if (cmd->recursive != 0xff)
+		cmd->recursive = 1;
 
 	struct fcom_file_conf fc = {};
 	fc.buffer_size = cmd->buffer_size;
@@ -136,7 +151,7 @@ static fcom_op* copy_create(fcom_cominfo *cmd)
 			fcom_errlog("STDOUT output can't be used with --verify");
 			goto end;
 		}
-		if (NULL == (c->md5 = core->com->provide("crypto.md5")))
+		if (NULL == (c->md5 = core->com->provide("crypto.md5", 0)))
 			goto end;
 	}
 
@@ -253,7 +268,7 @@ static void copy_run(fcom_op *op)
 
 		case I_SRC: {
 			ffstr name, base;
-			if (0 != core->com->input_next(c->cmd, &name, &base, 0)) {
+			if (0 > core->com->input_next(c->cmd, &name, &base, 0)) {
 				if (c->nfiles == 0) {
 					fcom_errlog("no input files");
 					goto end;
@@ -296,7 +311,8 @@ static void copy_run(fcom_op *op)
 			if (r == FCOM_FILE_ERR) goto end;
 			// move our directory descriptor to Com, so it can use it for fdopendir()
 			fffd fd = core->file->fd(c->in, FCOM_FILE_ACQUIRE);
-			core->com->input_dir(c->cmd, fd);
+			if (c->cmd->recursive == 1)
+				core->com->input_dir(c->cmd, fd);
 			c->st = I_SRC;
 			continue;
 		}
@@ -447,18 +463,22 @@ end:
 		core->exit(0);
 }
 
-FF_EXP const fcom_operation copy = {
-	copy_create,
-	copy_close,
-	copy_run,
-	copy_signal,
+static const fcom_operation fcom_op_copy = {
+	copy_create, copy_close,
+	copy_run, copy_signal,
 	copy_help,
 };
 
 
 static void copy_init(const fcom_core *_core) { core = _core; }
 static void copy_destroy() {}
+static const fcom_operation* copy_provide_op(const char *name)
+{
+	if (ffsz_eq(name, "copy"))
+		return &fcom_op_copy;
+	return NULL;
+}
 FF_EXP const struct fcom_module fcom_module = {
 	FCOM_VER,
-	copy_init, copy_destroy,
+	copy_init, copy_destroy, copy_provide_op,
 };

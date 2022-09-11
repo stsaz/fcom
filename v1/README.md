@@ -14,11 +14,15 @@ Contents:
 ## Features
 
 * `copy` - Copy files from one place to another, plus encryption & verification
+* `list` - List directory contents
+* `move` - Move and/or rename files
+* `sync` - Synchronize directories or create a file tree snapshot
+* `trash` - Move files to user's trash directory
 
 
 ## Third-party code
 
-fcom uses third-party code that implements complex algorithms such as data encryption and cryptographic hashing functions: AES (Brian Gladman), MD5 (nginx), SHA-512 (glibc).
+fcom uses third-party code that implements complex algorithms such as data encryption and cryptographic hashing functions: AES (Brian Gladman), MD5 (nginx), SHA-1 (nginx), SHA-256 (glibc), SHA-512 (glibc).
 
 
 ## Install on Linux

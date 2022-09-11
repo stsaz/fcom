@@ -73,6 +73,14 @@ static fcom_cominfo* cmd_create()
 
 static void cmd_destroy(fcom_cominfo *cmd)
 {
+	if (cmd == NULL)
+		return;
+
+	if (cmd->on_complete != NULL) {
+		fcom_dbglog("calling on_complete()...");
+		cmd->on_complete(cmd->opaque);
+	}
+
 	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
 	ffstr *it;
 
@@ -102,7 +110,10 @@ static void cmd_destroy(fcom_cominfo *cmd)
 	ffmem_free(cmd->operation);
 	fflist_rm(&com.cmds, &c->sib);
 	ffmem_free(c);
+	fcom_dbglog("command finished");
 }
+
+#define FFCMDARG_ERROR 0xbad
 
 #ifdef FF_WIN
 static int wc_expand(struct fcom_cominfo *cmd, ffstr *s)
@@ -124,9 +135,8 @@ static int wc_expand(struct fcom_cominfo *cmd, ffstr *s)
 	const char *fn;
 	while (NULL != (fn = ffdirscan_next(&ds))) {
 		dbglog("wildcard expand: %s", fn);
-		ffstr *p = ffvec_pushT(&cmd->input, ffstr);
+		ffstr *p = ffvec_zpushT(&cmd->input, ffstr);
 		ffsize cap = 0;
-		ffstr_null(p);
 		ffstr_growfmt(p, &cap, "%S\\%s", &dir, fn);
 	}
 
@@ -147,7 +157,9 @@ static int args_input(ffcmdarg_scheme *as, struct fcom_cominfo *cmd, ffstr *s)
 		return 0;
 	}
 
-	if (s->len != 0 && s->ptr[0] == '@') {
+	if (s->len == 0) {
+		cmd->stdin = 1;
+	} else if (s->ptr[0] == '@') {
 		if (cmd->input_fd != FFFILE_NULL) {
 			errlog("Only 1 '@' notation for input files is supported");
 			return FFCMDARG_ERROR;
@@ -172,21 +184,21 @@ static int args_input(ffcmdarg_scheme *as, struct fcom_cominfo *cmd, ffstr *s)
 
 	}
 
-	ffstr *p = ffvec_pushT(&cmd->input, ffstr);
+	ffstr *p = ffvec_zpushT(&cmd->input, ffstr);
 	ffstr_dupstr(p, s);
 	return 0;
 }
 
 static int args_include(ffcmdarg_scheme *as, struct fcom_cominfo *cmd, ffstr *s)
 {
-	ffstr *p = ffvec_pushT(&cmd->include, ffstr);
+	ffstr *p = ffvec_zpushT(&cmd->include, ffstr);
 	ffstr_dupstr(p, s);
 	return 0;
 }
 
 static int args_exclude(ffcmdarg_scheme *as, struct fcom_cominfo *cmd, ffstr *s)
 {
-	ffstr *p = ffvec_pushT(&cmd->exclude, ffstr);
+	ffstr *p = ffvec_zpushT(&cmd->exclude, ffstr);
 	ffstr_dupstr(p, s);
 	return 0;
 }
@@ -273,10 +285,6 @@ static int args_parse(struct cmd *c)
 		return 1;
 	}
 
-	if (c->cmd.input.len == 0) {
-		c->cmd.stdin = 1;
-	}
-
 	if (ffstr_eqz(&c->cmd.output, "STDOUT")) {
 		ffstr_free(&c->cmd.output);
 		c->cmd.stdout = 1;
@@ -292,7 +300,7 @@ static int cmd_run(fcom_cominfo *cmd)
 	if (0 != args_parse(c))
 		goto err;
 
-	if (NULL == (c->opif = com_provide(cmd->operation)))
+	if (NULL == (c->opif = com_provide(cmd->operation, FCOM_COM_PROVIDE_PRIM)))
 		goto err;
 
 	if (cmd->help) {
@@ -319,19 +327,16 @@ static int input_names_read(struct cmd *c)
 
 	for (;;) {
 		ffvec_grow(&in_list, 64*1024, 1);
+		dbglog("reading from input names file...");
 		ffssize r = fffile_read(cmd->input_fd, ffslice_end(&in_list, 1), ffvec_unused(&in_list));
 		if (r == 0) {
 			break;
 		} else if (r < 0) {
-			syserrlog("file read");
+			syserrlog("input names file read");
 			goto end;
 		}
 		dbglog("input names file: read %L bytes", r);
 		in_list.len += r;
-	}
-
-	if (cmd->input_fd != ffstdin) {
-		fffile_close(cmd->input_fd), cmd->input_fd = FFFILE_NULL;
 	}
 
 	ffstr view = FFSTR_INITSTR(&in_list);
@@ -342,7 +347,7 @@ static int input_names_read(struct cmd *c)
 		if (name.len == 0)
 			continue;
 
-		if (NULL == (c->ftree = fntree_add(c->ftree, name))) {
+		if (NULL == fntree_add(&c->ftree, name, 0)) {
 			fcom_errlog("fntree_add");
 			goto end;
 		}
@@ -389,7 +394,14 @@ static int incl_excl(struct cmd *c, ffstr name)
 	return 0;
 }
 
-static int cmd_input_next(fcom_cominfo *cmd, ffstr *name, ffstr *base, uint flags)
+static const fntree_block* _fntr_cur_i(fntree_cursor *c, uint i)
+{
+	if (i >= c->depth)
+		return NULL;
+	return c->block_stk[i];
+}
+
+static int cmd_input_next(fcom_cominfo *cmd, ffstr *name, ffstr *ubase, uint flags)
 {
 	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
 
@@ -397,19 +409,20 @@ static int cmd_input_next(fcom_cominfo *cmd, ffstr *name, ffstr *base, uint flag
 		c->set_ftree = 1;
 		ffstr *it;
 		FFSLICE_WALK(&c->cmd.input, it) {
-			if (NULL == (c->ftree = fntree_add(c->ftree, *it))) {
+			if (NULL == fntree_add(&c->ftree, *it, 0)) {
 				fcom_errlog("fntree_add: '%S'", it);
-				return -1;
+				return FCOM_COM_RINPUT_ERR;
 			}
 		}
 	}
 
 	if (c->cmd.input_fd != FFFILE_NULL) {
 		if (0 != input_names_read(c))
-			return -1;
+			return FCOM_COM_RINPUT_ERR;
 		if (cmd->input_fd != ffstdin) {
-			fffile_close(cmd->input_fd),  cmd->input_fd = FFFILE_NULL;
+			fffile_close(cmd->input_fd);
 		}
+		cmd->input_fd = FFFILE_NULL;
 	}
 
 	if (c->isdir) {
@@ -427,46 +440,54 @@ static int cmd_input_next(fcom_cominfo *cmd, ffstr *name, ffstr *base, uint flag
 
 		if (0 != ffdirscan_open(&ds, c->ftree_name.ptr, flags)) {
 			fcom_syserrlog("ffdirscan_open");
-			return -1;
+			return FCOM_COM_RINPUT_ERR;
 		}
 		ffstr path = FFSTR_INITZ(c->ftree_name.ptr);
-		fntree_block *b = fntree_from_dirscan(path, &ds);
-		fntree_attach(c->ftree_cur.cur, b);
+		fntree_block *b = fntree_from_dirscan(path, &ds, 0);
+		fntree_attach((fntree_entry*)c->ftree_cur.cur, b);
 		ffdirscan_close(&ds);
 	}
 
+	fntree_block *b;
+	ffstr base;
 	for (;;) {
-		fntree_block *b = c->ftree;
-		fntree_entry *it = fntree_next_r(&c->ftree_cur, &b);
+		b = c->ftree;
+		fntree_entry *it;
+		if (flags & FCOM_COM_INPUT_DIRFIRST)
+			it = fntree_cur_next_r_ctx(&c->ftree_cur, &b);
+		else
+			it = fntree_cur_next_r(&c->ftree_cur, &b);
 		if (it == NULL) {
 			fcom_dbglog("no more input files");
-			return -1;
+			return FCOM_COM_RINPUT_NOMORE;
 		}
 
-		ffstr nm = FFSTR_INITN(it->name, it->name_len);
+		ffstr nm = fntree_name(it);
+		if (NULL != _fntr_cur_i(&c->ftree_cur, 0)) {
+			const fntree_block *bbase = _fntr_cur_i(&c->ftree_cur, 1);
+			if (bbase == NULL)
+				bbase = b;
+			if (0 != incl_excl(c, nm))
+				continue;
+			base = fntree_path(bbase);
+		} else {
+			ffstr_null(&base);
+		}
+
 		ffstr path = fntree_path(b);
 		c->ftree_name.len = 0;
 		if (path.len != 0)
 			ffvec_addfmt(&c->ftree_name, "%S%c", &path, FFPATH_SLASH);
 		ffvec_addfmt(&c->ftree_name, "%S%Z", &nm);
 
-		if (NULL != _fntr_cur_i(&c->ftree_cur, 0)) {
-			fntree_block *bbase = _fntr_cur_i(&c->ftree_cur, 1);
-			if (bbase == NULL)
-				bbase = b;
-			if (0 != incl_excl(c, nm))
-				continue;
-			*base = fntree_path(bbase);
-		} else {
-			ffstr_null(base);
-		}
-
 		ffstr_set(name, c->ftree_name.ptr, c->ftree_name.len - 1);
 		break;
 	}
 
-	dbglog("input file name: '%S' / '%S'", name, base);
-	return 0;
+	dbglog("input file name: '%S' / '%S'", name, &base);
+	if (ubase != NULL)
+		*ubase = base;
+	return FCOM_COM_RINPUT_OK;
 }
 
 static void cmd_input_dir(fcom_cominfo *cmd, fffd dir)
@@ -475,10 +496,8 @@ static void cmd_input_dir(fcom_cominfo *cmd, fffd dir)
 	c->isdir = 1;
 
 #ifdef FF_LINUX
-	if (c->cmd.recursive) {
-		c->ftree_dir = dir;
-		return;
-	}
+	c->ftree_dir = dir;
+	return;
 #endif
 
 	fffile_close(dir);

@@ -10,7 +10,11 @@ include $(FFBASE_DIR)/test/makeconf
 BIN := fcom$(DOTEXE)
 MODS := \
 	copy.$(SO) \
-	crypto.$(SO)
+	crypto.$(SO) \
+	list.$(SO) \
+	move.$(SO) \
+	sync.$(SO) \
+	trash.$(SO)
 BINS := $(BIN) core.$(SO) $(MODS)
 
 CFLAGS := -I$(FCOM_DIR)/src -I$(FFOS_DIR) -I$(FFBASE_DIR) \
@@ -18,15 +22,16 @@ CFLAGS := -I$(FCOM_DIR)/src -I$(FFOS_DIR) -I$(FFBASE_DIR) \
 	-Wall \
 	-fPIC \
 	-march=nehalem
-LINKFLAGS :=
 ifeq "$(OPT)" "0"
 	CFLAGS += -g -O0 -DFF_DEBUG -Werror
 else
 	CFLAGS += -O3 -fno-strict-aliasing
-	LINKFLAGS := -s
+	LINKFLAGS += -s
 endif
 
 3PT_DIR := $(FCOM_DIR)/3pt/_$(OS)-amd64
+
+GDEPS := $(FCOM_DIR)/src/fcom.h
 
 # build, install
 default: $(BINS)
@@ -45,32 +50,35 @@ $(BIN): main.o args.o
 	$(LINK) $+ $(LINKFLAGS) -o $@
 
 # Core
-%.o: $(FCOM_DIR)/src/core/%.c \
+%.o: $(FCOM_DIR)/src/core/%.c $(GDEPS) \
 		$(wildcard $(FCOM_DIR)/src/core/*.h) \
-		$(FCOM_DIR)/src/fcom.h \
-		$(wildcard $(FCOM_DIR)/src/util/*.h) \
-		$(FCOM_DIR)/Makefile
+		$(FCOM_DIR)/src/util/fntree.h
 	$(C) $(CFLAGS) $< -o $@
 core.$(SO): com.o core.o file.o
 	$(LINK) -shared $+ $(LINKFLAGS) -o $@
 
 # ops
-%.o: $(FCOM_DIR)/src/ops/%.c \
-		$(FCOM_DIR)/src/fcom.h \
-		$(wildcard $(FCOM_DIR)/src/util/*.h) \
-		$(FCOM_DIR)/Makefile
+%.o: $(FCOM_DIR)/src/ops/%.c $(GDEPS)
 	$(C) $(CFLAGS) $< -o $@
 
-# mod.copy
-copy.$(SO): copy.o
+sync.o: $(FCOM_DIR)/src/ops/sync.c $(GDEPS) \
+		$(FCOM_DIR)/src/util/fntree.h
+	$(C) $(CFLAGS) $< -o $@
+
+# mod.copy, sync
+%.$(SO): %.o
 	$(LINK) -shared $+ $(LINKFLAGS) -o $@
 
 # mod.crypto
 crypto.$(SO): \
 		aes.o \
 		md5.o \
+		sha1.o \
+		sha256.o \
 		sha512.o \
 		$(3PT_DIR)/MD5.a \
+		$(3PT_DIR)/SHA1.a \
+		$(3PT_DIR)/SHA256.a \
 		$(3PT_DIR)/SHA512.a \
 		$(3PT_DIR)/AES.a
 	$(LINK) -shared $+ $(LINKFLAGS) -o $@

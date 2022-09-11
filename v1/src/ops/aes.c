@@ -84,9 +84,10 @@ FF_EXP const fcom_aes aes_decrypt = {
 };
 
 
-static void aes_init(const fcom_core *_core) { core = _core; }
-static void aes_destroy(){}
+static void crypto_init(const fcom_core *_core) { core = _core; }
+static void crypto_destroy(){}
+static const fcom_operation* crypto_provide_op(const char *name) { return NULL; }
 FF_EXP struct fcom_module fcom_module = {
 	FCOM_VER,
-	aes_init, aes_destroy,
+	crypto_init, crypto_destroy, crypto_provide_op,
 };

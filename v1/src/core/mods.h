@@ -44,7 +44,7 @@ void mods_free()
 	ffmap_free(&com.mods);
 }
 
-struct mod* mod_load(ffstr modname)
+static struct mod* mod_load(ffstr modname)
 {
 	struct mod *m = ffmem_new(struct mod);
 	char *name = ffsz_allocfmt("ops%c%S." FFDL_EXT, FFPATH_SLASH, &modname);
@@ -80,7 +80,7 @@ err:
 "a" -> "ops/a.so".addr("a")
 "a.b" -> "ops/a.so".addr("b")
 */
-const void* com_provide(const char *operation)
+const void* com_provide(const char *operation, uint flags)
 {
 	ffstr op = FFSTR_INITZ(operation), modname, opname;
 	if (-1 == ffstr_splitby(&op, '.', &modname, &opname))
@@ -94,10 +94,16 @@ const void* com_provide(const char *operation)
 	}
 
 	dbglog("requesting operation '%s' from module '%s'...", opname.ptr, m->name);
-	const void *opif;
-	if (NULL == (opif = ffdl_addr(m->dl, opname.ptr))) {
-		errlog(": no registered operation '%s': %S: %s", opname.ptr, &modname, ffdl_errstr());
-		return NULL;
+	const void *opif = m->mod->provide_op(opname.ptr);
+	if (opif == NULL) {
+		if (flags & FCOM_COM_PROVIDE_PRIM) {
+			errlog("'%s': no registered operation '%s'", m->name, opname.ptr);
+			return NULL;
+		}
+		if (NULL == (opif = ffdl_addr(m->dl, opname.ptr))) {
+			errlog("'%s': no registered operation '%s': %s", m->name, opname.ptr, ffdl_errstr());
+			return NULL;
+		}
 	}
 
 	return opif;
