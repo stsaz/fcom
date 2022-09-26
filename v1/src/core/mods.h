@@ -61,6 +61,11 @@ static struct mod* mod_load(ffstr modname)
 		goto err;
 	}
 
+	if (m->mod->ver_core != FCOM_CORE_VER) {
+		errlog("module %s is built for another fcom version", fn);
+		goto err;
+	}
+
 	m->name = ffsz_dupstr(&modname);
 	dbglog("initializing module '%s'...", m->name);
 	m->mod->init(core);

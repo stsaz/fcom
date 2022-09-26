@@ -4,9 +4,12 @@ General usage:
 
 OPERATION:
   copy                  Copy files from one place to another, plus encryption & verification
+  hex                   Print file contents in hexadecimal format
   list                  List directory contents
   move                  Move and/or rename files
-  sync                  Synchronize directories or create a file tree snapshot
+  sync                  Compare/synchronize directories or create a file tree snapshot
+  textcount             Analyze text files (e.g. print number of lines)
+  touch                 Change file date/time
   trash                 Move files to user's trash directory
 
 INPUT:
@@ -32,7 +35,7 @@ OUTPUT:
     OPTIONS:
     -f, --overwrite     Overwrite
     -C, --chdir=DIR     Change (logically) current directory
-    -T, --test          Test mode: don't actually write anything (BUG: creates new files)
+    -T, --test          Test mode: don't actually write anything
         --directio      Use direct I/O, bypassing system cache
         --buffer=N      Set file buffer size (=64k)
         --no-prealloc   Don't preallocate disk space

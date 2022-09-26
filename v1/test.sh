@@ -5,10 +5,10 @@ set -e
 
 CMD=$1
 
+rm -rf ./fcomtest ; mkdir fcomtest
+
 if test "$CMD" == "copy" ; then
 
-	rm -rf fcomtest* || true
-	mkdir -p fcomtest
 	cd fcomtest
 	echo hello >file
 
@@ -18,6 +18,9 @@ if test "$CMD" == "copy" ; then
 
 	# file -> file (exists)
 	../fcom copy "file" -o "file.out" || true
+
+	# file -> file (overwrite)
+	../fcom copy "file" -o "file.out" --overwrite
 
 	# file -> dir/file
 	mkdir dir
@@ -96,20 +99,22 @@ if test "$CMD" == "copy" ; then
 	# ../fcom copy -R "dir" -C "dircopy" -I "*.d*" -v
 	# diff dir/d2/file.doc dircopy/dir/d2/file.doc
 
+elif test "$CMD" == "hex" ; then
+
+	echo abc123 >fcomtest/hex
+	echo qwerqwerqwerqwerqwerqwerqwerqwer >fcomtest/hex2
+	./fcom hex fcomtest/hex*
+
 elif test "$CMD" == "list" ; then
 
-	mkdir -p fcomtest
-	./fcom list fcomtest
+	./fcom list "fcomtest"
 	echo fcomtest >fcomtest/list
 
 	./fcom list "@fcomtest/list"
 	echo fcomtest | ./fcom list "@"
 
-	rm -rf fcomtest
-
 elif test "$CMD" == "move" ; then
 
-	rm -rf fcomtest ; mkdir fcomtest
 	mkdir fcomtest/unbranch
 	mkdir fcomtest/unbranch/a
 
@@ -128,19 +133,16 @@ elif test "$CMD" == "move" ; then
 	./fcom move "fcomtest/unbranch/a/test" --replace="test/new" -v
 	cat "fcomtest/unbranch/a/new"
 
-	rm -rf fcomtest
-
 elif test "$CMD" == "sync" ; then
 
-	rm -rf fcomtest fcomtest.snap || true
-	mkdir -p fcomtest
+	rm -f fcomtest.snap
 	echo hello >fcomtest/file
 
-	# snapshot
+	# write snapshot
 	./fcom sync "fcomtest" --snapshot -o "fcomtest.snap" -v
 	cat fcomtest.snap
 
-	# diff
+	# diff 2 dirs
 	cd fcomtest
 	mkdir -p left right left/d right/d
 	echo eq >left/d/eq ; cp -a left/d/eq right/d/eq
@@ -151,17 +153,54 @@ elif test "$CMD" == "sync" ; then
 	echo r >right/r
 	../fcom sync --diff "left" -o "right" -v
 
-	rm -rf fcomtest
+	# sync 2 dirs
+	../fcom sync "left" -o "right" -v --add
+	../fcom sync "left" -o "right" -v --delete
+
+	# write snapshot, diff snapshot and dir
+	../fcom sync "left" --snapshot -o "fcomtest.snap" -v
+	../fcom sync --diff --source-snap "fcomtest.snap" -o "right" -v
+
+	cd ..
+
+elif test "$CMD" == "textcount" ; then
+
+	echo 123 >>fcomtest/textcount
+	echo 3456 >>fcomtest/textcount
+	echo 7890 >>fcomtest/textcount
+	./fcom textcount -R "fcomtest" -v
+
+elif test "$CMD" == "touch" ; then
+
+	echo 123 >fcomtest/touch
+	echo 123 >fcomtest/touch2
+	./fcom touch "fcomtest/touch" --date="2022-09-01 01:02:03" -v
+	ls -l fcomtest/touch
+	./fcom touch "fcomtest/touch" --date="2022-09-01" -v
+	ls -l fcomtest/touch
+	./fcom touch "fcomtest/touch2" --reference="fcomtest/touch" -v
+	ls -l fcomtest/touch2
+	./fcom touch "fcomtest/touch" -v
+	ls -l fcomtest/touch
+
+	mkdir fcomtest/dirtouch fcomtest/dirtouch/d2
+	echo 123 >fcomtest/dirtouch/touch
+	echo 123 >fcomtest/dirtouch/d2/touch2
+	./fcom touch -R "fcomtest/dirtouch" --date="2022-09-01 01:02:03" -v
+	ls -Rl fcomtest/dirtouch
 
 elif test "$CMD" == "all" ; then
 
 	sh $0 copy
+	sh $0 hex
 	sh $0 list
 	sh $0 move
 	sh $0 sync
+	sh $0 touch
 
 else
 	exit 1
 fi
 
+rm -rf ./fcomtest
 echo DONE

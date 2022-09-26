@@ -11,7 +11,8 @@
 #include <ffbase/vector.h>
 #include <assert.h>
 
-#define FCOM_VER "1.0beta2"
+#define FCOM_VER "1.0beta3"
+#define FCOM_CORE_VER 103
 
 #undef stdin
 #undef stdout
@@ -84,6 +85,7 @@ struct fcom_core {
 	const fcom_command *com;
 	/** File submodule interface */
 	const fcom_file *file;
+	fftime_zone tz;
 
 	/** Exit from fcom_coreinit.run() */
 	void (*exit)(int exit_code);
@@ -121,6 +123,7 @@ struct fcom_core {
 #define fcom_fatlog(fmt, ...)  (core)->log(FCOM_LOG_FATAL, fmt, ##__VA_ARGS__)
 #define fcom_syserrlog(fmt, ...)  (core)->log(FCOM_LOG_ERR | FCOM_LOG_SYSERR, fmt, ##__VA_ARGS__)
 #define fcom_errlog(fmt, ...)  (core)->log(FCOM_LOG_ERR, fmt, ##__VA_ARGS__)
+#define fcom_syswarnlog(fmt, ...)  (core)->log(FCOM_LOG_WARN | FCOM_LOG_SYSERR, fmt, ##__VA_ARGS__)
 #define fcom_infolog(fmt, ...)  (core)->log(FCOM_LOG_INFO, fmt, ##__VA_ARGS__)
 #define fcom_verblog(fmt, ...) \
 	do { if (core->verbose) (core)->log(FCOM_LOG_VERBOSE, fmt, ##__VA_ARGS__); } while (0)
@@ -158,7 +161,8 @@ typedef struct fcom_cominfo {
 	byte directio;
 	byte help;
 
-	fcom_task_func on_complete;
+	/** The function to call after the operation completes */
+	void (*on_complete)(void *opaque, int result);
 	void *opaque;
 } fcom_cominfo;
 
@@ -199,6 +203,9 @@ struct fcom_command {
 	/** Destroy object */
 	void (*destroy)(fcom_cominfo *c);
 
+	/** Operation signals about its completion */
+	void (*complete)(fcom_cominfo *c, int code);
+
 	/** Get next input file name.
 	name: NULL-terminated file path
 	base: [optional] user-specified base directory
@@ -229,6 +236,7 @@ typedef struct fcom_operation fcom_operation;
 /** The module exports this interface as "fcom_module" */
 struct fcom_module {
 	const char *version;
+	uint ver_core;
 	void (*init)(const fcom_core *core);
 	void (*destroy)();
 	const fcom_operation* (*provide_op)(const char *name);
@@ -323,10 +331,9 @@ struct fcom_file {
 	void (*destroy)(fcom_file_obj *f);
 
 	/**
-	name_ptr: static name pointer
 	flags: enum FCOM_FILE_OPEN
 	Return enum FCOM_FILE_RET */
-	int (*open)(fcom_file_obj *f, const char *static_name_ptr, uint flags);
+	int (*open)(fcom_file_obj *f, const char *name, uint flags);
 
 	void (*close)(fcom_file_obj *f);
 	int (*read)(fcom_file_obj *f, ffstr *d, int64 off);
@@ -334,6 +341,7 @@ struct fcom_file {
 	/**
 	off: -1: use the current offset */
 	int (*write)(fcom_file_obj *f, ffstr d, int64 off);
+	int (*write_fmt)(fcom_file_obj *_f, const char *fmt, ...);
 
 	/**
 	flags: enum FCOM_FILE_BEH */

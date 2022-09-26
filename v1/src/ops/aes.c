@@ -40,7 +40,7 @@ static void aes_e_close(fcom_aes_obj *obj)
 	ffmem_free(a);
 }
 
-FF_EXP const fcom_aes aes_encrypt = {
+FF_EXP const fcom_aes fcom_aes_encrypt = {
 	aes_e_create,
 	aes_e_process,
 	aes_e_close,
@@ -77,7 +77,7 @@ static void aes_d_close(fcom_aes_obj *obj)
 	ffmem_free(a);
 }
 
-FF_EXP const fcom_aes aes_decrypt = {
+FF_EXP const fcom_aes fcom_aes_decrypt = {
 	aes_d_create,
 	aes_d_process,
 	aes_d_close,
@@ -88,6 +88,6 @@ static void crypto_init(const fcom_core *_core) { core = _core; }
 static void crypto_destroy(){}
 static const fcom_operation* crypto_provide_op(const char *name) { return NULL; }
 FF_EXP struct fcom_module fcom_module = {
-	FCOM_VER,
+	FCOM_VER, FCOM_CORE_VER,
 	crypto_init, crypto_destroy, crypto_provide_op,
 };

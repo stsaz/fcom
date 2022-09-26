@@ -21,7 +21,7 @@ $(DIR): $(PKG)
 	touch $(DIR)
 
 # build
-CFLAGS := -O3 -D_LIB -DASM_AMD64_C -I$(DIR) -fPIC
+CFLAGS := -O3 -DASM_AMD64_C -DINTEL_AES_POSSIBLE -I$(DIR) -fPIC
 
 YASM := yasm
 YASM_FLAGS := -f elf64
@@ -30,13 +30,12 @@ ifeq "$(OS)" "windows"
 endif
 YASM_FLAGS += -m amd64 -DASM_AMD64_C -DINTEL_AES_POSSIBLE
 
-SRC := \
-	$(DIR)/aes_amd64.asm \
-	$(DIR)/aeskey.c \
-	$(DIR)/aes_modes.c \
-	$(DIR)/aes_ni.c \
-	$(DIR)/aestab.c
-OBJ := aes-ff.o $(SRC:.c=.o) $(SRC:.asm=.o)
+OBJ := aes-ff.o \
+	$(DIR)/aes_amd64.o \
+	$(DIR)/aeskey.o \
+	$(DIR)/aes_modes.o \
+	$(DIR)/aes_ni.o \
+	$(DIR)/aestab.o
 
 %.o: %.c
 	$(C) $(CFLAGS) $< -o $@
@@ -44,6 +43,7 @@ OBJ := aes-ff.o $(SRC:.c=.o) $(SRC:.asm=.o)
 	$(YASM) $(YASM_FLAGS) $< -o $@
 
 $(LIB): $(OBJ)
+	rm $@
 	$(AR) rcs $@ $(OBJ)
 
 clean:

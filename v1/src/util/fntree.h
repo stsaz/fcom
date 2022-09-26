@@ -38,7 +38,7 @@ typedef struct fntree_block fntree_block;
 
 typedef struct fntree_entry {
 	fntree_block *children;
-	ffbyte name_len;
+	ffushort name_len;
 	ffbyte data_len;
 	char name[0];
 	// char data[]
@@ -57,6 +57,8 @@ struct fntree_block {
 	// fntree_entry[1]{}
 	// ...
 };
+
+static void fntree_free_all(fntree_block *b);
 
 static inline void* fntree_data(const fntree_entry *e)
 {
@@ -112,7 +114,7 @@ static inline ffstr fntree_path(const fntree_block *b)
 /** Reallocate buffer and add new file entry. */
 static inline fntree_entry* fntree_add(fntree_block **pb, ffstr name, ffuint data_len)
 {
-	if (name.len > 255 || data_len > 255)
+	if (name.len > 0xffff || data_len > 255)
 		return NULL;
 
 	fntree_block *b = *pb;
@@ -150,8 +152,10 @@ static inline fntree_block* fntree_from_dirscan(ffstr path, ffdirscan *ds, ffuin
 	fntree_block *b = fntree_create(path);
 	const char *fn;
 	while (NULL != (fn = ffdirscan_next(ds))) {
-		if (NULL == fntree_addz(&b, fn, data_len))
+		if (NULL == fntree_addz(&b, fn, data_len)) {
+			fntree_free_all(b);
 			return NULL;
+		}
 	}
 	return b;
 }
@@ -179,6 +183,7 @@ static inline ffstr fntree_name(const fntree_entry *e)
 	ffstr s = FFSTR_INITN(e->name, e->name_len);
 	return s;
 }
+
 
 typedef struct fntree_cursor {
 	const fntree_entry *cur;
@@ -339,8 +344,9 @@ static inline fntree_block* _fntr_blk_next_r_post(fntree_cursor *c, fntree_block
 	}
 }
 
+
 /** Free all tree-blocks. */
-static inline void fntree_free_all(fntree_block *b)
+static void fntree_free_all(fntree_block *b)
 {
 	if (b == NULL)
 		return;

@@ -14,15 +14,22 @@ Contents:
 ## Features
 
 * `copy` - Copy files from one place to another, plus encryption & verification
+* `hex` - Print file contents in hexadecimal format
 * `list` - List directory contents
 * `move` - Move and/or rename files
-* `sync` - Synchronize directories or create a file tree snapshot
+* `sync` - Compare/synchronize directories or create a file tree snapshot
+* `textcount` - Analyze text files (e.g. print number of lines)
+* `touch` - Change file date/time
 * `trash` - Move files to user's trash directory
 
 
 ## Third-party code
 
-fcom uses third-party code that implements complex algorithms such as data encryption and cryptographic hashing functions: AES (Brian Gladman), MD5 (nginx), SHA-1 (nginx), SHA-256 (glibc), SHA-512 (glibc).
+fcom uses third-party code that implements complex algorithms such as data encryption and cryptographic hashing functions:
+
+* AES (Brian Gladman)
+* MD5 (nginx)
+* SHA-256 (glibc)
 
 
 ## Install on Linux
@@ -52,7 +59,7 @@ fcom uses third-party code that implements complex algorithms such as data encry
 
 		git clone --depth=1 https://github.com/stsaz/ffbase
 		git clone --depth=1 https://github.com/stsaz/ffos
-		git clone --depth=1 https://github.com/stsaz/fcom
+		git clone --depth=1 -b v1 https://github.com/stsaz/fcom
 
 3. Build third-party code:
 

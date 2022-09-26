@@ -11,14 +11,17 @@ BIN := fcom$(DOTEXE)
 MODS := \
 	copy.$(SO) \
 	crypto.$(SO) \
+	hex.$(SO) \
 	list.$(SO) \
 	move.$(SO) \
 	sync.$(SO) \
+	textcount.$(SO) \
+	touch.$(SO) \
 	trash.$(SO)
 BINS := $(BIN) core.$(SO) $(MODS)
 
 CFLAGS := -I$(FCOM_DIR)/src -I$(FFOS_DIR) -I$(FFBASE_DIR) \
-	-DFFBASE_HAVE_FFERR_STR \
+	-DFFBASE_HAVE_FFERR_STR -DFFBASE_MEM_ASSERT \
 	-Wall \
 	-fPIC \
 	-march=nehalem
@@ -43,8 +46,7 @@ build-package: default
 
 %.o: $(FCOM_DIR)/src/%.c \
 		$(wildcard $(FCOM_DIR)/src/*.h) \
-		$(wildcard $(FCOM_DIR)/src/util/*.h) \
-		$(FCOM_DIR)/Makefile
+		$(wildcard $(FCOM_DIR)/src/util/*.h)
 	$(C) $(CFLAGS) $< -o $@
 $(BIN): main.o args.o
 	$(LINK) $+ $(LINKFLAGS) -o $@
@@ -61,7 +63,13 @@ core.$(SO): com.o core.o file.o
 %.o: $(FCOM_DIR)/src/ops/%.c $(GDEPS)
 	$(C) $(CFLAGS) $< -o $@
 
+copy.o: $(FCOM_DIR)/src/ops/copy.c $(GDEPS) \
+		$(wildcard $(FCOM_DIR)/src/ops/copy-*.h) \
+		$(FCOM_DIR)/src/util/fntree.h
+	$(C) $(CFLAGS) $< -o $@
+
 sync.o: $(FCOM_DIR)/src/ops/sync.c $(GDEPS) \
+		$(wildcard $(FCOM_DIR)/src/ops/sync-*.h) \
 		$(FCOM_DIR)/src/util/fntree.h
 	$(C) $(CFLAGS) $< -o $@
 
@@ -73,13 +81,9 @@ sync.o: $(FCOM_DIR)/src/ops/sync.c $(GDEPS) \
 crypto.$(SO): \
 		aes.o \
 		md5.o \
-		sha1.o \
 		sha256.o \
-		sha512.o \
 		$(3PT_DIR)/MD5.a \
-		$(3PT_DIR)/SHA1.a \
 		$(3PT_DIR)/SHA256.a \
-		$(3PT_DIR)/SHA512.a \
 		$(3PT_DIR)/AES.a
 	$(LINK) -shared $+ $(LINKFLAGS) -o $@
 

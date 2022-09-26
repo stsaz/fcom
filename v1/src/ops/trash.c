@@ -154,8 +154,7 @@ static void trash_run(fcom_op *op)
 end:
 	fcom_cominfo *cmd = l->cmd;
 	trash_close(l);
-	core->com->destroy(cmd);
-	core->exit(rc);
+	core->com->complete(cmd, rc);
 }
 
 static void trash_signal(fcom_op *op, uint signal)
@@ -180,6 +179,6 @@ static const fcom_operation* trash_provide_op(const char *name)
 	return NULL;
 }
 FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER,
+	FCOM_VER, FCOM_CORE_VER,
 	trash_init, trash_destroy, trash_provide_op,
 };

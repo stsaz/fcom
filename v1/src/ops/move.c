@@ -220,6 +220,6 @@ static const fcom_operation* move_provide_op(const char *name)
 	return NULL;
 }
 FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER,
+	FCOM_VER, FCOM_CORE_VER,
 	move_init, move_destroy, move_provide_op,
 };

@@ -12,8 +12,11 @@ struct list {
 	fcom_cominfo *cmd;
 	ffstr name, base;
 	fcom_file_obj *in;
+	fffileinfo fi;
 	ffvec buf;
 	uint stop;
+
+	byte long_fmt;
 };
 
 static const char* list_help()
@@ -22,12 +25,15 @@ static const char* list_help()
 List directory contents.\n\
 Usage:\n\
   fcom list INPUT [OPTIONS]\n\
+    OPTIONS:\n\
+    -l, --long          Use long format\n\
 ";
 }
 
 static int args_parse(struct list *l, fcom_cominfo *cmd)
 {
 	static const ffcmdarg_arg args[] = {
+		{ 'l',	"long",	FFCMDARG_TSWITCH, FF_OFF(struct list, long_fmt) },
 		{}
 	};
 	return core->com->args_parse(cmd, args, l);
@@ -68,7 +74,8 @@ static void list_run(fcom_op *op)
 {
 	struct list *l = op;
 	int r, rc = 1;
-	enum { I_IN, I_WR, };
+	enum { I_IN, I_INFO, I_PRINT, };
+
 	while (!FFINT_READONCE(l->stop)) {
 		switch (l->st) {
 
@@ -81,49 +88,69 @@ static void list_run(fcom_op *op)
 				goto end;
 			}
 
-			l->st = I_WR;
+			l->st = I_INFO;
 		}
 			// fallthrough
 
-		case I_WR: {
+		case I_INFO: {
 			uint flags = fcom_file_cominfo_flags_i(l->cmd);
 			flags |= FCOM_FILE_READ;
 			r = core->file->open(l->in, l->name.ptr, flags);
 			if (r == FCOM_FILE_ERR) goto next;
 
-			fffileinfo fi;
-			r = core->file->info(l->in, &fi);
+			r = core->file->info(l->in, &l->fi);
 			if (r == FCOM_FILE_ERR) goto next;
 
 			if ((l->base.len == 0 || l->cmd->recursive)
-				&& fffile_isdir(fffileinfo_attr(&fi))) {
+				&& fffile_isdir(fffileinfo_attr(&l->fi))) {
 				fffd fd = core->file->fd(l->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(l->cmd, fd);
 			}
 
 			core->file->close(l->in);
-
-			if (0 == (r = ffstr_addfmt((ffstr*)&l->buf, l->buf.cap, "%S\r\n", &l->name))) {
-				ffstdout_write(l->buf.ptr, l->buf.len);
-				l->buf.len = 0;
-				if (0 == (r = ffstr_addfmt((ffstr*)&l->buf, l->buf.cap, "%S\r\n", &l->name))) {
-					fcom_sysfatlog("too small buffer");
-					goto end;
-				}
-			}
-
+			l->st = I_PRINT;
+			continue;
 next:
 			l->st = I_IN;
 			continue;
 		}
+
+		case I_PRINT:
+			if (!l->long_fmt) {
+				r = ffstr_addfmt((ffstr*)&l->buf, l->buf.cap, "%S\r\n", &l->name);
+			} else {
+				fftime mtime = fffileinfo_mtime(&l->fi);
+				mtime.sec += FFTIME_1970_SECONDS;
+				ffdatetime dt;
+				fftime_split1(&dt, &mtime);
+				char date[128];
+				r = fftime_tostr1(&dt, date, sizeof(date), FFTIME_DATE_YMD | FFTIME_HMS_USEC);
+				date[r] = '\0';
+
+				uint64 size = fffileinfo_size(&l->fi);
+				r = ffstr_addfmt((ffstr*)&l->buf, l->buf.cap, "%12U %s %S\r\n"
+					, size, date, &l->name);
+			}
+
+			if (r == 0) {
+				if (l->buf.len == 0) {
+					fcom_sysfatlog("too small buffer");
+					goto end;
+				}
+				ffstdout_write(l->buf.ptr, l->buf.len);
+				l->buf.len = 0;
+				continue;
+			}
+
+			l->st = I_IN;
+			continue;
 		}
 	}
 
 end:
 	fcom_cominfo *cmd = l->cmd;
 	list_close(l);
-	core->com->destroy(cmd);
-	core->exit(rc);
+	core->com->complete(cmd, rc);
 }
 
 static void list_signal(fcom_op *op, uint signal)
@@ -148,6 +175,6 @@ static const fcom_operation* list_provide_op(const char *name)
 	return NULL;
 }
 FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER,
+	FCOM_VER, FCOM_CORE_VER,
 	list_init, list_destroy, list_provide_op,
 };

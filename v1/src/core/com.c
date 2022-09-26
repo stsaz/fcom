@@ -29,6 +29,7 @@ struct cmd {
 	fcom_cominfo cmd;
 	const struct fcom_operation *opif;
 	fcom_op *op;
+	fcom_task task;
 
 	fntree_block *ftree;
 	fntree_cursor ftree_cur;
@@ -36,6 +37,7 @@ struct cmd {
 	fffd ftree_dir;
 	uint isdir :1;
 	uint set_ftree :1;
+	int result;
 };
 
 void com_init()
@@ -76,12 +78,13 @@ static void cmd_destroy(fcom_cominfo *cmd)
 	if (cmd == NULL)
 		return;
 
+	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
+
 	if (cmd->on_complete != NULL) {
 		fcom_dbglog("calling on_complete()...");
-		cmd->on_complete(cmd->opaque);
+		cmd->on_complete(cmd->opaque, c->result);
 	}
 
-	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
 	ffstr *it;
 
 	FFSLICE_WALK(&cmd->input, it) {
@@ -111,6 +114,16 @@ static void cmd_destroy(fcom_cominfo *cmd)
 	fflist_rm(&com.cmds, &c->sib);
 	ffmem_free(c);
 	fcom_dbglog("command finished");
+}
+
+static void cmd_complete(fcom_cominfo *cmd, int code)
+{
+	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
+	c->result = code;
+	int primary = (cmd->on_complete == NULL);
+	cmd_destroy(cmd);
+	if (primary)
+		core->exit(code);
 }
 
 #define FFCMDARG_ERROR 0xbad
@@ -293,6 +306,12 @@ static int args_parse(struct cmd *c)
 	return 0;
 }
 
+static void cmd_run_async(void *param)
+{
+	struct cmd *c = param;
+	c->opif->run(c->op);
+}
+
 static int cmd_run(fcom_cominfo *cmd)
 {
 	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
@@ -311,6 +330,12 @@ static int cmd_run(fcom_cominfo *cmd)
 
 	if (NULL == (c->op = c->opif->create(cmd)))
 		goto err;
+
+	if (c->cmd.on_complete != NULL) {
+		core->task(&c->task, cmd_run_async, c);
+		return 0;
+	}
+
 	c->opif->run(c->op);
 	return 0;
 
@@ -519,7 +544,7 @@ const struct fcom_command _fcom_com = {
 	com_signal_all,
 	cmd_create,
 	cmd_run,
-	cmd_destroy,
+	cmd_destroy, cmd_complete,
 	cmd_input_next, cmd_input_dir,
 	cmd_args_parse,
 };

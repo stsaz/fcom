@@ -118,8 +118,10 @@ enum FFCMDARG_R {
 static inline void ffcmdarg_init(ffcmdarg *p, const char **argv, ffuint argc)
 {
 	ffmem_zero_obj(p);
-	p->argv = argv + 1;
-	p->argc = argc - 1;
+	if (argc != 0) {
+		p->argv = argv + 1;
+		p->argc = argc - 1;
+	}
 }
 
 static inline int ffcmdarg_fin(ffcmdarg *p)

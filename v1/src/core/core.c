@@ -203,6 +203,7 @@ static void core_init()
 	gcore = ffmem_new(struct core);
 	gcore->kq = FFKQ_NULL;
 	gcore->tmr = FFTIMER_NULL;
+	fftime_local(&core->tz);
 }
 
 static void core_destroy()
@@ -224,7 +225,7 @@ extern const fcom_file _fcom_file;
 fcom_core _fcom_core = {
 	&_fcom_com,
 	&_fcom_file,
-	core_exit,
+	.exit = core_exit,
 	core_path,
 	core_kq_attach,
 	core_task,
