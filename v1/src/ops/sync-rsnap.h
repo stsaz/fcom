@@ -17,8 +17,11 @@ static int rsnap_read(struct sync *s, ffstr *output)
 	}
 
 	ffstr *in = s->cmd->input.ptr;
-	if (0 != fffile_readwhole(in[0].ptr, &s->sr.ibuf, 100*1024*1024))
+	const char *fn = in[0].ptr;
+	if (0 != fffile_readwhole(fn, &s->sr.ibuf, 100*1024*1024)) {
+		fcom_syserrlog("file read: %s", fn);
 		return FCOM_FILE_ERR;
+	}
 	ffstr_setstr(output, &s->sr.ibuf);
 	return 0;
 }

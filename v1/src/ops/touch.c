@@ -81,8 +81,9 @@ end:
 	return NULL;
 }
 
-static int touch_do(struct touch *t, const char *fn)
+static int touch_do(struct touch *t, ffstr iname)
 {
+	const char *fn = iname.ptr;
 	uint oflags = FCOM_FILE_READ;
 
 	if (!t->cmd->recursive) {
@@ -109,6 +110,9 @@ static int touch_do(struct touch *t, const char *fn)
 		fffd fd = core->file->fd(t->in, FCOM_FILE_ACQUIRE);
 		core->com->input_dir(t->cmd, fd);
 	}
+
+	if (0 != core->com->input_allowed(t->cmd, iname))
+		return 0;
 
 	core->file->close(t->in);
 
@@ -152,7 +156,7 @@ static void touch_run(fcom_op *op)
 					rc = 0;
 				goto end;
 			}
-			if (0 != (r = touch_do(t, in.ptr))) goto end;
+			if (0 != (r = touch_do(t, in))) goto end;
 			continue;
 		}
 		}

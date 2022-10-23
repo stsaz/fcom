@@ -12,9 +12,9 @@ struct move {
 	fcom_cominfo *cmd;
 	uint stop;
 	fcom_file_obj *in;
-	ffvec oname;
+	ffvec oname, replace_buf;
 
-	byte unbranch;
+	byte unbranch, unbranch_flat;
 	ffstr replace_pair, search, replace;
 };
 
@@ -33,10 +33,23 @@ static int args_parse(struct move *m, fcom_cominfo *cmd)
 {
 	static const ffcmdarg_arg args[] = {
 		{ 'u',	"unbranch",	FFCMDARG_TSWITCH, FF_OFF(struct move, unbranch) },
+		{ 0,	"unbranch-flat",	FFCMDARG_TSWITCH, FF_OFF(struct move, unbranch_flat) },
 		{ 'r',	"replace",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, (ffsize)args_replace },
 		{}
 	};
-	return core->com->args_parse(cmd, args, m);
+	if (0 != core->com->args_parse(cmd, args, m))
+		return -1;
+
+	if (m->unbranch && m->unbranch_flat) {
+		fcom_fatlog("--unbranch and --unbranch-flat can't be used together");
+		return -1;
+
+	} else if (!(m->unbranch || m->unbranch_flat || m->replace_pair.len != 0)) {
+		fcom_fatlog("Please use --unbranch and/or --replace");
+		return -1;
+	}
+
+	return 0;
 }
 
 static const char* move_help()
@@ -46,8 +59,12 @@ Move and/or rename files.\n\
 Usage:\n\
   fcom move INPUT... [OPTIONS]\n\
     OPTIONS:\n\
-    -u, --unbranch      Move and rename a file out of its directory structure\n\
-                        (e.g. \"a/b/file\" -> \"a - b - file\")\n\
+    -u, --unbranch      Move and rename a file out of its directory structure, e.g.\n\
+                          \"fcom --unbranch ./a\"\n\
+                         moves/renames \"./a/b/file\" -> \"./a - b - file\"\n\
+        --unbranch-flat Move a file out of its directory structure, e.g.\n\
+                          \"fcom --unbranch-flat ./a\"\n\
+                         moves \"./a/b/file\" -> \"./file\"\n\
     -r, --replace='SEARCH/REPLACE'\n\
                         Replace SEARCH text in file name with REPLACE\n\
 ";
@@ -59,6 +76,7 @@ static void move_close(fcom_op *op)
 	ffstr_free(&m->replace_pair);
 	core->file->destroy(m->in);
 	ffvec_free(&m->oname);
+	ffvec_free(&m->replace_buf);
 	ffmem_free(m);
 }
 
@@ -68,11 +86,6 @@ static fcom_op* move_create(fcom_cominfo *cmd)
 
 	if (0 != args_parse(m, cmd))
 		goto end;
-
-	if (!(m->unbranch || m->replace_pair.len != 0)) {
-		fcom_fatlog("Please use --unbranch and/or --replace");
-		goto end;
-	}
 
 	struct fcom_file_conf fc = {};
 	fc.buffer_size = cmd->buffer_size;
@@ -91,8 +104,7 @@ end:
 static void unbranch(struct move *m, ffstr in, ffstr base, ffstr *out)
 {
 	ffstr parent;
-	ffpath_splitpath_str(base, &parent, &base);
-	if (parent.len != 0) {
+	if (ffpath_splitpath_str(base, &parent, &base) >= 0) {
 		ffvec_addfmt(&m->oname, "%S%c", &parent, FFPATH_SLASH);
 		ffstr_shift(&in, parent.len + 1);
 	}
@@ -110,6 +122,22 @@ static void unbranch(struct move *m, ffstr in, ffstr base, ffstr *out)
 	m->oname.len = 0;
 }
 
+/** Prepare new file name.
+"parent/base/a/file" -> "parent/file" */
+static void unbranch_flat(struct move *m, ffstr in, ffstr base, ffstr *out)
+{
+	ffstr parent;
+	if (ffpath_splitpath_str(base, &parent, NULL) >= 0) {
+		ffvec_addfmt(&m->oname, "%S%c", &parent, FFPATH_SLASH);
+	}
+
+	ffstr name;
+	ffpath_splitpath_str(in, NULL, &name);
+	ffvec_addstr(&m->oname, &name);
+	ffstr_setstr(out, &m->oname);
+	m->oname.len = 0;
+}
+
 /** Search and replace in a file name
 name: [Input] old file name;  [Output] new file name
 Return 0 if replaced */
@@ -119,18 +147,17 @@ static int replace(struct move *m, ffstr *name)
 	if (ffpath_splitpath_str(*name, &path, &nameonly) >= 0)
 		path.len++;
 
-	ffvec rname = {};
-	ffvec_addstr(&rname, &path);
+	m->replace_buf.len = 0;
+	ffvec_addstr(&m->replace_buf, &path);
 
 	uint flags = FFSTR_REPLACE_ALL;
 #ifdef FF_WIN
 	flags |= FFSTR_REPLACE_ICASE;
 #endif
-	if (0 == ffstr_growadd_replace((ffstr*)&rname, &rname.cap, &nameonly, &m->search, &m->replace, flags)) {
-		ffvec_free(&rname);
+	if (0 == ffstr_growadd_replace((ffstr*)&m->replace_buf, &m->replace_buf.cap, &nameonly, &m->search, &m->replace, flags)) {
 		return -1;
 	}
-	ffstr_setstr(name, &rname);
+	ffstr_setstr(name, &m->replace_buf);
 	return 0;
 }
 
@@ -164,6 +191,9 @@ static void move_run(fcom_op *op)
 				core->com->input_dir(m->cmd, fd);
 			}
 
+			if (0 != core->com->input_allowed(m->cmd, in))
+				continue;
+
 			core->file->close(m->in);
 
 			if (fffile_isdir(fffileinfo_attr(&fi)))
@@ -172,19 +202,22 @@ static void move_run(fcom_op *op)
 			out = in;
 			if (m->unbranch)
 				unbranch(m, in, base, &out);
+			else if (m->unbranch_flat)
+				unbranch_flat(m, in, base, &out);
 
 			if (m->search.len != 0) {
-				int repl = !replace(m, &out);
-				if (!repl && !m->unbranch)
-					continue; // name hasn't changed
+				replace(m, &out);
 			}
+
+			if (ffstr_eq2(&in, &out))
+				continue;
 
 			if (m->cmd->test) {
 				fcom_verblog("move: %S -> %S", &in, &out);
 				continue;
 			}
 
-			r = core->file->move(in, out, 0);
+			r = core->file->move(in, out, FCOM_FILE_MOVE_SAFE);
 			if (r == FCOM_FILE_ERR) goto end;
 			continue;
 		}

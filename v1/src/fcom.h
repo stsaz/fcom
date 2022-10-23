@@ -11,8 +11,8 @@
 #include <ffbase/vector.h>
 #include <assert.h>
 
-#define FCOM_VER "1.0beta3"
-#define FCOM_CORE_VER 103
+#define FCOM_VER "1.0beta4"
+#define FCOM_CORE_VER 104
 
 #undef stdin
 #undef stdout
@@ -115,6 +115,9 @@ struct fcom_core {
 	void (*log)(uint flags, const char *fmt, ...);
 	void (*logv)(uint flags, const char *fmt, va_list args);
 
+	/** Get random number */
+	uint (*random)();
+
 	uint debug :1;
 	uint verbose :1;
 };
@@ -151,6 +154,7 @@ typedef struct fcom_cominfo {
 	byte recursive;
 
 	ffstr output;
+	char *outputz;
 	ffstr chdir;
 	byte stdout;
 	byte overwrite;
@@ -217,6 +221,10 @@ struct fcom_command {
 	This is required for recursive input file names scanning.
 	dir: directory descriptor.  Don't use it afterwards! */
 	void (*input_dir)(fcom_cominfo *c, fffd dir);
+
+	/** Check if the name is included or/and not excluded.
+	Return 0 if allowed */
+	int (*input_allowed)(fcom_cominfo *c, ffstr name);
 
 	/** Parse command-line arguments */
 	int (*args_parse)(fcom_cominfo *cmd, const ffcmdarg_arg *args, void *obj);
@@ -319,6 +327,11 @@ enum FCOM_FILE_FD {
 	FCOM_FILE_ACQUIRE, // Acquire descriptor.  Only open() can be called afterwards.
 };
 
+enum FCOM_FILE_MOVE_F {
+	/** Fail if target file already exists */
+	FCOM_FILE_MOVE_SAFE = 1,
+};
+
 typedef void fcom_file_obj;
 
 /** Bufferred file I/O interface.
@@ -359,8 +372,12 @@ struct fcom_file {
 	By default, don't fail if the directory already exists. */
 	int (*dir_create)(const char *name, uint flags);
 
-	/** Move file */
+	/** Move file
+	flags: enum FCOM_FILE_MOVE_F */
 	int (*move)(ffstr old, ffstr _new, uint flags);
+
+	/** Delete file */
+	int (*delete)(const char *name, uint flags);
 };
 
 

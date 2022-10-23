@@ -24,7 +24,7 @@ static const char* list_help()
 	return "\
 List directory contents.\n\
 Usage:\n\
-  fcom list INPUT [OPTIONS]\n\
+  fcom list INPUT... [OPTIONS]\n\
     OPTIONS:\n\
     -l, --long          Use long format\n\
 ";
@@ -106,6 +106,9 @@ static void list_run(fcom_op *op)
 				fffd fd = core->file->fd(l->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(l->cmd, fd);
 			}
+
+			if (0 != core->com->input_allowed(l->cmd, l->name))
+				goto next;
 
 			core->file->close(l->in);
 			l->st = I_PRINT;

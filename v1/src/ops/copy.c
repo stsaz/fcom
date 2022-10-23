@@ -17,6 +17,7 @@ struct copy {
 	uint stop;
 
 	fcom_file_obj *in;
+	ffstr name;
 	char *iname;
 	uint64 in_off;
 	uint nfiles;
@@ -54,6 +55,10 @@ struct copy {
 
 static int args_parse(struct copy *c, fcom_cominfo *cmd)
 {
+	c->preserve_date = 1;
+	if (cmd->buffer_size == 0)
+		cmd->buffer_size = BUF_LARGE;
+
 	static const ffcmdarg_arg args[] = {
 		{ 'e',	"encrypt",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, FF_OFF(struct copy, encrypt) },
 		{ 'd',	"decrypt",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, FF_OFF(struct copy, decrypt) },
@@ -62,13 +67,19 @@ static int args_parse(struct copy *c, fcom_cominfo *cmd)
 		{ 0,	"write-into",	FFCMDARG_TSWITCH, FF_OFF(struct copy, write_into) },
 		{}
 	};
-	return core->com->args_parse(cmd, args, c);
+	if (0 != core->com->args_parse(cmd, args, c))
+		return -1;
+
+	if (cmd->recursive != 0xff)
+		cmd->recursive = 1;
+
+	return 0;
 }
 
 static const char* copy_help()
 {
 	return "\
-Copy files from one place to another, plus encryption & verification.\n\
+Copy files, plus encryption & verification.\n\
 Implies '--recursive'.\n\
 Uses large '--buffer' by default.\n\
 Usage:\n\
@@ -82,7 +93,6 @@ Usage:\n\
 \n\
     -y, --verify        Verify data consistency with MD5.\n\
                         Implies '--directio' on output file.\n\
-                        Prints hash sums with '--verbose'.\n\
 \n\
         --rename-source\n\
                         Rename source file to *.deleted after successful operation\n\
@@ -101,14 +111,9 @@ static void copy_close(fcom_op *op);
 static fcom_op* copy_create(fcom_cominfo *cmd)
 {
 	struct copy *c = ffmem_new(struct copy);
-	c->preserve_date = 1;
-	if (cmd->buffer_size == 0)
-		cmd->buffer_size = BUF_LARGE;
 
 	if (0 != args_parse(c, cmd))
 		goto end;
-	if (cmd->recursive != 0xff)
-		cmd->recursive = 1;
 	c->cmd = cmd;
 
 	struct fcom_file_conf fc = {};
@@ -163,9 +168,9 @@ static void copy_run(fcom_op *op)
 	while (!FFINT_READONCE(c->stop)) {
 		switch (c->st) {
 
-		case I_SRC: {
-			ffstr name;
-			if (0 > core->com->input_next(c->cmd, &name, &c->basename, 0)) {
+		case I_SRC:
+			copy_reset(c);
+			if (0 > core->com->input_next(c->cmd, &c->name, &c->basename, 0)) {
 				if (c->nfiles == 0) {
 					fcom_errlog("no input files");
 					goto end;
@@ -174,9 +179,8 @@ static void copy_run(fcom_op *op)
 				goto end;
 			}
 			c->nfiles++;
-			c->iname = ffsz_dupstr(&name);
-			c->st++;
-		}
+			c->iname = ffsz_dupstr(&c->name);
+			c->st = I_OPEN_IN;
 			// fallthrough
 
 		case I_OPEN_IN: {
@@ -186,8 +190,7 @@ static void copy_run(fcom_op *op)
 			if (r == FCOM_FILE_ERR) goto end;
 
 			if (!c->cmd->stdout) {
-				ffstr name = FFSTR_INITZ(c->iname);
-				if (NULL == (c->oname = out_name(c, name, c->basename)))
+				if (NULL == (c->oname = out_name(c, c->name, c->basename)))
 					goto end;
 				c->oname_tmp = ffsz_allocfmt("%s.fcomtmp", c->oname);
 			}
@@ -197,6 +200,11 @@ static void copy_run(fcom_op *op)
 			if (r == FCOM_FILE_ERR) goto end;
 			if (fffile_isdir(fffileinfo_attr(&fi))) {
 				c->st = I_MKDIR;
+				continue;
+			}
+
+			if (0 != core->com->input_allowed(c->cmd, c->name)) {
+				c->st = I_SRC;
 				continue;
 			}
 
@@ -222,7 +230,7 @@ static void copy_run(fcom_op *op)
 			if (0 != crypt_open(c)) goto end;
 			if (0 != verify_open(c)) goto end;
 
-			c->st++;
+			c->st = I_READ;
 		}
 			// fallthrough
 
@@ -252,7 +260,7 @@ static void copy_run(fcom_op *op)
 				continue;
 			}
 
-			if (0 != crypt_process(c, &c->data)) goto end;
+			if (0 != crypt_process(c, &c->cr.aes_in, &c->data)) goto end;
 			verify_process(c, c->data);
 
 			c->st = I_WRITE;
@@ -260,7 +268,7 @@ static void copy_run(fcom_op *op)
 			// fallthrough
 
 		case I_WRITE:
-			if (0 != output_write(c)) goto end;
+			if (0 != output_write(c, c->data)) goto end;
 			c->st = I_READ;
 			if (c->cr.aes_obj != NULL)
 				c->st = I_CRYPT;
@@ -313,7 +321,6 @@ static void copy_run(fcom_op *op)
 			fcom_verblog("'%s' -> '%s', %,U"
 				, c->iname, c->oname, c->total);
 
-			copy_reset(c);
 			c->st = I_SRC;
 			continue;
 		}

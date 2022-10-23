@@ -21,7 +21,13 @@ static int args_parse(struct hex *h, fcom_cominfo *cmd)
 	static const ffcmdarg_arg args[] = {
 		{}
 	};
-	return core->com->args_parse(cmd, args, h);
+	if (0 != core->com->args_parse(cmd, args, h))
+		return -1;
+
+	if (h->cmd->output.len == 0)
+		h->cmd->stdout = 1;
+
+	return 0;
 }
 
 static const char* hex_help()
@@ -49,9 +55,6 @@ static fcom_op* hex_create(fcom_cominfo *cmd)
 
 	if (0 != args_parse(h, cmd))
 		goto end;
-
-	if (h->cmd->output.len == 0)
-		h->cmd->stdout = 1;
 
 	struct fcom_file_conf fc = {};
 	fc.buffer_size = cmd->buffer_size;
@@ -90,6 +93,9 @@ static void hex_run(fcom_op *op)
 					rc = 0;
 				goto end;
 			}
+
+			if (0 != core->com->input_allowed(h->cmd, in))
+				continue;
 
 			uint iflags = fcom_file_cominfo_flags_i(h->cmd);
 			r = core->file->open(h->in, in.ptr, iflags);

@@ -502,7 +502,7 @@ end:
 
 	if (r != 0 && errmsg != NULL) {
 		ffsize cap = 0;
-		const char *err = ffconf_errstr(r);
+		const char *err = c.lt.error;
 		if (r == -FFCONF_ESCHEME)
 			err = cs.errmsg;
 		ffstr_growfmt(errmsg, &cap, "%u:%u: %s"

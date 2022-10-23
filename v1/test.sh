@@ -82,7 +82,7 @@ if test "$CMD" == "copy" ; then
 	! test -f dircopy/dir/file
 	rm -rf dircopy/*
 
-	# Recursive Include Exclude: dir -> dir
+	# Recursive Include-Exclude: dir -> dir
 	../fcom copy -R "dir" -C "dircopy" -I "*.d*" -E "*.doc" -v
 	diff dir/file.docx dircopy/dir/file.docx
 	! test -f dircopy/dir/file.doc
@@ -90,14 +90,15 @@ if test "$CMD" == "copy" ; then
 	! test -f dircopy/dir/file
 	rm -rf dircopy/*
 
-	# # Recursive Include: --include rejects directory
-	# ../fcom copy -R "dir" -C "dircopy" -I "*.d*" -v
-	# ! test -d dircopy/dir/d2
+	# Recursive Include: --include rejects directory
+	../fcom copy -R "dir" -C "dircopy" -I "*.d*" -v
+	! test -d dircopy/dir/d2
+	rm -rf dircopy/*
 
-	# # Recursive Include: --include accepts directory
-	# echo hello >dir/d2/file.doc
-	# ../fcom copy -R "dir" -C "dircopy" -I "*.d*" -v
-	# diff dir/d2/file.doc dircopy/dir/d2/file.doc
+	# Recursive Include: --include accepts directory
+	echo hello >dir/d2/file.doc
+	../fcom copy -R "dir" -C "dircopy" -I "*.d*" -v
+	diff dir/d2/file.doc dircopy/dir/d2/file.doc
 
 elif test "$CMD" == "hex" ; then
 
@@ -121,17 +122,24 @@ elif test "$CMD" == "move" ; then
 	# unbranch
 	echo hi >>fcomtest/unbranch/a/hi
 	./fcom move --unbranch "fcomtest/unbranch" -v
-	cat "fcomtest/unbranch - a - hi"
+	test -f "fcomtest/unbranch - a - hi"
 
 	# unbranch + replace
 	echo hi >>fcomtest/unbranch/a/hi
 	./fcom move --unbranch "fcomtest/unbranch" --replace="a - /new - " -v
-	cat "fcomtest/unbranch - new - hi"
+	test -f "fcomtest/unbranch - new - hi"
 
 	# replace
 	echo hi >>fcomtest/unbranch/a/test
 	./fcom move "fcomtest/unbranch/a/test" --replace="test/new" -v
-	cat "fcomtest/unbranch/a/new"
+	test -f "fcomtest/unbranch/a/new"
+
+	# unbranch-flat
+	cd fcomtest
+	echo hi >>unbranch/a/hi
+	../fcom move --unbranch-flat "./unbranch" -v
+	test -f "hi"
+	cd ..
 
 elif test "$CMD" == "sync" ; then
 
@@ -155,7 +163,7 @@ elif test "$CMD" == "sync" ; then
 
 	# sync 2 dirs
 	../fcom sync "left" -o "right" -v --add
-	../fcom sync "left" -o "right" -v --delete
+	../fcom sync "left" -o "right" -v --delete -f
 
 	# write snapshot, diff snapshot and dir
 	../fcom sync "left" --snapshot -o "fcomtest.snap" -v
@@ -189,6 +197,27 @@ elif test "$CMD" == "touch" ; then
 	./fcom touch -R "fcomtest/dirtouch" --date="2022-09-01 01:02:03" -v
 	ls -Rl fcomtest/dirtouch
 
+elif test "$CMD" == "trash" ; then
+	echo 123 >fcomtest/trash
+	echo 123 >fcomtest/trash2
+	./fcom trash "fcomtest/trash" "fcomtest/trash2" -v -f
+
+	echo 123 >fcomtest/trash
+	echo 123 >fcomtest/trash2
+	./fcom trash "fcomtest/trash" "fcomtest/trash2" --rename -v -f
+
+	echo 123 >fcomtest/trash
+	echo 123 >fcomtest/trash2
+	./fcom trash "fcomtest/trash" "fcomtest/trash2" --wipe --rename -v -f
+
+elif test "$CMD" == "zip" ; then
+
+	mkdir fcomtest/zipdir
+	echo 123 >fcomtest/zipdir/file
+	./fcom zip -R "fcomtest/zipdir" -o "fcomtest/zip.zip"
+	test -f "fcomtest/zip.zip"
+	unzip -t "fcomtest/zip.zip"
+
 elif test "$CMD" == "all" ; then
 
 	sh $0 copy
@@ -196,7 +225,10 @@ elif test "$CMD" == "all" ; then
 	sh $0 list
 	sh $0 move
 	sh $0 sync
+	sh $0 textcount
 	sh $0 touch
+	sh $0 trash
+	sh $0 zip
 
 else
 	exit 1

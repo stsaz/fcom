@@ -74,9 +74,12 @@ static void file_close(fcom_file_obj *_f)
 			prealloc_trunc(f);
 		}
 
-		if (!(f->open_flags & (FCOM_FILE_STDIN | FCOM_FILE_STDOUT))
-			&& 0 != fffile_close(f->fd))
-			fcom_syserrlog("%s: fffile_close", f->name);
+		if (!(f->open_flags & (FCOM_FILE_STDIN | FCOM_FILE_STDOUT))) {
+			if (0 != fffile_close(f->fd))
+				fcom_syserrlog("%s: fffile_close", f->name);
+			else
+				fcom_dbglog("%s: closed", f->name);
+		}
 
 		f->fd = FFFILE_NULL;
 	}
@@ -147,7 +150,12 @@ static int file_open(fcom_file_obj *_f, const char *name, uint how)
 
 #ifdef FF_UNIX
 			if (fferr_last() == EINVAL && (flags & FFFILE_DIRECT)) {
+				fcom_dbglog("directio: EINVAL");
 				flags &= ~FFFILE_DIRECT;
+				if (how & FCOM_FILE_CREATENEW) {
+					flags &= ~FFFILE_CREATENEW;
+					flags |= FFFILE_CREATE;
+				}
 				continue;
 			}
 #endif
@@ -190,7 +198,11 @@ static int file_read(fcom_file_obj *_f, ffstr *d, int64 off)
 
 	b = fcache_nextbuf(&f->fcache);
 
-	ffssize r = fffile_readat(f->fd, b->ptr, f->buffer_size, offset);
+	ffssize r;
+	if (f->open_flags & FCOM_FILE_STDIN)
+		r = fffile_read(f->fd, b->ptr, f->buffer_size);
+	else
+		r = fffile_readat(f->fd, b->ptr, f->buffer_size, offset);
 	if (r < 0) {
 		fcom_syserrlog("file read: %s", f->name);
 		return FCOM_FILE_ERR;
@@ -288,14 +300,14 @@ static int file_write(fcom_file_obj *_f, ffstr data, int64 off)
 		}
 	}
 
-	ffsize data_len = data.len;
-
 	for (;;) {
 		ffstr d;
 		ffsize n = data.len;
 		ffint64 woff = fbuf_write(&f->wbuf, f->buffer_size, &data, off, &d);
-		if (n != data.len)
+		off += n - data.len;
+		if (n != data.len) {
 			fcom_dbglog("%s: write: cached %L bytes @%U+%L", f->name, n - data.len, f->wbuf.off, f->wbuf.len);
+		}
 		if (woff < 0) {
 			break;
 		}
@@ -307,7 +319,7 @@ static int file_write(fcom_file_obj *_f, ffstr data, int64 off)
 		f->wbuf.off = 0;
 	}
 
-	f->cur_off = off + data_len;
+	f->cur_off = off;
 	return FCOM_FILE_OK;
 }
 
@@ -411,7 +423,7 @@ static int file_move(ffstr old, ffstr _new, uint flags)
 	char *src = ffsz_dupstr(&old);
 	char *dst = ffsz_dupstr(&_new);
 
-	if (1) {
+	if (flags & FCOM_FILE_MOVE_SAFE) {
 		fffd fd = fffile_open(dst, FFFILE_READONLY);
 		if (fd != FFFILE_NULL) {
 			fffile_close(fd);
@@ -435,6 +447,16 @@ end:
 	return rc;
 }
 
+static int file_delete(const char *name, uint flags)
+{
+	if (0 != fffile_remove(name)) {
+		fcom_syserrlog("file delete: %s", name);
+		return -1;
+	}
+	fcom_verblog("file deleted: %s", name);
+	return 0;
+}
+
 const fcom_file _fcom_file = {
 	file_create,
 	file_destroy,
@@ -445,4 +467,5 @@ const fcom_file _fcom_file = {
 	file_mtime, file_mtime_set,
 	dir_create,
 	file_move,
+	file_delete,
 };

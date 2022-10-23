@@ -8,7 +8,7 @@
 #include <util/fntree.h>
 
 extern fcom_core *core;
-static int cmd_args_parse(fcom_cominfo *cmd, const ffcmdarg_arg *args, void *obj);
+static int cmd_args_parse2(fcom_cominfo *cmd, const ffcmdarg_arg *args, void *obj, uint flags);
 
 #define syserrlog(fmt, ...)  fcom_syserrlog("com: " fmt, ##__VA_ARGS__)
 #define errlog(fmt, ...)  fcom_errlog("com: " fmt, ##__VA_ARGS__)
@@ -37,7 +37,14 @@ struct cmd {
 	fffd ftree_dir;
 	uint isdir :1;
 	uint set_ftree :1;
+	uint args_parsed :1;
 	int result;
+};
+
+enum {
+	ARGS_MAIN,
+	ARGS_OPERATION = 1,
+	ARGS_GENERAL = 2,
 };
 
 void com_init()
@@ -65,6 +72,7 @@ static void com_signal_all(uint signal)
 static fcom_cominfo* cmd_create()
 {
 	struct cmd *c = ffmem_new(struct cmd);
+	c->result = 1;
 	c->cmd.input_fd = FFFILE_NULL;
 	ffstr path = {};
 	c->ftree = fntree_create(path);
@@ -81,7 +89,7 @@ static void cmd_destroy(fcom_cominfo *cmd)
 	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
 
 	if (cmd->on_complete != NULL) {
-		fcom_dbglog("calling on_complete()...");
+		fcom_dbglog("calling on_complete(): %d", c->result);
 		cmd->on_complete(cmd->opaque, c->result);
 	}
 
@@ -165,11 +173,6 @@ err:
 
 static int args_input(ffcmdarg_scheme *as, struct fcom_cominfo *cmd, ffstr *s)
 {
-	if (cmd->operation == NULL) {
-		cmd->operation = ffsz_dupstr(s);
-		return 0;
-	}
-
 	if (s->len == 0) {
 		cmd->stdin = 1;
 	} else if (s->ptr[0] == '@') {
@@ -198,7 +201,8 @@ static int args_input(ffcmdarg_scheme *as, struct fcom_cominfo *cmd, ffstr *s)
 	}
 
 	ffstr *p = ffvec_zpushT(&cmd->input, ffstr);
-	ffstr_dupstr(p, s);
+	p->ptr = ffsz_dupstr(s);
+	p->len = s->len;
 	return 0;
 }
 
@@ -262,28 +266,18 @@ static int args_help(ffcmdarg_scheme *as, struct fcom_cominfo *cmd)
 
 static int args_parse(struct cmd *c)
 {
-	static const ffcmdarg_arg args[] = {
-		// input
-		{ 0,	"",	FFCMDARG_TSTR | FFCMDARG_FMULTI, (ffsize)args_input },
-		{ 'I',	"include",	FFCMDARG_TSTR | FFCMDARG_FMULTI, (ffsize)args_include },
-		{ 'E',	"exclude",	FFCMDARG_TSTR | FFCMDARG_FMULTI, (ffsize)args_exclude },
-		{ 'R',	"recursive",	FFCMDARG_TSWITCH, FF_OFF(struct fcom_cominfo, recursive) },
+	if (c->cmd.operation == NULL
+		&& c->cmd.argc != 0 && c->cmd.argv[0][0] != '-') {
+		c->cmd.operation = ffsz_dup(c->cmd.argv[0]);
+		c->cmd.argv++; // skip operation arg
+		c->cmd.argc--;
+	}
 
-		// output
-		{ 'o',	"output",	FFCMDARG_TSTR, FF_OFF(struct fcom_cominfo, output) },
-		{ 'C',	"chdir",	FFCMDARG_TSTR, FF_OFF(struct fcom_cominfo, chdir) },
-		{ 'f',	"overwrite",	FFCMDARG_TSWITCH, FF_OFF(struct fcom_cominfo, overwrite) },
-		{ 'T',	"test",	FFCMDARG_TSWITCH, FF_OFF(struct fcom_cominfo, test) },
-		{ 0,	"no-prealloc",	FFCMDARG_TSWITCH, FF_OFF(struct fcom_cominfo, no_prealloc) },
-
-		// shared
-		{ 0,	"buffer",	FFCMDARG_TSIZE32, (ffsize)args_buffer },
-		{ 0,	"directio",	FFCMDARG_TSWITCH, FF_OFF(struct fcom_cominfo, directio) },
+	static const ffcmdarg_arg args_main[] = {
 		{ 'h',	"help",	FFCMDARG_TSWITCH, (ffsize)args_help },
 		{}
 	};
-
-	if (0 != cmd_args_parse(&c->cmd, args, &c->cmd))
+	if (0 != cmd_args_parse2(&c->cmd, args_main, &c->cmd, ARGS_MAIN))
 		return -1;
 
 	if (c->cmd.operation == NULL) {
@@ -385,9 +379,8 @@ end:
 	return rc;
 }
 
-static int incl_excl(struct cmd *c, ffstr name)
+static int cmd_input_allowed(fcom_cominfo *cmd, ffstr name)
 {
-	fcom_cominfo *cmd = &c->cmd;
 	int k = 1;
 	ffstr *it;
 	uint flags = FFS_WC_ICASE;
@@ -403,7 +396,7 @@ static int incl_excl(struct cmd *c, ffstr name)
 		}
 
 		if (!k)
-			return -1;
+			return 1;
 	}
 
 	FFSLICE_WALK(&cmd->exclude, it) {
@@ -415,7 +408,7 @@ static int incl_excl(struct cmd *c, ffstr name)
 	}
 
 	if (!k)
-		return -1;
+		return 2;
 	return 0;
 }
 
@@ -492,8 +485,6 @@ static int cmd_input_next(fcom_cominfo *cmd, ffstr *name, ffstr *ubase, uint fla
 			const fntree_block *bbase = _fntr_cur_i(&c->ftree_cur, 1);
 			if (bbase == NULL)
 				bbase = b;
-			if (0 != incl_excl(c, nm))
-				continue;
 			base = fntree_path(bbase);
 		} else {
 			ffstr_null(&base);
@@ -528,10 +519,52 @@ static void cmd_input_dir(fcom_cominfo *cmd, fffd dir)
 	fffile_close(dir);
 }
 
+/** Parse operation & general cmd-line arguments */
 static int cmd_args_parse(fcom_cominfo *cmd, const ffcmdarg_arg *args, void *obj)
 {
+	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
+	FCOM_ASSERT(!c->args_parsed);
+	c->args_parsed = 1;
+
+	int r = cmd_args_parse2(cmd, args, obj, ARGS_OPERATION);
+	if (r != 0)
+		return r;
+
+	static const ffcmdarg_arg args_general[] = {
+		// input
+		{ 0,	"",	FFCMDARG_TSTR | FFCMDARG_FMULTI,	(ffsize)args_input },
+		{ 'I',	"include",	FFCMDARG_TSTR | FFCMDARG_FMULTI,	(ffsize)args_include },
+		{ 'E',	"exclude",	FFCMDARG_TSTR | FFCMDARG_FMULTI,	(ffsize)args_exclude },
+		{ 'R',	"recursive",	FFCMDARG_TSWITCH,	FF_OFF(struct fcom_cominfo, recursive) },
+
+		// output
+		{ 'o',	"out",	FFCMDARG_TSTRZ,	FF_OFF(struct fcom_cominfo, outputz) },
+		{ 'C',	"chdir",	FFCMDARG_TSTR,	FF_OFF(struct fcom_cominfo, chdir) },
+		{ 'f',	"overwrite",	FFCMDARG_TSWITCH,	FF_OFF(struct fcom_cominfo, overwrite) },
+		{ 'T',	"test",	FFCMDARG_TSWITCH,	FF_OFF(struct fcom_cominfo, test) },
+		{ 0,	"no-prealloc",	FFCMDARG_TSWITCH,	FF_OFF(struct fcom_cominfo, no_prealloc) },
+
+		// shared
+		{ 0,	"buffer",	FFCMDARG_TSIZE32,	(ffsize)args_buffer },
+		{ 0,	"directio",	FFCMDARG_TSWITCH,	FF_OFF(struct fcom_cominfo, directio) },
+		{}
+	};
+
+	r = cmd_args_parse2(cmd, args_general, cmd, ARGS_GENERAL);
+	if (cmd->outputz != NULL)
+		ffstr_setz(&cmd->output, cmd->outputz);
+	return r;
+}
+
+static int cmd_args_parse2(fcom_cominfo *cmd, const ffcmdarg_arg *args, void *obj, uint flags)
+{
 	ffstr errmsg = {};
-	int r = ffcmdarg_parse_object(args, obj, (const char**)cmd->argv, cmd->argc, FFCMDARG_SCF_SKIP_UNKNOWN, &errmsg);
+
+	uint f = 0;
+	if (flags != ARGS_GENERAL)
+		f = FFCMDARG_SCF_SKIP_UNKNOWN | FFCMDARG_SCF_REMOVE_PROCESSED;
+
+	int r = ffcmdarg_parse_object2(args, obj, (const char**)cmd->argv, &cmd->argc, f, &errmsg);
 	if (r < 0 && r != -R_DONE) {
 		errlog("command-line: %S", &errmsg);
 	}
@@ -545,6 +578,6 @@ const struct fcom_command _fcom_com = {
 	cmd_create,
 	cmd_run,
 	cmd_destroy, cmd_complete,
-	cmd_input_next, cmd_input_dir,
+	cmd_input_next, cmd_input_dir, cmd_input_allowed,
 	cmd_args_parse,
 };

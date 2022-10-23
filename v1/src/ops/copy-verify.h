@@ -36,19 +36,14 @@ static int verify_result(struct copy *c)
 	byte result_w[16];
 	c->vf.md5->fin(c->vf.md5_obj, result_w, 16);
 
-	const char *iname = c->iname;
-	if (c->cr.aes_obj == NULL) {
-		fcom_verblog("%*xb *%s", (ffsize)16, c->vf.md5_result_r, c->iname);
-		iname = "should be";
-	}
-	fcom_verblog("%*xb *%s", (ffsize)16, result_w, c->oname);
-
 	if (0 != ffmem_cmp(c->vf.md5_result_r, result_w, 16)) {
 		fcom_errlog("MD5 verification failed.  '%s': %*xb  '%s': %*xb"
-			, iname, (ffsize)16, c->vf.md5_result_r
+			, c->iname, (ffsize)16, c->vf.md5_result_r
 			, c->oname, (ffsize)16, result_w);
 		return 1;
 	}
+
+	fcom_infolog("%*xb *%s", (ffsize)16, result_w, c->oname);
 	return 0;
 }
 

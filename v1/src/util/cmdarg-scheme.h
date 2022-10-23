@@ -10,6 +10,7 @@ ffcmdarg_parse_object
 
 #pragma once
 #include "cmdarg.h"
+#include <ffbase/vector.h>
 
 enum FFCMDARG_SCHEME_T {
 	FFCMDARG_TSWITCH,
@@ -88,6 +89,7 @@ typedef struct ffcmdarg_scheme {
 
 enum FFCMDARG_SCHEME_F {
 	FFCMDARG_SCF_SKIP_UNKNOWN = 1, // skip unknown keys
+	FFCMDARG_SCF_REMOVE_PROCESSED = 2, // remove processed arguments
 };
 
 /** Initialize parser object
@@ -125,6 +127,7 @@ static inline const ffcmdarg_arg* _ffcmdarg_arg_find_short(const ffcmdarg_arg *a
 }
 
 #define FFCMDARG_ESCHEME  2
+#define FFCMDARG_ESKIP  3
 
 #define _FFCMDARG_ERR(a, msg) \
 	(a)->errmsg = msg,  -FFCMDARG_ESCHEME
@@ -193,7 +196,7 @@ static inline int ffcmdarg_scheme_process(ffcmdarg_scheme *as, int r)
 
 		if (as->arg == NULL) {
 			if (as->flags & FFCMDARG_SCF_SKIP_UNKNOWN)
-				return r;
+				return -FFCMDARG_ESKIP;
 			return _FFCMDARG_ERR(as, "unknown key");
 		}
 
@@ -227,7 +230,7 @@ static inline int ffcmdarg_scheme_process(ffcmdarg_scheme *as, int r)
 	case FFCMDARG_RKEYVAL:
 		if (as->arg == NULL) {
 			if (as->flags & FFCMDARG_SCF_SKIP_UNKNOWN)
-				return r;
+				return -FFCMDARG_ESKIP;
 			return _FFCMDARG_ERR(as, "unexpected value");
 		}
 
@@ -357,11 +360,12 @@ scheme_flags: enum FFCMDARG_SCHEME_F
 errmsg: (optional) error message; must free with ffstr_free()
 Return 0 on success
   <0 on error: enum FFCMDARG_E */
-static inline int ffcmdarg_parse_object(const ffcmdarg_arg *args, void *obj, const char **argv, ffuint argc, ffuint scheme_flags, ffstr *errmsg)
+static inline int ffcmdarg_parse_object2(const ffcmdarg_arg *args, void *obj, const char **argv, ffuint *argc, ffuint scheme_flags, ffstr *errmsg)
 {
+	ffvec skipped = {};
 	int r;
 	ffcmdarg a;
-	ffcmdarg_init(&a, argv, argc);
+	ffcmdarg_init(&a, argv, *argc);
 
 	ffcmdarg_scheme as;
 	ffcmdarg_scheme_init(&as, args, obj, &a, scheme_flags);
@@ -372,8 +376,14 @@ static inline int ffcmdarg_parse_object(const ffcmdarg_arg *args, void *obj, con
 		if (r < 0)
 			break;
 
+		int r2 = r;
 		r = ffcmdarg_scheme_process(&as, r);
-		if (r <= 0)
+		if (r == -FFCMDARG_ESKIP) {
+			if (r2 != FFCMDARG_RKEYVAL
+				&& (scheme_flags & FFCMDARG_SCF_REMOVE_PROCESSED)) {
+				*ffvec_pushT(&skipped, void*) = (void*)argv[a.iarg];
+			}
+		} else if (r <= 0)
 			break;
 	}
 
@@ -385,6 +395,13 @@ static inline int ffcmdarg_parse_object(const ffcmdarg_arg *args, void *obj, con
 		ffstr_growfmt(errmsg, &cap, "near '%S': %s"
 			, &a.val, err);
 	}
+
+	if (r == 0 && skipped.len < *argc) {
+		ffmem_copy(argv, skipped.ptr, skipped.len * sizeof(void*));
+		argv[skipped.len] = NULL;
+		*argc = skipped.len;
+	}
+	ffvec_free(&skipped);
 
 	return r;
 }

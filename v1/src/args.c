@@ -13,10 +13,14 @@ static const ffcmdarg_arg args[] = {
 	{}
 };
 
-int args_read(struct args *a, int argc, char **argv)
+int args_read(struct args *a, uint argc, char **argv)
 {
+	argv++; // skip executable argument
+	argc--;
+
 	ffstr errmsg = {};
-	int r = ffcmdarg_parse_object(args, a, (const char**)argv, argc, FFCMDARG_SCF_SKIP_UNKNOWN, &errmsg);
+	uint f = FFCMDARG_SCF_SKIP_UNKNOWN | FFCMDARG_SCF_REMOVE_PROCESSED;
+	int r = ffcmdarg_parse_object2(args, a, (const char**)argv, &argc, f, &errmsg);
 	if (r < 0) {
 		stdlog(FCOM_LOG_ERR, "command-line: %S", &errmsg);
 		goto err;

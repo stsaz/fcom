@@ -4,6 +4,7 @@ ROOT := ..
 FCOM_DIR := $(ROOT)/fcom/v1
 FFBASE_DIR := $(ROOT)/ffbase
 FFOS_DIR := $(ROOT)/ffos
+FFPACK_DIR := $(ROOT)/ffpack
 
 include $(FFBASE_DIR)/test/makeconf
 
@@ -17,24 +18,28 @@ MODS := \
 	sync.$(SO) \
 	textcount.$(SO) \
 	touch.$(SO) \
-	trash.$(SO)
+	trash.$(SO) \
+	zip.$(SO)
 BINS := $(BIN) core.$(SO) $(MODS)
 
 CFLAGS := -I$(FCOM_DIR)/src -I$(FFOS_DIR) -I$(FFBASE_DIR) \
 	-DFFBASE_HAVE_FFERR_STR -DFFBASE_MEM_ASSERT \
-	-Wall \
+	-Wall -Wextra -Wno-unused-parameter \
 	-fPIC \
 	-march=nehalem
 ifeq "$(OPT)" "0"
 	CFLAGS += -g -O0 -DFF_DEBUG -Werror
+# 	CFLAGS += -fsanitize=address
+# 	LINKFLAGS += -fsanitize=address
 else
-	CFLAGS += -O3 -fno-strict-aliasing
+	CFLAGS += -O3 -fno-strict-aliasing -fvisibility=hidden
 	LINKFLAGS += -s
 endif
 
 3PT_DIR := $(FCOM_DIR)/3pt/_$(OS)-amd64
 
-GDEPS := $(FCOM_DIR)/src/fcom.h
+GDEPS := $(FCOM_DIR)/src/fcom.h \
+	$(wildcard $(FCOM_DIR)/src/util/*.h)
 
 # build, install
 default: $(BINS)
@@ -45,16 +50,14 @@ build-package: default
 	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) package
 
 %.o: $(FCOM_DIR)/src/%.c \
-		$(wildcard $(FCOM_DIR)/src/*.h) \
-		$(wildcard $(FCOM_DIR)/src/util/*.h)
+		$(wildcard $(FCOM_DIR)/src/*.h)
 	$(C) $(CFLAGS) $< -o $@
 $(BIN): main.o args.o
 	$(LINK) $+ $(LINKFLAGS) -o $@
 
 # Core
 %.o: $(FCOM_DIR)/src/core/%.c $(GDEPS) \
-		$(wildcard $(FCOM_DIR)/src/core/*.h) \
-		$(FCOM_DIR)/src/util/fntree.h
+		$(wildcard $(FCOM_DIR)/src/core/*.h)
 	$(C) $(CFLAGS) $< -o $@
 core.$(SO): com.o core.o file.o
 	$(LINK) -shared $+ $(LINKFLAGS) -o $@
@@ -64,20 +67,17 @@ core.$(SO): com.o core.o file.o
 	$(C) $(CFLAGS) $< -o $@
 
 copy.o: $(FCOM_DIR)/src/ops/copy.c $(GDEPS) \
-		$(wildcard $(FCOM_DIR)/src/ops/copy-*.h) \
-		$(FCOM_DIR)/src/util/fntree.h
+		$(wildcard $(FCOM_DIR)/src/ops/copy-*.h)
 	$(C) $(CFLAGS) $< -o $@
 
 sync.o: $(FCOM_DIR)/src/ops/sync.c $(GDEPS) \
-		$(wildcard $(FCOM_DIR)/src/ops/sync-*.h) \
-		$(FCOM_DIR)/src/util/fntree.h
+		$(wildcard $(FCOM_DIR)/src/ops/sync-*.h)
 	$(C) $(CFLAGS) $< -o $@
 
 # mod.copy, sync
 %.$(SO): %.o
 	$(LINK) -shared $+ $(LINKFLAGS) -o $@
 
-# mod.crypto
 crypto.$(SO): \
 		aes.o \
 		md5.o \
@@ -85,6 +85,15 @@ crypto.$(SO): \
 		$(3PT_DIR)/MD5.a \
 		$(3PT_DIR)/SHA256.a \
 		$(3PT_DIR)/AES.a
+	$(LINK) -shared $+ $(LINKFLAGS) -o $@
+
+zip.o: $(FCOM_DIR)/src/ops/zip.c $(GDEPS) \
+		$(wildcard $(FFPACK_DIR)/*.h)
+	$(C) $(CFLAGS) -I$(FFPACK_DIR) $< -o $@
+crc.o: $(FFPACK_DIR)/crc/crc.c
+	$(C) $(CFLAGS) -I$(FFPACK_DIR) $< -o $@
+zip.$(SO): zip.o \
+		crc32.o crc.o
 	$(LINK) -shared $+ $(LINKFLAGS) -o $@
 
 test: test.o

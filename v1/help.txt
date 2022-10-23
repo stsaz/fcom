@@ -3,14 +3,15 @@ General usage:
   fcom OPERATION [INPUT] [-o OUTPUT] [OPTIONS]
 
 OPERATION:
-  copy                  Copy files from one place to another, plus encryption & verification
+  copy                  Copy files, plus encryption & verification
   hex                   Print file contents in hexadecimal format
   list                  List directory contents
   move                  Move and/or rename files
   sync                  Compare/synchronize directories or create a file tree snapshot
   textcount             Analyze text files (e.g. print number of lines)
   touch                 Change file date/time
-  trash                 Move files to user's trash directory
+  trash                 Move files to user's trash directory, plus obfuscation
+  zip                   Pack files into .zip
 
 INPUT:
   ""                    Process data from STDIN
@@ -29,6 +30,7 @@ INPUT:
   "@FILE"               Get FILE and DIR names from FILE (can be specified only once)
   WILDCARD              Expands to a set of FILE or DIR (meaningful only for cmd.exe on Windows)
 
+-o, --out=OUTPUT        Set output file
 OUTPUT:
   "STDOUT"              Print data to STDOUT
   FILE                  File name (relative or absolute)

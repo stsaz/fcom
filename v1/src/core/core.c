@@ -7,6 +7,7 @@
 #include <FFOS/path.h>
 #include <FFOS/perf.h>
 #include <FFOS/ffos-extern.h>
+#include <FFOS/random.h>
 
 #define syserrlog(fmt, ...)  core_log(FCOM_LOG_ERR | FCOM_LOG_SYSERR, "core: " fmt, ##__VA_ARGS__)
 #define errlog(fmt, ...)  core_log(FCOM_LOG_ERR, "core: " fmt, ##__VA_ARGS__)
@@ -34,6 +35,8 @@ struct core {
 	fftimerqueue tq;
 	uint now_msec;
 	fftime now, utc;
+
+	uint rnd_seed;
 };
 static struct core *gcore;
 
@@ -93,6 +96,17 @@ static fftime core_clock(ffdatetime *dt, uint flags)
 		return gcore->utc;
 	}
 	return gcore->now;
+}
+
+static uint core_random()
+{
+	if (gcore->rnd_seed == 0
+		&& 0 == ffint_cmpxchg(&gcore->rnd_seed, 0, 1)) {
+		fftime now;
+		fftime_now(&now);
+		ffrand_seed(now.sec);
+	}
+	return ffrand_get();
 }
 
 static void tasks_run(void *param)
@@ -232,6 +246,7 @@ fcom_core _fcom_core = {
 	core_timer,
 	core_clock,
 	core_log, core_logv,
+	core_random,
 };
 
 FF_EXP const struct fcom_coreinit fcom_coreinit = {

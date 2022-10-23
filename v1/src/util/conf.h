@@ -107,9 +107,10 @@ static inline const char* ffconf_errstr(int err)
 		"FFCONF_EINCOMPLETE",
 		"FFCONF_ESCHEME",
 	};
-	if (-err - 1 >= FF_COUNT(conf_err))
+	err = -err - 1;
+	if ((ffuint)err >= FF_COUNT(conf_err))
 		return "";
-	return conf_err[-err - 1];
+	return conf_err[err];
 }
 
 enum FFCONF_R {

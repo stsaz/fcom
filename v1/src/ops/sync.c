@@ -164,7 +164,22 @@ static int args_parse(struct sync *s, fcom_cominfo *cmd)
 		{ 0,	"update",	FFCMDARG_TSWITCH, FF_OFF(struct sync, sync_update) },
 		{}
 	};
-	return core->com->args_parse(cmd, args, s);
+	if (0 != core->com->args_parse(cmd, args, s))
+		return -1;
+
+	cmd->recursive = 1;
+
+	if (s->left_snapshot && s->write_snapshot) {
+		fcom_fatlog("'--snapshot' and '--source-snap' can't be used together");
+		return -1;
+	}
+
+	if (cmd->output.len == 0 && !cmd->stdout) {
+		fcom_fatlog("Please use '--output'");
+		return -1;
+	}
+
+	return 0;
 }
 
 static fcom_op* sync_create(fcom_cominfo *cmd)
@@ -174,16 +189,6 @@ static fcom_op* sync_create(fcom_cominfo *cmd)
 
 	if (0 != args_parse(s, cmd))
 		goto end;
-	cmd->recursive = 1;
-
-	if (s->left_snapshot && s->write_snapshot) {
-		fcom_fatlog("'--snapshot' and '--source-snap' can't be used together");
-		goto end;
-	}
-	if (cmd->output.len == 0 && !cmd->stdout) {
-		fcom_fatlog("Please use '--output'");
-		goto end;
-	}
 
 	return s;
 

@@ -47,7 +47,7 @@ static void sync_copy(struct sync *s, fntree_cmp_ent *ce)
 	c->operation = ffsz_dup("copy");
 
 	static const char* argv[] = {
-		"", "--verify"
+		"--verify"
 	};
 	c->argv = (char**)argv;
 	c->argc = FF_COUNT(argv);
@@ -63,6 +63,7 @@ static void sync_copy(struct sync *s, fntree_cmp_ent *ce)
 	c->test = s->cmd->test;
 	c->buffer_size = s->cmd->buffer_size;
 	c->directio = s->cmd->directio;
+	c->overwrite = s->cmd->overwrite;
 
 	uint st = ce->status & 0x0f;
 	if (st == FNTREE_CMP_NEQ)
@@ -85,6 +86,7 @@ static void sync_trash(struct sync *s)
 
 	c->test = s->cmd->test;
 	c->buffer_size = s->cmd->buffer_size;
+	c->overwrite = s->cmd->overwrite;
 
 	c->on_complete = sync_on_op_complete;
 	c->opaque = s;

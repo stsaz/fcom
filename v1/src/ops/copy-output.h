@@ -61,7 +61,8 @@ static int output_fin(struct copy *c)
 
 static void output_reset(struct copy *c)
 {
-	core->file->close(c->out);
+	if (c->out != NULL)
+		core->file->close(c->out);
 	c->ostate = 0;
 	c->total = 0;
 	c->out_off = 0;
@@ -140,11 +141,11 @@ static int output_open(struct copy *c)
 	return 0;
 }
 
-static int output_write(struct copy *c)
+static int output_write(struct copy *c, ffstr input)
 {
-	int r = core->file->write(c->out, c->data, c->out_off);
+	int r = core->file->write(c->out, input, c->out_off);
 	if (r == FCOM_FILE_ERR) return 0xbad;
-	c->out_off += c->data.len;
-	c->total += c->data.len;
+	c->out_off += input.len;
+	c->total += input.len;
 	return 0;
 }

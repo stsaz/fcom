@@ -8,7 +8,7 @@ static const fcom_core *core;
 struct txcnt_stat {
 	uint64 sz;
 	uint64 ln, ln_empty;
-	uint64 b_ln, b_ln_min, b_ln_max;
+	uint64 b_ln, b_ln_max;
 };
 
 struct txcnt {
@@ -18,10 +18,11 @@ struct txcnt {
 	fcom_file_obj *in;
 	ffstr data;
 	ffstr iname;
+	uint no_hdr :1;
 
 	uint64 f;
 	uint64 sz_f_min, sz_f_max;
-	uint64 ln_f_min, ln_f_max;
+	uint64 ln_f_max;
 	struct txcnt_stat all, cur;
 };
 
@@ -30,7 +31,13 @@ static int args_parse(struct txcnt *c, fcom_cominfo *cmd)
 	static const ffcmdarg_arg args[] = {
 		{}
 	};
-	return core->com->args_parse(cmd, args, c);
+	if (0 != core->com->args_parse(cmd, args, c))
+		return -1;
+
+	if (c->cmd->output.len == 0)
+		c->cmd->stdout = 1;
+
+	return 0;
 }
 
 static const char* txcnt_help()
@@ -38,7 +45,7 @@ static const char* txcnt_help()
 	return "\
 Analyze text files (e.g. print number of lines).\n\
 Usage:\n\
-  fcom txcnt INPUT... [OPTIONS]\n\
+  fcom textcount INPUT... [OPTIONS]\n\
 ";
 }
 
@@ -57,14 +64,10 @@ static fcom_op* txcnt_create(fcom_cominfo *cmd)
 	if (0 != args_parse(c, cmd))
 		goto end;
 
-	if (c->cmd->output.len == 0)
-		c->cmd->stdout = 1;
-
 	struct fcom_file_conf fc = {};
 	fc.buffer_size = cmd->buffer_size;
 	c->in = core->file->create(&fc);
 
-	c->ln_f_min = (uint64)-1;
 	c->sz_f_min = (uint64)-1;
 	return c;
 
@@ -106,7 +109,6 @@ static void txcnt_analyze(struct txcnt_stat *f, ffstr ss)
 
 		f->b_ln += lf;
 		ffstr_shift(&ss, lf + 1);
-		ffint_setmin(f->b_ln_min, f->b_ln);
 		ffint_setmax(f->b_ln_max, f->b_ln);
 		f->ln++;
 		if (f->b_ln == 0)
@@ -118,11 +120,18 @@ static void txcnt_analyze(struct txcnt_stat *f, ffstr ss)
 /** Print file stats. */
 static void txcnt_print(struct txcnt *c, struct txcnt_stat *f)
 {
+	if (!c->no_hdr) {
+		c->no_hdr = 1;
+		fcom_verblog("size       lines      non-empty      max-line-width");
+	}
+
 	uint empty = f->ln - f->ln_empty;
 	uint empty_perc = FFINT_DIVSAFE(empty * 100, f->ln);
-	fcom_verblog("%s: size:%U  lines:%U  non-empty:%U(%u%%)  line-width:(%D..%U)"
-		, c->iname.ptr, f->sz, f->ln, empty, empty_perc
-		, f->b_ln_min, f->b_ln_max);
+	fcom_verblog("%10U %10U %10U(%2u%%) %10U %s"
+		, f->sz, f->ln
+		, empty, empty_perc
+		, f->b_ln_max
+		, c->iname.ptr);
 }
 
 /** Aggregate file stats into overall stats. */
@@ -131,11 +140,15 @@ static void txcnt_add(struct txcnt *c, const struct txcnt_stat *f)
 	c->all.sz += f->sz;
 	c->all.ln += f->ln;
 	c->all.ln_empty += f->ln_empty;
-	ffint_setmin(c->ln_f_min, f->ln);
 	ffint_setmax(c->ln_f_max, f->ln);
 	ffint_setmin(c->sz_f_min, f->sz);
 	ffint_setmax(c->sz_f_max, f->sz);
 	c->f++;
+}
+
+static void txcnt_f_clear(struct txcnt_stat *f)
+{
+	ffmem_zero_obj(f);
 }
 
 static void txcnt_final_stats(struct txcnt *c)
@@ -144,9 +157,9 @@ static void txcnt_final_stats(struct txcnt *c)
 	uint empty = a->ln - a->ln_empty;
 	uint empty_perc = FFINT_DIVSAFE(empty * 100, a->ln);
 	fcom_infolog("Files: %U, %U bytes (%D..%U), size/file:%U\n"
-		"Lines: %U (%D..%U), non-empty:%U(%u%%), lines/file:%U"
+		"Lines: %U (max:%U), non-empty:%U(%u%%), lines/file:%U"
 		, c->f, a->sz, c->sz_f_min, c->sz_f_max, FFINT_DIVSAFE(a->sz, c->f)
-		, a->ln, c->ln_f_min, c->ln_f_max, empty, empty_perc, FFINT_DIVSAFE(a->ln, c->f));
+		, a->ln, c->ln_f_max, empty, empty_perc, FFINT_DIVSAFE(a->ln, c->f));
 }
 
 static void txcnt_run(fcom_op *op)
@@ -177,11 +190,13 @@ static void txcnt_run(fcom_op *op)
 			if (fffile_isdir(fffileinfo_attr(&fi))) {
 				fffd fd = core->file->fd(c->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(c->cmd, fd);
+				continue;
 			}
 
-			if (fffile_isdir(fffileinfo_attr(&fi)))
+			if (0 != core->com->input_allowed(c->cmd, c->iname))
 				continue;
 
+			txcnt_f_clear(&c->cur);
 			c->st = I_READ;
 			continue;
 		}

@@ -98,7 +98,7 @@ static inline char** ffcmdarg_from_linew(const wchar_t *cmdline, int *argc)
 
 typedef struct ffcmdarg {
 	ffuint state;
-	ffuint iarg;
+	int iarg;
 	ffstr val;
 	ffstr longval;
 
@@ -118,10 +118,9 @@ enum FFCMDARG_R {
 static inline void ffcmdarg_init(ffcmdarg *p, const char **argv, ffuint argc)
 {
 	ffmem_zero_obj(p);
-	if (argc != 0) {
-		p->argv = argv + 1;
-		p->argc = argc - 1;
-	}
+	p->iarg = -1;
+	p->argv = argv;
+	p->argc = argc;
 }
 
 static inline int ffcmdarg_fin(ffcmdarg *p)
@@ -137,7 +136,8 @@ static inline int ffcmdarg_parse(ffcmdarg *p, ffstr *dst)
 	ffstr s;
 	switch (p->state) {
 	case I_KV:
-		if (p->iarg >= p->argc)
+		p->iarg++;
+		if ((ffuint)p->iarg >= p->argc)
 			return FFCMDARG_DONE;
 
 		ffstr_setz(&s, p->argv[p->iarg]);
@@ -148,27 +148,22 @@ static inline int ffcmdarg_parse(ffcmdarg *p, ffstr *dst)
 				ffssize pos = ffstr_splitby(&s, '=', &s, &p->longval);
 				if (pos >= 0)
 					p->state = I_VAL;
-				else
-					p->iarg++;
 				p->val = s;
 				*dst = p->val;
 				return FFCMDARG_RKEYLONG;
 			}
 
-			p->iarg++;
 			p->val = s;
 			*dst = p->val;
 			return FFCMDARG_RKEYSHORT;
 		}
 
-		p->iarg++;
 		p->val = s;
 		*dst = p->val;
 		return FFCMDARG_RVAL;
 
 	case I_VAL:
 		p->state = I_KV;
-		p->iarg++;
 		p->val = p->longval;
 		ffstr_null(&p->longval);
 		*dst = p->val;

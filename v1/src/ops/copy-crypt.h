@@ -1,8 +1,6 @@
 /** fcom: copy: encrypt/decrypt data
 2022, Simon Zolin */
 
-#include <FFOS/random.h>
-
 static int crypt_init(struct copy *c)
 {
 	if (c->encrypt.len == 0 && c->decrypt.len == 0) return 0;
@@ -40,15 +38,10 @@ static void sha256_hash(struct copy *c, const void *data, ffsize size, byte resu
 	c->cr.sha256->close(h);
 }
 
-static void iv_get(byte *iv)
+static void iv_get(struct copy *c, byte *iv)
 {
-	fftime now;
-	fftime_now(&now);
-	ffrand_seed(now.sec);
-
 	for (uint i = 0;  i < 16;  i += 4) {
-		int n = ffrand_get();
-		*(int*)(iv + i) = n;
+		*(uint*)(iv + i) = core->random();
 	}
 }
 
@@ -62,7 +55,7 @@ static int crypt_open(struct copy *c)
 
 	if (c->encrypt.len != 0) {
 		c->cr.aes_iv_out = 1;
-		iv_get(c->cr.aes_iv);
+		iv_get(c, c->cr.aes_iv);
 	} else {
 		c->cr.aes_iv_in = 1;
 	}
@@ -80,7 +73,7 @@ static void crypt_reset(struct copy *c)
 	c->cr.aes->close(c->cr.aes_obj),  c->cr.aes_obj = NULL;
 }
 
-static int crypt_process(struct copy *c, ffstr *out)
+static int crypt_process(struct copy *c, ffstr *in, ffstr *out)
 {
 	if (c->cr.aes_iv_out) {
 		c->cr.aes_iv_out = 0;
@@ -88,14 +81,14 @@ static int crypt_process(struct copy *c, ffstr *out)
 		return 0;
 	} else if (c->cr.aes_iv_in) {
 		c->cr.aes_iv_in = 0;
-		ffmem_copy(c->cr.aes_iv, c->cr.aes_in.ptr, 16);
-		ffstr_shift(&c->cr.aes_in, 16);
+		ffmem_copy(c->cr.aes_iv, in->ptr, 16);
+		ffstr_shift(in, 16);
 	}
 
-	uint n = ffmin(c->cr.aes_in.len, c->cr.aes_buf.cap);
-	if (0 != c->cr.aes->process(c->cr.aes_obj, (byte*)c->cr.aes_in.ptr, c->cr.aes_buf.ptr, n, c->cr.aes_iv))
+	uint n = ffmin(in->len, c->cr.aes_buf.cap);
+	if (0 != c->cr.aes->process(c->cr.aes_obj, (byte*)in->ptr, c->cr.aes_buf.ptr, n, c->cr.aes_iv))
 		return -1;
-	ffstr_shift(&c->cr.aes_in, n);
+	ffstr_shift(in, n);
 	ffstr_set(out, c->cr.aes_buf.ptr, n);
 	return 0;
 }

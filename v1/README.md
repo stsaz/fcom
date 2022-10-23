@@ -20,7 +20,8 @@ Contents:
 * `sync` - Compare/synchronize directories or create a file tree snapshot
 * `textcount` - Analyze text files (e.g. print number of lines)
 * `touch` - Change file date/time
-* `trash` - Move files to user's trash directory
+* `trash` - Move files to user's trash directory, plus obfuscation
+* `zip` - Pack files into .zip
 
 
 ## Third-party code
@@ -59,6 +60,7 @@ fcom uses third-party code that implements complex algorithms such as data encry
 
 		git clone --depth=1 https://github.com/stsaz/ffbase
 		git clone --depth=1 https://github.com/stsaz/ffos
+		git clone --depth=1 https://github.com/stsaz/ffpack
 		git clone --depth=1 -b v1 https://github.com/stsaz/fcom
 
 3. Build third-party code:
