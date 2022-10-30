@@ -21,8 +21,11 @@ static int crypt_init(struct copy *c)
 	return 0;
 }
 
+static void crypt_reset(struct copy *c);
+
 static void crypt_close(struct copy *c)
 {
+	crypt_reset(c);
 	ffmem_zero(c->encrypt.ptr, c->encrypt.len);
 	ffmem_zero(c->decrypt.ptr, c->decrypt.len);
 	ffstr_free(&c->encrypt);

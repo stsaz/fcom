@@ -5,6 +5,7 @@ FCOM_DIR := $(ROOT)/fcom/v1
 FFBASE_DIR := $(ROOT)/ffbase
 FFOS_DIR := $(ROOT)/ffos
 FFPACK_DIR := $(ROOT)/ffpack
+CPU := amd64
 
 include $(FFBASE_DIR)/test/makeconf
 
@@ -27,7 +28,7 @@ CFLAGS := -I$(FCOM_DIR)/src -I$(FFOS_DIR) -I$(FFBASE_DIR) \
 	-Wall -Wextra -Wno-unused-parameter \
 	-fPIC \
 	-march=nehalem
-ifeq "$(OPT)" "0"
+ifeq "$(DEBUG)" "1"
 	CFLAGS += -g -O0 -DFF_DEBUG -Werror
 # 	CFLAGS += -fsanitize=address
 # 	LINKFLAGS += -fsanitize=address
@@ -36,14 +37,15 @@ else
 	LINKFLAGS += -s
 endif
 
-3PT_DIR := $(FCOM_DIR)/3pt/_$(OS)-amd64
+3PT_DIR := $(FCOM_DIR)/3pt/_$(OS)-$(CPU)
+FFPACK_BINDIR := $(FFPACK_DIR)/_$(OS)-$(CPU)
 
 GDEPS := $(FCOM_DIR)/src/fcom.h \
 	$(wildcard $(FCOM_DIR)/src/util/*.h)
 
 # build, install
 default: $(BINS)
-	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) install
+	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) app
 
 # build, install, package
 build-package: default
@@ -88,43 +90,52 @@ crypto.$(SO): \
 	$(LINK) -shared $+ $(LINKFLAGS) -o $@
 
 zip.o: $(FCOM_DIR)/src/ops/zip.c $(GDEPS) \
-		$(wildcard $(FFPACK_DIR)/*.h)
+		$(wildcard $(FFPACK_DIR)/ffpack/*.h)
+	$(C) $(CFLAGS) -I$(FFPACK_DIR) -DFFPACK_ZIPWRITE_ZLIB -DFFPACK_ZIPWRITE_ZSTD $< -o $@
+unzip.o: $(FCOM_DIR)/src/ops/unzip.c $(GDEPS) \
+		$(wildcard $(FFPACK_DIR)/ffpack/*.h)
 	$(C) $(CFLAGS) -I$(FFPACK_DIR) $< -o $@
 crc.o: $(FFPACK_DIR)/crc/crc.c
 	$(C) $(CFLAGS) -I$(FFPACK_DIR) $< -o $@
 zip.$(SO): zip.o \
+		unzip.o \
 		crc32.o crc.o
-	$(LINK) -shared $+ $(LINKFLAGS) -o $@
+	$(LINK) -shared $+ $(LINKFLAGS) -L$(FFPACK_BINDIR) -lzstd-ffpack -lz-ffpack $(LINK_RPATH_ORIGIN) -o $@
 
 test: test.o
 	$(LINK) $+ $(LINKFLAGS) -o $@
 
 
-# copy files to install directory
-INST_DIR := fcom-1
-install:
-	$(MKDIR) $(INST_DIR)
+# copy files to app directory
+app:
+	$(MKDIR) fcom-1
 	$(CP) \
 		$(BIN) \
 		core.$(SO) \
 		$(FCOM_DIR)/README.md \
 		$(FCOM_DIR)/help.txt \
-		$(INST_DIR)
-	mkdir -p $(INST_DIR)/ops
-	$(CP) $(MODS) $(INST_DIR)/ops
-	chmod 0755 $(INST_DIR) $(INST_DIR)/ops $(INST_DIR)/$(BIN)
-	chmod 0644 $(INST_DIR)/README.* $(INST_DIR)/*.$(SO) $(INST_DIR)/ops/*.$(SO)
+		fcom-1
+	chmod 0755 fcom-1 fcom-1/$(BIN)
+	chmod 0644 fcom-1/README.* fcom-1/*.$(SO)
+
+	$(MKDIR) fcom-1/ops
+	chmod 0755 fcom-1/ops
+	$(CP) $(MODS) fcom-1/ops
+	$(CP) \
+		$(FFPACK_BINDIR)/libzstd-ffpack.$(SO) \
+		$(FFPACK_BINDIR)/libz-ffpack.$(SO) \
+		fcom-1/ops
+	chmod 0644 fcom-1/ops/*.$(SO)
 
 
 # package
-PKG_VER :=
-PKG_ARCH := amd64
+PKG_VER := 0
+PKG_ARCH := $(CPU)
 PKG_PACKER := tar -c --owner=0 --group=0 --numeric-owner -v --zstd -f
 PKG_EXT := tar.zst
 ifeq "$(OS)" "windows"
-	PKG_ARCH := x64
 	PKG_PACKER := zip -r -v
 	PKG_EXT := zip
 endif
 package:
-	$(PKG_PACKER) fcom-v$(PKG_VER)-$(OS)-$(PKG_ARCH).$(PKG_EXT) $(INST_DIR)
+	$(PKG_PACKER) fcom-$(PKG_VER)-$(OS)-$(PKG_ARCH).$(PKG_EXT) fcom-1

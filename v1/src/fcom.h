@@ -11,8 +11,8 @@
 #include <ffbase/vector.h>
 #include <assert.h>
 
-#define FCOM_VER "1.0beta4"
-#define FCOM_CORE_VER 104
+#define FCOM_VER "1.0beta5"
+#define FCOM_CORE_VER 105
 
 #undef stdin
 #undef stdout
@@ -332,6 +332,11 @@ enum FCOM_FILE_MOVE_F {
 	FCOM_FILE_MOVE_SAFE = 1,
 };
 
+enum FCOM_FILE_DIR_F {
+	/** Recursively create parent directories if necessary */
+	FCOM_FILE_DIR_RECURSIVE = 1,
+};
+
 typedef void fcom_file_obj;
 
 /** Bufferred file I/O interface.
@@ -349,6 +354,7 @@ struct fcom_file {
 	int (*open)(fcom_file_obj *f, const char *name, uint flags);
 
 	void (*close)(fcom_file_obj *f);
+
 	int (*read)(fcom_file_obj *f, ffstr *d, int64 off);
 
 	/**
@@ -356,20 +362,25 @@ struct fcom_file {
 	int (*write)(fcom_file_obj *f, ffstr d, int64 off);
 	int (*write_fmt)(fcom_file_obj *_f, const char *fmt, ...);
 
+	int (*trunc)(fcom_file_obj *f, int64 size);
+
 	/**
 	flags: enum FCOM_FILE_BEH */
 	int (*behaviour)(fcom_file_obj *f, uint flags);
+
 	int (*info)(fcom_file_obj *f, fffileinfo *fi);
 
 	/**
 	flags: enum FCOM_FILE_FD */
 	fffd (*fd)(fcom_file_obj *f, uint flags);
 
-	int (*mtime)(fcom_file_obj *f, fftime *mtime);
-	int (*mtime_set)(fcom_file_obj *f, fftime *mtime);
+	int (*mtime_set)(fcom_file_obj *f, fftime mtime);
+
+	int (*attr_set)(fcom_file_obj *f, uint attr);
 
 	/** Create directory.
-	By default, don't fail if the directory already exists. */
+	By default, don't fail if the directory already exists.
+	flags: enum FCOM_FILE_DIR_F */
 	int (*dir_create)(const char *name, uint flags);
 
 	/** Move file

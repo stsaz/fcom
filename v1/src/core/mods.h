@@ -5,6 +5,7 @@
 
 struct mod {
 	char *name;
+	const char *alias_of;
 	ffdl dl;
 	struct fcom_module *mod;
 };
@@ -18,6 +19,11 @@ static int modmap_keyeq(void *opaque, const void *key, ffsize keylen, void *val)
 void mods_init()
 {
 	ffmap_init(&com.mods, modmap_keyeq);
+
+	struct mod *m = ffmem_new(struct mod);
+	m->name = ffsz_dup("unzip");
+	m->alias_of = "zip";
+	ffmap_add(&com.mods, "unzip", 5, m);
 }
 
 static void mod_free(struct mod *m)
@@ -92,10 +98,19 @@ const void* com_provide(const char *operation, uint flags)
 		opname = modname;
 
 	struct mod *m;
-	if (NULL == (m = ffmap_find(&com.mods, modname.ptr, modname.len, NULL))) {
-		if (NULL == (m = mod_load(modname)))
-			return NULL;
-		ffmap_add(&com.mods, modname.ptr, modname.len, m);
+	for (;;) {
+		if (NULL == (m = ffmap_find(&com.mods, modname.ptr, modname.len, NULL))) {
+			if (NULL == (m = mod_load(modname)))
+				return NULL;
+			ffmap_add(&com.mods, modname.ptr, modname.len, m);
+		} else {
+			if (m->alias_of != NULL) {
+				fcom_dbglog("alias: %S -> %s", &modname, m->alias_of);
+				ffstr_setz(&modname, m->alias_of);
+				continue;
+			}
+		}
+		break;
 	}
 
 	dbglog("requesting operation '%s' from module '%s'...", opname.ptr, m->name);

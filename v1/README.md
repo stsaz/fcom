@@ -21,6 +21,7 @@ Contents:
 * `textcount` - Analyze text files (e.g. print number of lines)
 * `touch` - Change file date/time
 * `trash` - Move files to user's trash directory, plus obfuscation
+* `unzip` - Unpack files from .zip
 * `zip` - Pack files into .zip
 
 
@@ -29,8 +30,13 @@ Contents:
 fcom uses third-party code that implements complex algorithms such as data encryption and cryptographic hashing functions:
 
 * AES (Brian Gladman)
+* CRC32 (xz)
 * MD5 (nginx)
 * SHA-256 (glibc)
+* zlib
+* zstd
+
+Many thanks to all the people who created and implemented those algorithms!!!
 
 
 ## Install on Linux
@@ -71,12 +77,17 @@ fcom uses third-party code that implements complex algorithms such as data encry
 		make install
 		cd ../..
 
+		cd ffpack
+		make -Rr -j8
+		make install
+		cd ..
+
 4. Build fcom:
 
 		cd fcom
 		make -Rr -j8
 
-`fcom-1` is the installation directory.  Now you may move it anywhere you want (see section "Install on Linux").
+`fcom-1` is the app directory.  Now you may move it anywhere you want (see section "Install on Linux").
 
 
 ## License

@@ -6,7 +6,7 @@
 #include <FFOS/path.h>
 #include <FFOS/ffos-extern.h>
 
-static const fcom_core *core;
+const fcom_core *core;
 
 struct zip {
 	uint st;
@@ -18,48 +18,73 @@ struct zip {
 	fffileinfo fi;
 	ffvec buf;
 	uint stop;
+	uint del_on_close :1;
 	int64 woff;
 
 	const fcom_hash *crc32;
 	fcom_hash_obj *crc32_obj;
 
 	uint method;
+	byte comp_level;
+	byte comp_workers;
 };
+
+#define MIN_COMPRESS_SIZE 32
 
 static const char* zip_help()
 {
 	return "\
 Pack files into .zip.\n\
+Implies '--recursive'.\n\
 Usage:\n\
   fcom zip INPUT... [OPTIONS] -o OUTPUT.zip\n\
     OPTIONS:\n\
-    -m, --method=STR    Compression method: store (default)\n\
+    -m, --method=STR    Compression method:\n\
+                          deflate (default), zstd, store\n\
+    -l, --level=INT     Compression level:\n\
+                          deflate: 1..9; default:6\n\
+                          zstd:   -7..22; default:3\n\
+    -j, --workers=INT   N of threads for compression (zstd)\n\
 ";
 }
 
 static int arg_method(ffcmdarg_scheme *as, void *obj, ffstr *val)
 {
 	struct zip *z = obj;
-	if (ffstr_eqz(val, "store"))
-		z->method = ZIP_STORED;
-	else
+	static const ffstr methods_str[] = {
+		FFSTR_INITZ("store"), FFSTR_INITZ("deflate"), FFSTR_INITZ("zstd"),
+	};
+	static const uint methods[] = {
+		ZIP_STORED, ZIP_DEFLATED, ZIP_ZSTANDARD,
+	};
+	ffslice s;
+	ffslice_set(&s, methods_str, FF_COUNT(methods_str));
+	int i = ffslicestr_find(&s, val);
+	if (i < 0)
 		return 0xbad;
+	z->method = methods[i];
 	return 0;
 }
 
+#define O(member)  FF_OFF(struct zip, member)
+
 static int args_parse(struct zip *z, fcom_cominfo *cmd)
 {
-	z->method = ZIP_STORED;
+	cmd->recursive = 1;
+	z->method = ZIP_DEFLATED;
+	z->comp_level = 0xff;
 
 	static const ffcmdarg_arg args[] = {
-		{ 'm',	"method",	FFCMDARG_TSTR, (ffsize)arg_method },
+		{ 'm', "method",	FFCMDARG_TSTR,	(ffsize)arg_method },
+		{ 'l', "level",	FFCMDARG_TINT8,	O(comp_level) },
+		{ 'j', "workers",	FFCMDARG_TINT8,	O(comp_workers) },
 		{}
 	};
 	int r = core->com->args_parse(cmd, args, z);
 	if (r != 0)
 		return r;
 
-	if (z->cmd->output.len == 0) {
+	if (cmd->output.len == 0) {
 		fcom_fatlog("Use --out to set output file name");
 		return -1;
 	}
@@ -67,11 +92,15 @@ static int args_parse(struct zip *z, fcom_cominfo *cmd)
 	return 0;
 }
 
+#undef O
+
 static void zip_close(fcom_op *op)
 {
 	struct zip *z = op;
 	ffzipwrite_destroy(&z->wzip);
 	core->file->destroy(z->in);
+	if (z->del_on_close)
+		core->file->delete(z->cmd->output.ptr, 0);
 	core->file->destroy(z->out);
 	z->crc32->close(z->crc32_obj);
 	ffvec_free(&z->buf);
@@ -131,28 +160,28 @@ static int zip_file_add(struct zip *z)
 	conf.attr_win = fffileinfo_attr(&z->fi);
 #else
 	conf.attr_unix = fffileinfo_attr(&z->fi);
-	// conf.uid = ;
-	// conf.gid = ;
+	conf.uid = z->fi.st_uid;
+	conf.gid = z->fi.st_gid;
 #endif
 
 	z->crc32_obj = z->crc32->create();
 	conf.crc32_filter = &zip_crc32_filter;
 
-	// conf.deflate_level = (cmd->deflate_level != 255) ? cmd->deflate_level : 0;
-	// conf.zstd_level = cmd->zstd_level;
-	// conf.zstd_workers = cmd->zstd_workers;
-
 	conf.compress_method = z->method;
+	if (fffileinfo_size(&z->fi) < MIN_COMPRESS_SIZE)
+		conf.compress_method = ZIP_STORED;
 
-	// if (cmd->input.size < MAX_STORED_SIZE)
-	// 	conf.compress_method = ZIP_STORED;
+	if (z->comp_level != 0xff) {
+		conf.deflate_level = z->comp_level;
+		conf.zstd_level = z->comp_level;
+	}
+
+	conf.zstd_workers = z->comp_workers;
 
 	int r;
 	if (0 != (r = ffzipwrite_fileadd(&z->wzip, &conf))) {
-		// if (r == -2) {
-		// 	z->state = W_EOF;
-		// 	goto again;
-		// }
+		if (r == -2)
+			return -2;
 		fcom_errlog("ffzipwrite_fileadd: %s", ffzipwrite_error(&z->wzip));
 		return -1;
 	}
@@ -207,6 +236,7 @@ static void zip_run(fcom_op *op)
 			flags |= fcom_file_cominfo_flags_o(z->cmd);
 			r = core->file->open(z->out, z->cmd->output.ptr, flags);
 			if (r == FCOM_FILE_ERR) goto end;
+			z->del_on_close = !z->cmd->stdout && !z->cmd->test;
 			z->woff = -1;
 			z->st = I_IN;
 			// fallthrough
@@ -249,8 +279,13 @@ static void zip_run(fcom_op *op)
 		}
 
 		case I_ADD:
-			if (0 != zip_file_add(z))
+			if (0 != (r = zip_file_add(z))) {
+				if (r == -2) {
+					z->st = I_IN;
+					continue;
+				}
 				goto end;
+			}
 
 			if (fffile_isdir(fffileinfo_attr(&z->fi))) {
 				ffzipwrite_filefinish(&z->wzip);
@@ -286,6 +321,7 @@ static void zip_run(fcom_op *op)
 
 			case FFZIPWRITE_DONE:
 				core->file->close(z->out);
+				z->del_on_close = 0;
 				rc = 0;
 				goto end;
 
@@ -317,10 +353,13 @@ static const fcom_operation fcom_op_zip = {
 
 static void zip_init(const fcom_core *_core) { core = _core; }
 static void zip_destroy() {}
+extern const fcom_operation fcom_op_unzip;
 static const fcom_operation* zip_provide_op(const char *name)
 {
 	if (ffsz_eq(name, "zip"))
 		return &fcom_op_zip;
+	else if (ffsz_eq(name, "unzip"))
+		return &fcom_op_unzip;
 	return NULL;
 }
 FF_EXP const struct fcom_module fcom_module = {

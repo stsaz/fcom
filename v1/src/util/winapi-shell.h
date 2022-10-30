@@ -3,7 +3,7 @@ Copyright (c) 2020 Simon Zolin
 */
 
 /*
-ffui_fop_del
+ffui_file_del
 ffui_openfolder
 ffui_createlink
 ffui_shellexec
@@ -44,15 +44,15 @@ static ffsize _ff_arrzz_copy(wchar_t *dst, ffsize cap, const char *const *arr, f
 	return k+1;
 }
 
-enum FFUI_FOP_F {
-	FFUI_FOP_ALLOWUNDO = FOF_ALLOWUNDO,
+enum FFUI_FILE_F {
+	FFUI_FILE_TRASH = FOF_ALLOWUNDO,
 };
 
 /** Delete a file
-flags: enum FFUI_FOP_F */
-static inline int ffui_fop_del(const char *const *names, ffsize cnt, ffuint flags)
+flags: enum FFUI_FILE_F */
+static inline int ffui_file_del(const char *const *names, ffsize cnt, ffuint flags)
 {
-	if (flags & FFUI_FOP_ALLOWUNDO) {
+	if (flags & FFUI_FILE_TRASH) {
 		for (ffsize i = 0;  i != cnt;  i++) {
 			if (!ffpath_abs(names[i], ffsz_len(names[i]))) {
 				fferr_set(ERROR_INVALID_PARAMETER);

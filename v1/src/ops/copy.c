@@ -19,6 +19,7 @@ struct copy {
 	fcom_file_obj *in;
 	ffstr name;
 	char *iname;
+	fffileinfo fi;
 	uint64 in_off;
 	uint nfiles;
 	ffstr basename;
@@ -39,6 +40,7 @@ struct copy {
 	uint64 total, out_off;
 	char *oname, *oname_tmp;
 	fffileinfo ofi;
+	uint del_on_close :1;
 
 	struct {
 		const fcom_hash *md5;
@@ -145,8 +147,8 @@ static void copy_close(fcom_op *op)
 {
 	struct copy *c = op;
 	core->file->destroy(c->in);
-	copy_reset(c);
 	crypt_close(c);
+	verify_reset(c);
 	output_close(c);
 	ffmem_free(c);
 }
@@ -195,10 +197,9 @@ static void copy_run(fcom_op *op)
 				c->oname_tmp = ffsz_allocfmt("%s.fcomtmp", c->oname);
 			}
 
-			fffileinfo fi = {};
-			r = core->file->info(c->in, &fi);
+			r = core->file->info(c->in, &c->fi);
 			if (r == FCOM_FILE_ERR) goto end;
-			if (fffile_isdir(fffileinfo_attr(&fi))) {
+			if (fffile_isdir(fffileinfo_attr(&c->fi))) {
 				c->st = I_MKDIR;
 				continue;
 			}
@@ -277,9 +278,7 @@ static void copy_run(fcom_op *op)
 		case I_RD_DONE:
 			core->file->behaviour(c->out, FCOM_FBEH_TRUNC_PREALLOC);
 			if (c->preserve_date) {
-				fftime mtime;
-				if (0 == core->file->mtime(c->in, &mtime))
-					core->file->mtime_set(c->out, &mtime);
+				core->file->mtime_set(c->out, fffileinfo_mtime(&c->fi));
 			}
 
 			if (c->vf.md5_obj != NULL) {

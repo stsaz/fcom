@@ -61,6 +61,8 @@ static void prealloc_trunc(struct file *f)
 	if (f->mtime.sec != 0) {
 		if (0 != fffile_set_mtime(f->fd, &f->mtime)) {
 			fcom_syswarnlog("file set mtime: %s", f->name);
+		} else {
+			fcom_dbglog("%s: mtime: %U", f->name, f->mtime.sec);
 		}
 	}
 }
@@ -193,6 +195,7 @@ static int file_read(fcom_file_obj *_f, ffstr *d, int64 off)
 
 	ffuint64 offset = ffint_align_floor2(off, ALIGN);
 	if (NULL != (b = fcache_find(&f->fcache, offset))) {
+		fcom_dbglog("%s: cache hit: %L @%U", f->name, b->len, b->off);
 		goto done;
 	}
 
@@ -211,9 +214,9 @@ static int file_read(fcom_file_obj *_f, ffstr *d, int64 off)
 		f->size = offset + r;
 	b->off = offset;
 	b->len = r;
+	fcom_dbglog("%s: read %L @%U", f->name, b->len, b->off);
 
 done:
-	fcom_dbglog("%s: read %L @%U", f->name, b->len, b->off);
 	ffstr_set(d, b->ptr, b->len);
 	ffstr_shift(d, off - b->off);
 	f->cur_off = b->off + b->len;
@@ -222,62 +225,25 @@ done:
 	return FCOM_FILE_OK;
 }
 
-/** Write data into buffer
-Return >=0: output file offset
-  <0: no output data */
-static ffint64 fbuf_write(struct fcache_buf *b, ffsize cap, ffstr *in, uint64 off, ffstr *out)
-{
-	if (in->len == 0)
-		return -1;
-
-	if (b->len != 0) {
-		if (off >= b->off  &&  off < b->off + cap) {
-			// new data overlaps with our buffer
-			off -= b->off;
-			uint64 n = ffmin(in->len, cap - off);
-			ffmem_copy(b->ptr + off, in->ptr, n);
-			ffstr_shift(in, n);
-			if (b->len < off + n) {
-				b->len = off + n;
-				if (b->len != cap)
-					return -1;
-			}
-		}
-
-		// flush bufferred data
-		ffstr_set(out, b->ptr, b->len);
-		return b->off;
-	}
-
-	if (cap < in->len) {
-		// input data is very large, don't buffer it
-		*out = *in;
-		ffstr_shift(in, in->len);
-		return off;
-	}
-
-	// store input data
-	uint64 n = in->len;
-	ffmem_copy(b->ptr, in->ptr, n);
-	ffstr_shift(in, n);
-	b->len = n;
-	b->off = off;
-	return -1;
-}
-
 /** Pass data to kernel */
 static int f_write(struct file *f, ffstr d, uint64 off)
 {
+	ffsize len = d.len;
 	ffssize r;
 	if (f->open_flags & FCOM_FILE_STDOUT)
 		r = fffile_write(f->fd, d.ptr, d.len);
-	else
-		r = fffile_writeat(f->fd, d.ptr, d.len, off);
+	else {
+		if (f->open_flags & FCOM_FILE_DIRECTIO) {
+			len = ffint_align_ceil2(d.len, ALIGN);
+			ffmem_fill(d.ptr + d.len, 0x00, len - d.len); // zero the trailer
+		}
+		r = fffile_writeat(f->fd, d.ptr, len, off);
+	}
 	if (r < 0) {
-		fcom_syserrlog("file write: %s", f->name);
+		fcom_syserrlog("file write: %s %L @%U", f->name, len, off);
 		return FCOM_FILE_ERR;
 	}
-	fcom_dbglog("%s: written %L @%U", f->name, d.len, off);
+	fcom_dbglog("%s: written %L @%U", f->name, len, off);
 	if (off + d.len > f->size)
 		f->size = off + d.len;
 	return 0;
@@ -337,6 +303,24 @@ static int file_write_fmt(fcom_file_obj *_f, const char *fmt, ...)
 	return r;
 }
 
+static int file_trunc(fcom_file_obj *_f, int64 size)
+{
+	struct file *f = _f;
+	if (f->open_flags & FCOM_FILE_NO_PREALLOC)
+		return 0;
+
+	if (size == -1)
+		size = f->cur_off;
+	f->prealloc = size;
+
+	if (0 != fffile_trunc(f->fd, f->prealloc)) {
+		fcom_syswarnlog("fffile_trunc: %s", f->name);
+		f->open_flags |= FCOM_FILE_NO_PREALLOC;
+	}
+	fcom_dbglog("%s: truncate: %U", f->name, f->prealloc);
+	return 0;
+}
+
 static int file_behaviour(fcom_file_obj *_f, uint flags)
 {
 	struct file *f = _f;
@@ -380,25 +364,28 @@ static int file_info(fcom_file_obj *_f, fffileinfo *fi)
 	return 0;
 }
 
-static int file_mtime(fcom_file_obj *_f, fftime *mtime)
-{
-	struct file *f = _f;
-	fffileinfo fi = {};
-	if (0 != fffile_info(f->fd, &fi)) {
-		fcom_syserrlog("file get info: %s", f->name);
-		return FCOM_FILE_ERR;
-	}
-	*mtime = fffileinfo_mtime(&fi);
-	return 0;
-}
-
-static int file_mtime_set(fcom_file_obj *_f, fftime *mtime)
+static int file_mtime_set(fcom_file_obj *_f, fftime mtime)
 {
 	struct file *f = _f;
 	if (f->open_flags & FCOM_FILE_FAKEWRITE)
 		return FCOM_FILE_OK;
 
-	f->mtime = *mtime;
+	f->mtime = mtime;
+	return 0;
+}
+
+static int file_attr_set(fcom_file_obj *_f, uint attr)
+{
+	struct file *f = _f;
+	if (f->open_flags & FCOM_FILE_FAKEWRITE)
+		return FCOM_FILE_OK;
+
+	if (0 != fffile_set_attr(f->fd, attr)) {
+		fcom_syserrlog("fffile_set_attr: %s", f->name);
+		return FCOM_FILE_ERR;
+	}
+
+	fcom_dbglog("%s: attr: %xu", f->name, attr);
 	return 0;
 }
 
@@ -410,8 +397,17 @@ static int dir_create(const char *name, uint flags)
 			fcom_dbglog("%s: directory already exists", name);
 			return 0;
 		}
-		fcom_syserrlog("directory create: %s", name);
-		return FCOM_FILE_ERR;
+
+		if (flags & FCOM_FILE_DIR_RECURSIVE) {
+			char *sz = ffsz_dup(name);
+			r = ffdir_make_all(sz, 0);
+			ffmem_free(sz);
+		}
+
+		if (r < 0) {
+			fcom_syserrlog("directory create: %s", name);
+			return FCOM_FILE_ERR;
+		}
 	}
 	fcom_verblog("%s: created directory", name);
 	return 0;
@@ -462,9 +458,10 @@ const fcom_file _fcom_file = {
 	file_destroy,
 	file_open, file_close,
 	file_read, file_write, file_write_fmt,
+	file_trunc,
 	file_behaviour,
 	file_info, file_fd,
-	file_mtime, file_mtime_set,
+	file_mtime_set, file_attr_set,
 	dir_create,
 	file_move,
 	file_delete,

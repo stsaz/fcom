@@ -81,3 +81,46 @@ static inline struct fcache_buf* fcache_find(struct fcache *c, ffuint64 off)
 	c->misses++;
 	return NULL;
 }
+
+/** Write data into buffer
+Return >=0: output file offset
+  <0: no output data */
+static inline ffint64 fbuf_write(struct fcache_buf *b, ffsize cap, ffstr *in, uint64 off, ffstr *out)
+{
+	if (in->len == 0)
+		return -1;
+
+	if (b->len != 0) {
+		if (off >= b->off  &&  off < b->off + cap) {
+			// new data overlaps with our buffer
+			off -= b->off;
+			uint64 n = ffmin(in->len, cap - off);
+			ffmem_copy(b->ptr + off, in->ptr, n);
+			ffstr_shift(in, n);
+			if (b->len < off + n) {
+				b->len = off + n;
+				if (b->len != cap)
+					return -1;
+			}
+		}
+
+		// flush bufferred data
+		ffstr_set(out, b->ptr, b->len);
+		return b->off;
+	}
+
+	if (cap < in->len) {
+		// input data is very large, don't buffer it
+		*out = *in;
+		ffstr_shift(in, in->len);
+		return off;
+	}
+
+	// store input data
+	uint64 n = in->len;
+	ffmem_copy(b->ptr, in->ptr, n);
+	ffstr_shift(in, n);
+	b->len = n;
+	b->off = off;
+	return -1;
+}

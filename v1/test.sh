@@ -143,12 +143,11 @@ elif test "$CMD" == "move" ; then
 
 elif test "$CMD" == "sync" ; then
 
-	rm -f fcomtest.snap
 	echo hello >fcomtest/file
 
 	# write snapshot
-	./fcom sync "fcomtest" --snapshot -o "fcomtest.snap" -v
-	cat fcomtest.snap
+	./fcom sync "fcomtest" --snapshot -o "fcomtest/fcomtest.snap" -v
+	cat fcomtest/fcomtest.snap
 
 	# diff 2 dirs
 	cd fcomtest
@@ -166,7 +165,7 @@ elif test "$CMD" == "sync" ; then
 	../fcom sync "left" -o "right" -v --delete -f
 
 	# write snapshot, diff snapshot and dir
-	../fcom sync "left" --snapshot -o "fcomtest.snap" -v
+	../fcom sync "left" --snapshot -o "fcomtest.snap" -v -f
 	../fcom sync --diff --source-snap "fcomtest.snap" -o "right" -v
 
 	cd ..
@@ -212,11 +211,22 @@ elif test "$CMD" == "trash" ; then
 
 elif test "$CMD" == "zip" ; then
 
-	mkdir fcomtest/zipdir
-	echo 123 >fcomtest/zipdir/file
-	./fcom zip -R "fcomtest/zipdir" -o "fcomtest/zip.zip"
-	test -f "fcomtest/zip.zip"
-	unzip -t "fcomtest/zip.zip"
+	mkdir fcomtest/zipdir fcomtest/unzipdir
+	echo 1234567890123456789012345678901234567890 >fcomtest/zipdir/file
+
+	./fcom zip "fcomtest/zipdir" -o "fcomtest/zip.zip"
+	# unzip -t "fcomtest/zip.zip"
+	./fcom unzip "fcomtest/zip.zip" -C "fcomtest/unzipdir" -f -v
+	diff fcomtest/zipdir/file fcomtest/unzipdir/fcomtest/zipdir/file
+
+	./fcom zip "fcomtest/zipdir" -o "fcomtest/zip.zip" --method "zstd" -f
+	./fcom unzip "fcomtest/zip.zip" -C "fcomtest/unzipdir" -f -v
+	diff fcomtest/zipdir/file fcomtest/unzipdir/fcomtest/zipdir/file
+
+	./fcom zip "fcomtest/zipdir" -o "fcomtest/zip.zip" --method "store" -f
+	# unzip -t "fcomtest/zip.zip"
+	./fcom unzip "fcomtest/zip.zip" -C "fcomtest/unzipdir" -f -v
+	diff fcomtest/zipdir/file fcomtest/unzipdir/fcomtest/zipdir/file
 
 elif test "$CMD" == "all" ; then
 

@@ -12,7 +12,15 @@ static int output_init(struct copy *c)
 
 static void output_close(struct copy *c)
 {
+	if (c->del_on_close) {
+		if (!c->write_into) {
+			core->file->delete(c->oname_tmp, 0);
+		}
+		core->file->delete(c->oname, 0);
+	}
 	core->file->destroy(c->out);
+	ffmem_free0(c->oname);
+	ffmem_free0(c->oname_tmp);
 }
 
 static void output_trash_complete(void *param, int result)
@@ -25,9 +33,10 @@ static int output_fin(struct copy *c)
 {
 	switch (c->ostate) {
 	case 0:
-		if (!c->cmd->stdout && !c->write_into && 0 != fffileinfo_size(&c->ofi)) {
+		core->file->close(c->out);
+		c->del_on_close = 0;
 
-			core->file->close(c->out);
+		if (!c->cmd->stdout && !c->write_into && 0 != fffileinfo_size(&c->ofi)) {
 
 			fcom_cominfo *ci = core->com->create();
 			ci->operation = ffsz_dup("trash");
@@ -61,8 +70,6 @@ static int output_fin(struct copy *c)
 
 static void output_reset(struct copy *c)
 {
-	if (c->out != NULL)
-		core->file->close(c->out);
 	c->ostate = 0;
 	c->total = 0;
 	c->out_off = 0;
@@ -113,11 +120,13 @@ static int output_open(struct copy *c)
 	flags |= fcom_file_cominfo_flags_o(c->cmd);
 
 	int r = core->file->open(c->out, c->oname, flags);
-	if (r == FCOM_FILE_ERR) return 0xbad;
+	if (r == FCOM_FILE_ERR)
+		return 0xbad;
 
 	if (!c->cmd->stdout) {
 		r = core->file->info(c->out, &c->ofi);
-		if (r == FCOM_FILE_ERR) return 0xbad;
+		if (r == FCOM_FILE_ERR)
+			return 0xbad;
 		if (fffile_isdir(fffileinfo_attr(&c->ofi))) {
 			fcom_errlog("output file is an existing directory. Use '-C DIR' to copy files into this directory.");
 			return 0xbad;
@@ -126,11 +135,13 @@ static int output_open(struct copy *c)
 		if (!c->write_into) {
 			core->file->close(c->out);
 			r = core->file->open(c->out, c->oname_tmp, flags);
-			if (r == FCOM_FILE_ERR) return 0xbad;
+			if (r == FCOM_FILE_ERR)
+				return 0xbad;
 
 			fffileinfo fi;
 			r = core->file->info(c->out, &fi);
-			if (r == FCOM_FILE_ERR) return 0xbad;
+			if (r == FCOM_FILE_ERR)
+				return 0xbad;
 			if (0 != fffileinfo_size(&fi)) {
 				fcom_errlog("temp file %s already exists - check & delete it manually", c->oname_tmp);
 				return 0xbad;
@@ -138,6 +149,7 @@ static int output_open(struct copy *c)
 		}
 	}
 
+	c->del_on_close = !c->cmd->stdout && !c->cmd->test;
 	return 0;
 }
 

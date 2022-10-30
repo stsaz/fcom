@@ -118,10 +118,11 @@ static void cmd_destroy(fcom_cominfo *cmd)
 	ffstr_free(&cmd->chdir);
 	if (cmd->input_fd != FFFILE_NULL && cmd->input_fd != ffstdin)
 		fffile_close(cmd->input_fd);
-	ffmem_free(cmd->operation);
 	fflist_rm(&com.cmds, &c->sib);
+	char *op = cmd->operation;
 	ffmem_free(c);
-	fcom_dbglog("command finished");
+	fcom_dbglog("%s: command finished", op);
+	ffmem_free(op);
 }
 
 static void cmd_complete(fcom_cominfo *cmd, int code)

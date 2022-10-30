@@ -3,10 +3,9 @@
 
 #ifdef _WIN32
 #include <util/winapi-shell.h>
-#else
-#include <FFOS/process.h>
 #endif
 #include <fcom.h>
+#include <util/unix-shell.h>
 #include <FFOS/path.h>
 
 static const fcom_core *core;
@@ -97,6 +96,19 @@ static void data_rnd(ffvec *d, uint chunk)
 	}
 }
 
+static void f_wipe_mtime(struct trash *t, fcom_file_obj *f)
+{
+	fftime mtime;
+	ffdatetime dt = {
+		.year = 2000,
+		.month = 1,
+		.day = 1,
+		0,
+	};
+	fftime_join1(&mtime, &dt);
+	core->file->mtime_set(f, mtime);
+}
+
 static int f_wipe(struct trash *t, const char *fn)
 {
 	int rc = -1;
@@ -131,15 +143,7 @@ static int f_wipe(struct trash *t, const char *fn)
 		if (r == FCOM_FILE_ERR) goto end;
 	}
 
-	fftime mtime;
-	ffdatetime dt = {
-		.year = 2000,
-		.month = 1,
-		.day = 1,
-		0,
-	};
-	fftime_join1(&mtime, &dt);
-	core->file->mtime_set(f, &mtime);
+	f_wipe_mtime(t, f);
 
 	core->file->close(f);
 
@@ -152,57 +156,26 @@ end:
 	return rc;
 }
 
-#ifdef FF_LINUX
-/** Exec and wait
-Return exit code or -1 on error */
-static inline int _ffui_ps_exec_wait(const char *filename, const char **argv, const char **env)
-{
-	ffps_execinfo info = {};
-	info.argv = argv;
-	info.env = env;
-	ffps ps = ffps_exec_info(filename, &info);
-	if (ps == FFPS_NULL)
-		return -1;
-
-	int code;
-	if (0 != ffps_wait(ps, -1, &code))
-		return -1;
-
-	return code;
-}
-
-/** Move files to Trash */
-static inline int ffui_glib_trash(const char **names, ffsize n)
-{
-	ffvec v = {};
-	if (NULL == ffvec_allocT(&v, 3 + n, char*))
-		return -1;
-	char **p = (char**)v.ptr;
-	*p++ = "/usr/bin/gio";
-	*p++ = "trash";
-	for (ffsize i = 0;  i != n;  i++) {
-		*p++ = (char*)names[i];
-	}
-	*p++ = NULL;
-	int r = _ffui_ps_exec_wait(((char**)v.ptr)[0], (const char**)v.ptr, (const char**)environ);
-	ffvec_free(&v);
-	return r;
-}
-#endif
-
 /** Move files to Trash */
 static int f_trash(struct trash *t, const char **names, ffsize names_n)
 {
 #ifdef FF_LINUX
-	int r;
-	if (0 != (r = ffui_glib_trash(names, names_n))) {
-		if (!t->cmd->overwrite)
-			fcom_fatlog("can't move files to trash: error code %d", r);
-		return r;
+	int e = 0;
+	for (ffsize i = 0;  i != names_n;  i++) {
+		const char *err;
+		if (0 != ffui_glib_trash(names[i], &err)) {
+			if (!t->cmd->overwrite) {
+				fcom_fatlog("%s: can't move file to trash: %s"
+					, names[i], err);
+			}
+			e = 1;
+		}
 	}
+	if (e)
+		return -1;
 
 #else
-	if (0 != ffui_fop_del(names, names_n, FFUI_FOP_ALLOWUNDO)) {
+	if (0 != ffui_file_del(names, names_n, FFUI_FILE_TRASH)) {
 		if (!t->cmd->overwrite)
 			fcom_sysfatlog("can't move files to trash");
 		return -1;
