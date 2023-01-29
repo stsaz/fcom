@@ -21,8 +21,23 @@ Contents:
 * `textcount` - Analyze text files (e.g. print number of lines)
 * `touch` - Change file date/time
 * `trash` - Move files to user's trash directory, plus obfuscation
-* `unzip` - Unpack files from .zip
+
+Pack files:
+
+* `gz` - Compress file into .gz
+* `iso` - Pack files into .iso
 * `zip` - Pack files into .zip
+* `zst` - Compress file into .zst
+
+Unpack files:
+
+* `un7z` - Unpack files from .7z
+* `ungz` - Decompress file from .gz
+* `uniso` - Unpack files from .iso
+* `untar` - Unpack files from .tar
+* `unxz` - Decompress file from .xz
+* `unzip` - Unpack files from .zip
+* `unzst` - Decompress file from .zst
 
 
 ## Third-party code
@@ -31,6 +46,7 @@ fcom uses third-party code that implements complex algorithms such as data encry
 
 * AES (Brian Gladman)
 * CRC32 (xz)
+* lzma (xz)
 * MD5 (nginx)
 * SHA-256 (glibc)
 * zlib

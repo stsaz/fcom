@@ -293,11 +293,6 @@ static int args_parse(struct cmd *c)
 		return 1;
 	}
 
-	if (ffstr_eqz(&c->cmd.output, "STDOUT")) {
-		ffstr_free(&c->cmd.output);
-		c->cmd.stdout = 1;
-	}
-
 	return 0;
 }
 
@@ -552,8 +547,14 @@ static int cmd_args_parse(fcom_cominfo *cmd, const ffcmdarg_arg *args, void *obj
 	};
 
 	r = cmd_args_parse2(cmd, args_general, cmd, ARGS_GENERAL);
+
 	if (cmd->outputz != NULL)
 		ffstr_setz(&cmd->output, cmd->outputz);
+	if (ffstr_eqz(&cmd->output, "STDOUT")) {
+		ffstr_free(&cmd->output);
+		cmd->stdout = 1;
+	}
+
 	return r;
 }
 

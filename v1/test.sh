@@ -7,7 +7,26 @@ CMD=$1
 
 rm -rf ./fcomtest ; mkdir fcomtest
 
-if test "$CMD" == "copy" ; then
+if test "$CMD" == "all" ; then
+
+	sh $0 copy
+	sh $0 hex
+	sh $0 list
+	sh $0 move
+	sh $0 sync
+	sh $0 textcount
+	sh $0 touch
+	sh $0 trash
+
+	sh $0 gz
+	sh $0 iso
+	sh $0 tar
+	sh $0 un7z
+	sh $0 unxz
+	sh $0 zip
+	sh $0 zst
+
+elif test "$CMD" == "copy" ; then
 
 	cd fcomtest
 	echo hello >file
@@ -159,6 +178,8 @@ elif test "$CMD" == "sync" ; then
 	echo l >left/l
 	echo r >right/r
 	../fcom sync --diff "left" -o "right" -v
+	../fcom sync --diff --plain --add "left" -o "right" -v
+	../fcom sync --diff --plain --update "left" -o "right" -v
 
 	# sync 2 dirs
 	../fcom sync "left" -o "right" -v --add
@@ -209,12 +230,34 @@ elif test "$CMD" == "trash" ; then
 	echo 123 >fcomtest/trash2
 	./fcom trash "fcomtest/trash" "fcomtest/trash2" --wipe --rename -v -f
 
+# PACK
+
+elif test "$CMD" == "tar" ; then
+
+	mkdir fcomtest/tardir fcomtest/untardir
+	echo 1234567890123456789012345678901234567890 >fcomtest/tardir/file
+
+	./fcom tar "fcomtest/tardir" -o "fcomtest/tar.tar"
+	./fcom untar "fcomtest/tar.tar" -C "fcomtest/untardir" -v
+	diff fcomtest/tardir/file fcomtest/untardir/fcomtest/tardir/file
+
+	./fcom untar "fcomtest/tar.tar" -C "fcomtest/untardir" -l -v
+
+elif test "$CMD" == "un7z" ; then
+
+	echo 1234567890123456789012345678901234567890 >fcomtest/file
+	7z a fcomtest/7z.7z fcomtest/file
+	./fcom un7z "fcomtest/7z.7z" -C "fcomtest/un7z" -v
+	diff fcomtest/un7z/fcomtest/file fcomtest/file
+
+	./fcom un7z "fcomtest/7z.7z" -C "fcomtest/un7z" -l -v
+
 elif test "$CMD" == "zip" ; then
 
 	mkdir fcomtest/zipdir fcomtest/unzipdir
 	echo 1234567890123456789012345678901234567890 >fcomtest/zipdir/file
 
-	./fcom zip "fcomtest/zipdir" -o "fcomtest/zip.zip"
+	./fcom zip "fcomtest/notfound" "fcomtest/zipdir" -o "fcomtest/zip.zip" || true
 	# unzip -t "fcomtest/zip.zip"
 	./fcom unzip "fcomtest/zip.zip" -C "fcomtest/unzipdir" -f -v
 	diff fcomtest/zipdir/file fcomtest/unzipdir/fcomtest/zipdir/file
@@ -228,17 +271,56 @@ elif test "$CMD" == "zip" ; then
 	./fcom unzip "fcomtest/zip.zip" -C "fcomtest/unzipdir" -f -v
 	diff fcomtest/zipdir/file fcomtest/unzipdir/fcomtest/zipdir/file
 
-elif test "$CMD" == "all" ; then
+	# --members-from-file
+	echo file1 >fcomtest/zipdir/file1
+	echo file2 >fcomtest/zipdir/file2
+	echo file3 >fcomtest/zipdir/file3
+	echo fcomtest/zipdir/file1 >fcomtest/LIST
+	echo fcomtest/zipdir/file3 >>fcomtest/LIST
+	./fcom zip "fcomtest/zipdir" -o "fcomtest/zip.zip" -f
+	./fcom unzip "fcomtest/zip.zip" -l --members-from-file="fcomtest/LIST"
 
-	sh $0 copy
-	sh $0 hex
-	sh $0 list
-	sh $0 move
-	sh $0 sync
-	sh $0 textcount
-	sh $0 touch
-	sh $0 trash
-	sh $0 zip
+	# --autodir
+	./fcom unzip "fcomtest/zip.zip" -C "fcomtest" --autodir
+	diff fcomtest/zipdir/file1 fcomtest/zip/fcomtest/zipdir/file1
+
+elif test "$CMD" == "gz" ; then
+
+	echo 1234567890123456789012345678901234567890 >fcomtest/file
+	./fcom gz "fcomtest/file" -C "fcomtest"
+	./fcom gz "fcomtest/file" -o "STDOUT" >>fcomtest/file.gz
+	echo 1234567890123456789012345678901234567890 >>fcomtest/file
+	./fcom ungz "fcomtest/file.gz" -o "fcomtest/file-d" -v
+	diff fcomtest/file-d fcomtest/file
+
+elif test "$CMD" == "zst" ; then
+
+	echo 1234567890123456789012345678901234567890 >fcomtest/file
+	./fcom zst "fcomtest/file" -C "fcomtest"
+	./fcom zst "fcomtest/file" -o "STDOUT" >>fcomtest/file.zst
+	echo 1234567890123456789012345678901234567890 >>fcomtest/file
+	./fcom unzst "fcomtest/file.zst" -o "fcomtest/file-d" -v
+	diff fcomtest/file-d fcomtest/file
+
+elif test "$CMD" == "unxz" ; then
+
+	echo 1234567890123456789012345678901234567890 >fcomtest/file
+	xz "fcomtest/file" -c >>fcomtest/file.xz
+	./fcom unxz "fcomtest/file.xz" -o "fcomtest/file-d" -v
+	diff fcomtest/file-d fcomtest/file
+
+elif test "$CMD" == "iso" ; then
+
+	mkdir fcomtest/isodir fcomtest/unisodir
+	echo 1234567890123456789012345678901234567890 >fcomtest/isodir/file
+
+	cd fcomtest
+	../fcom iso "isodir" -o "iso.iso"
+	../fcom uniso "iso.iso" -C "unisodir" -v
+	diff isodir/file unisodir/isodir/file
+
+	../fcom uniso "iso.iso" -C "unisodir" -l -v
+	cd ..
 
 else
 	exit 1

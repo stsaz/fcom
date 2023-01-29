@@ -151,9 +151,11 @@ next:
 	}
 
 end:
+	{
 	fcom_cominfo *cmd = l->cmd;
 	list_close(l);
 	core->com->complete(cmd, rc);
+	}
 }
 
 static void list_signal(fcom_op *op, uint signal)

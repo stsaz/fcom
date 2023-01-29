@@ -111,6 +111,7 @@ struct sync {
 
 	byte sync_add, sync_del, sync_update;
 	byte diff_only;
+	byte plain_list;
 	byte write_snapshot;
 	byte left_snapshot;
 };
@@ -133,6 +134,7 @@ Usage:\n\
         --source-snap   Use snapshot file for input file tree\n\
 \n\
     -d, --diff          Just show difference table between source and target\n\
+    -p, --plain         Plain list of file names\n\
 \n\
         --add           Copy new files\n\
         --delete        Delete old files\n\
@@ -151,17 +153,20 @@ Use snapshot file and compare it with '/home2' directory:\n\
 ";
 }
 
+#define O(member)  FF_OFF(struct sync, member)
+
 static int args_parse(struct sync *s, fcom_cominfo *cmd)
 {
 	static const ffcmdarg_arg args[] = {
-		{ 's',	"snapshot",	FFCMDARG_TSWITCH, FF_OFF(struct sync, write_snapshot) },
-		{ 0,	"source-snap",	FFCMDARG_TSWITCH, FF_OFF(struct sync, left_snapshot) },
+		{ 's',	"snapshot",	FFCMDARG_TSWITCH, O(write_snapshot) },
+		{ 0,	"source-snap",	FFCMDARG_TSWITCH, O(left_snapshot) },
 
-		{ 'd',	"diff",	FFCMDARG_TSWITCH, FF_OFF(struct sync, diff_only) },
+		{ 'd',	"diff",	FFCMDARG_TSWITCH, O(diff_only) },
+		{ 'p',	"plain",	FFCMDARG_TSWITCH, O(plain_list) },
 
-		{ 0,	"add",	FFCMDARG_TSWITCH, FF_OFF(struct sync, sync_add) },
-		{ 0,	"delete",	FFCMDARG_TSWITCH, FF_OFF(struct sync, sync_del) },
-		{ 0,	"update",	FFCMDARG_TSWITCH, FF_OFF(struct sync, sync_update) },
+		{ 0,	"add",	FFCMDARG_TSWITCH, O(sync_add) },
+		{ 0,	"delete",	FFCMDARG_TSWITCH, O(sync_del) },
+		{ 0,	"update",	FFCMDARG_TSWITCH, O(sync_update) },
 		{}
 	};
 	if (0 != core->com->args_parse(cmd, args, s))
@@ -174,6 +179,15 @@ static int args_parse(struct sync *s, fcom_cominfo *cmd)
 		return -1;
 	}
 
+	if (s->plain_list && !s->diff_only) {
+		fcom_fatlog("'--plain' requires '--diff'");
+		return -1;
+	}
+	if (s->plain_list && !(s->sync_add || s->sync_update) && !s->sync_del) {
+		fcom_fatlog("'--plain' requires '--add' or '--update'");
+		return -1;
+	}
+
 	if (cmd->output.len == 0 && !cmd->stdout) {
 		fcom_fatlog("Please use '--output'");
 		return -1;
@@ -181,6 +195,8 @@ static int args_parse(struct sync *s, fcom_cominfo *cmd)
 
 	return 0;
 }
+
+#undef O
 
 static fcom_op* sync_create(fcom_cominfo *cmd)
 {
@@ -478,9 +494,11 @@ static void sync_run(fcom_op *op)
 	}
 
 end:
+	{
 	fcom_cominfo *cmd = s->cmd;
 	sync_close(s);
 	core->com->complete(cmd, rc);
+	}
 }
 
 static void sync_signal(fcom_op *op, uint signal)

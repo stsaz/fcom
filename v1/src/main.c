@@ -58,7 +58,7 @@ void stdlogv(uint flags, const char *fmt, va_list args)
 		d.len = fftime_tostr1(&dt, d.ptr, cap - d.len, FFTIME_HMS_MSEC);
 
 		uint64 tid = ffthread_curid();
-		ffstr_addfmt(&d, cap - d.len, " :%xU %s\t", tid, err_str[level]);
+		ffstr_addfmt(&d, cap - d.len, " :%U %s\t", tid, err_str[level]);
 	}
 	ffstr_addfmtv(&d, cap - d.len, fmt, args);
 

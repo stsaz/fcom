@@ -18,6 +18,7 @@ struct zip {
 	fffileinfo fi;
 	ffvec buf;
 	uint stop;
+	uint in_file_notfound :1;
 	uint del_on_close :1;
 	int64 woff;
 
@@ -226,12 +227,12 @@ static void zip_run(fcom_op *op)
 {
 	struct zip *z = op;
 	int r, rc = 1;
-	enum { I_OUT_OPEN, I_IN, I_INFO, I_ADD, I_FILEREAD, I_PROC, };
+	enum { I_OUT_OPEN, I_IN, I_INFO, I_ADD, I_FILEREAD, I_PROC, I_DONE, };
 
 	while (!FFINT_READONCE(z->stop)) {
 		switch (z->st) {
 
-		case I_OUT_OPEN:
+		case I_OUT_OPEN: {
 			uint flags = FCOM_FILE_WRITE;
 			flags |= fcom_file_cominfo_flags_o(z->cmd);
 			r = core->file->open(z->out, z->cmd->output.ptr, flags);
@@ -239,6 +240,7 @@ static void zip_run(fcom_op *op)
 			z->del_on_close = !z->cmd->stdout && !z->cmd->test;
 			z->woff = -1;
 			z->st = I_IN;
+		}
 			// fallthrough
 
 		case I_IN:
@@ -258,7 +260,14 @@ static void zip_run(fcom_op *op)
 			uint flags = fcom_file_cominfo_flags_i(z->cmd);
 			flags |= FCOM_FILE_READ;
 			r = core->file->open(z->in, z->iname.ptr, flags);
-			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ERR) {
+				if (fferr_notexist(fferr_last())) {
+					z->in_file_notfound = 1;
+					z->st = I_IN;
+					continue;
+				}
+				goto end;
+			}
 
 			r = core->file->info(z->in, &z->fi);
 			if (r == FCOM_FILE_ERR) goto end;
@@ -320,22 +329,28 @@ static void zip_run(fcom_op *op)
 				z->st = I_IN; break;
 
 			case FFZIPWRITE_DONE:
-				core->file->close(z->out);
-				z->del_on_close = 0;
-				rc = 0;
-				goto end;
+				z->st = I_DONE;
+				break;
 
 			case FFZIPWRITE_ERROR:
 				goto end;
 			}
 			continue;
+
+		case I_DONE:
+			core->file->close(z->out);
+			z->del_on_close = 0;
+			rc = z->in_file_notfound;
+			goto end;
 		}
 	}
 
 end:
+	{
 	fcom_cominfo *cmd = z->cmd;
 	zip_close(z);
 	core->com->complete(cmd, rc);
+	}
 }
 
 static void zip_signal(fcom_op *op, uint signal)

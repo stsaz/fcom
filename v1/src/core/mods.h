@@ -20,10 +20,26 @@ void mods_init()
 {
 	ffmap_init(&com.mods, modmap_keyeq);
 
-	struct mod *m = ffmem_new(struct mod);
-	m->name = ffsz_dup("unzip");
-	m->alias_of = "zip";
-	ffmap_add(&com.mods, "unzip", 5, m);
+	struct alias {
+		const char *name, *alias_of;
+	};
+	static const struct alias aliases[] = {
+		{ "un7z",	"7z" },
+		{ "ungz",	"gz" },
+		{ "uniso",	"iso" },
+		{ "untar",	"tar" },
+		{ "unxz",	"xz" },
+		{ "unzip",	"zip" },
+		{ "unzst",	"zst" },
+	};
+
+	const struct alias *it;
+	FF_FOREACH(aliases, it) {
+		struct mod *m = ffmem_new(struct mod);
+		m->name = ffsz_dup(it->name);
+		m->alias_of = it->alias_of;
+		ffmap_add(&com.mods, it->name, ffsz_len(it->name), m);
+	}
 }
 
 static void mod_free(struct mod *m)

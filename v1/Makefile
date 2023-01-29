@@ -19,8 +19,17 @@ MODS := \
 	sync.$(SO) \
 	textcount.$(SO) \
 	touch.$(SO) \
-	trash.$(SO) \
-	zip.$(SO)
+	trash.$(SO)
+
+MODS += \
+	7z.$(SO) \
+	gz.$(SO) \
+	iso.$(SO) \
+	tar.$(SO) \
+	xz.$(SO) \
+	zip.$(SO) \
+	zst.$(SO)
+
 BINS := $(BIN) core.$(SO) $(MODS)
 
 CFLAGS := -I$(FCOM_DIR)/src -I$(FFOS_DIR) -I$(FFBASE_DIR) \
@@ -89,18 +98,42 @@ crypto.$(SO): \
 		$(3PT_DIR)/AES.a
 	$(LINK) -shared $+ $(LINKFLAGS) -o $@
 
-zip.o: $(FCOM_DIR)/src/ops/zip.c $(GDEPS) \
+# PACK
+
+%.o: $(FCOM_DIR)/src/pack/%.c $(GDEPS) \
+		$(wildcard $(FFPACK_DIR)/ffpack/*.h)
+	$(C) $(CFLAGS) -I$(FFPACK_DIR) $< -o $@
+
+tar.$(SO): tar.o untar.o \
+		crc.o
+	$(LINK) -shared $+ $(LINKFLAGS) -L$(FFPACK_BINDIR) $(LINK_RPATH_ORIGIN) -o $@
+
+gz.$(SO): gz.o ungz.o \
+		crc.o
+	$(LINK) -shared $+ $(LINKFLAGS) -L$(FFPACK_BINDIR) -lz-ffpack $(LINK_RPATH_ORIGIN) -o $@
+
+xz.$(SO): unxz.o \
+		crc.o
+	$(LINK) -shared $+ $(LINKFLAGS) -L$(FFPACK_BINDIR) -llzma-ffpack $(LINK_RPATH_ORIGIN) -o $@
+
+zip.o: $(FCOM_DIR)/src/pack/zip.c $(GDEPS) \
 		$(wildcard $(FFPACK_DIR)/ffpack/*.h)
 	$(C) $(CFLAGS) -I$(FFPACK_DIR) -DFFPACK_ZIPWRITE_ZLIB -DFFPACK_ZIPWRITE_ZSTD $< -o $@
-unzip.o: $(FCOM_DIR)/src/ops/unzip.c $(GDEPS) \
-		$(wildcard $(FFPACK_DIR)/ffpack/*.h)
-	$(C) $(CFLAGS) -I$(FFPACK_DIR) $< -o $@
 crc.o: $(FFPACK_DIR)/crc/crc.c
 	$(C) $(CFLAGS) -I$(FFPACK_DIR) $< -o $@
-zip.$(SO): zip.o \
-		unzip.o \
+zip.$(SO): zip.o unzip.o \
 		crc32.o crc.o
 	$(LINK) -shared $+ $(LINKFLAGS) -L$(FFPACK_BINDIR) -lzstd-ffpack -lz-ffpack $(LINK_RPATH_ORIGIN) -o $@
+
+zst.$(SO): zst.o unzst.o
+	$(LINK) -shared $+ $(LINKFLAGS) -L$(FFPACK_BINDIR) -lzstd-ffpack $(LINK_RPATH_ORIGIN) -o $@
+
+7z.$(SO): un7z.o \
+		crc.o
+	$(LINK) -shared $+ $(LINKFLAGS) -L$(FFPACK_BINDIR) -lz-ffpack -llzma-ffpack $(LINK_RPATH_ORIGIN) -o $@
+
+iso.$(SO): iso.o uniso.o
+	$(LINK) -shared $+ $(LINKFLAGS) -L$(FFPACK_BINDIR) $(LINK_RPATH_ORIGIN) -o $@
 
 test: test.o
 	$(LINK) $+ $(LINKFLAGS) -o $@
@@ -122,8 +155,9 @@ app:
 	chmod 0755 fcom-1/ops
 	$(CP) $(MODS) fcom-1/ops
 	$(CP) \
-		$(FFPACK_BINDIR)/libzstd-ffpack.$(SO) \
+		$(FFPACK_BINDIR)/liblzma-ffpack.$(SO) \
 		$(FFPACK_BINDIR)/libz-ffpack.$(SO) \
+		$(FFPACK_BINDIR)/libzstd-ffpack.$(SO) \
 		fcom-1/ops
 	chmod 0644 fcom-1/ops/*.$(SO)
 

@@ -1,6 +1,8 @@
 /** fcom: sync: compare directory trees
 2022, Simon Zolin */
 
+#include <FFOS/std.h>
+
 #define WIDTH_NAME  40L
 #define WIDTH_SIZE  "10"
 
@@ -216,6 +218,22 @@ static int diff_show_next(struct sync *s)
 
 	if (ce->status & FNTREE_CMP_SKIP)
 		return 0;
+
+	if (s->plain_list) {
+		if (ce->status & FNTREE_CMP_MOVED)
+			return 0;
+		switch (ce->status & 0x0f) {
+		case FNTREE_CMP_LEFT:
+			if (s->sync_add)
+				ffstdout_fmt("%S\n", &s->cmp.lname);
+			break;
+		case FNTREE_CMP_NEQ:
+			if (s->sync_update)
+				ffstdout_fmt("%S\n", &s->cmp.lname);
+			break;
+		}
+		return 0;
+	}
 
 	if (ce->status & FNTREE_CMP_MOVED) {
 		fcom_infolog("MOVE      %*S  ->  %S", WIDTH_NAME, &s->cmp.lname, &s->cmp.rname);

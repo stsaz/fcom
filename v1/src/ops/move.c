@@ -15,6 +15,7 @@ struct move {
 	ffvec oname, replace_buf;
 
 	byte unbranch, unbranch_flat;
+	byte replace_once;
 	ffstr replace_pair, search, replace;
 };
 
@@ -29,12 +30,15 @@ static int args_replace(ffcmdarg_scheme *as, struct move *m, ffstr *val)
 	return 0;
 }
 
+#define O(member)  FF_OFF(struct move, member)
+
 static int args_parse(struct move *m, fcom_cominfo *cmd)
 {
 	static const ffcmdarg_arg args[] = {
-		{ 'u',	"unbranch",	FFCMDARG_TSWITCH, FF_OFF(struct move, unbranch) },
-		{ 0,	"unbranch-flat",	FFCMDARG_TSWITCH, FF_OFF(struct move, unbranch_flat) },
+		{ 'u',	"unbranch",	FFCMDARG_TSWITCH, O(unbranch) },
+		{ 0,	"unbranch-flat",	FFCMDARG_TSWITCH, O(unbranch_flat) },
 		{ 'r',	"replace",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, (ffsize)args_replace },
+		{ 0,	"replace-once",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, O(replace_once) },
 		{}
 	};
 	if (0 != core->com->args_parse(cmd, args, m))
@@ -52,6 +56,8 @@ static int args_parse(struct move *m, fcom_cominfo *cmd)
 	return 0;
 }
 
+#undef O
+
 static const char* move_help()
 {
 	return "\
@@ -67,6 +73,7 @@ Usage:\n\
                          moves \"./a/b/file\" -> \"./file\"\n\
     -r, --replace='SEARCH/REPLACE'\n\
                         Replace SEARCH text in file name with REPLACE\n\
+        --replace-once  Replace only the first occurrence\n\
 ";
 }
 
@@ -150,7 +157,9 @@ static int replace(struct move *m, ffstr *name)
 	m->replace_buf.len = 0;
 	ffvec_addstr(&m->replace_buf, &path);
 
-	uint flags = FFSTR_REPLACE_ALL;
+	uint flags = 0;
+	if (!m->replace_once)
+		flags |= FFSTR_REPLACE_ALL;
 #ifdef FF_WIN
 	flags |= FFSTR_REPLACE_ICASE;
 #endif
@@ -225,10 +234,12 @@ static void move_run(fcom_op *op)
 	}
 
 end:
+	{
 	fcom_cominfo *cmd = m->cmd;
 	move_close(m);
 	core->com->destroy(cmd);
 	core->exit(rc);
+	}
 }
 
 static void move_signal(fcom_op *op, uint signal)

@@ -11,8 +11,8 @@
 #include <ffbase/vector.h>
 #include <assert.h>
 
-#define FCOM_VER "1.0beta5"
-#define FCOM_CORE_VER 105
+#define FCOM_VER "1.0beta6"
+#define FCOM_CORE_VER 106
 
 #undef stdin
 #undef stdout
@@ -44,6 +44,7 @@ struct fcom_core_conf {
 	uint timer_resolution_msec;
 	char *app_path;
 	fcom_log_func log;
+	uint codepage;
 	uint debug :1;
 	uint verbose :1;
 };
@@ -86,6 +87,7 @@ struct fcom_core {
 	/** File submodule interface */
 	const fcom_file *file;
 	fftime_zone tz;
+	uint codepage;
 
 	/** Exit from fcom_coreinit.run() */
 	void (*exit)(int exit_code);
@@ -126,6 +128,7 @@ struct fcom_core {
 #define fcom_fatlog(fmt, ...)  (core)->log(FCOM_LOG_FATAL, fmt, ##__VA_ARGS__)
 #define fcom_syserrlog(fmt, ...)  (core)->log(FCOM_LOG_ERR | FCOM_LOG_SYSERR, fmt, ##__VA_ARGS__)
 #define fcom_errlog(fmt, ...)  (core)->log(FCOM_LOG_ERR, fmt, ##__VA_ARGS__)
+#define fcom_warnlog(fmt, ...)  (core)->log(FCOM_LOG_WARN, fmt, ##__VA_ARGS__)
 #define fcom_syswarnlog(fmt, ...)  (core)->log(FCOM_LOG_WARN | FCOM_LOG_SYSERR, fmt, ##__VA_ARGS__)
 #define fcom_infolog(fmt, ...)  (core)->log(FCOM_LOG_INFO, fmt, ##__VA_ARGS__)
 #define fcom_verblog(fmt, ...) \
@@ -382,6 +385,12 @@ struct fcom_file {
 	By default, don't fail if the directory already exists.
 	flags: enum FCOM_FILE_DIR_F */
 	int (*dir_create)(const char *name, uint flags);
+
+	/** Create hard link */
+	int (*hlink)(const char *oldpath, const char *newpath, uint flags);
+
+	/** Create symbolic link */
+	int (*slink)(const char *target, const char *linkpath, uint flags);
 
 	/** Move file
 	flags: enum FCOM_FILE_MOVE_F */

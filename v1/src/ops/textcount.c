@@ -222,9 +222,11 @@ static void txcnt_run(fcom_op *op)
 	}
 
 end:
+	{
 	fcom_cominfo *cmd = c->cmd;
 	txcnt_close(c);
 	core->com->complete(cmd, rc);
+	}
 }
 
 static void txcnt_signal(fcom_op *op, uint signal)

@@ -55,6 +55,8 @@ struct copy {
 	byte write_into;
 };
 
+#define O(member)  FF_OFF(struct copy, member)
+
 static int args_parse(struct copy *c, fcom_cominfo *cmd)
 {
 	c->preserve_date = 1;
@@ -62,11 +64,11 @@ static int args_parse(struct copy *c, fcom_cominfo *cmd)
 		cmd->buffer_size = BUF_LARGE;
 
 	static const ffcmdarg_arg args[] = {
-		{ 'e',	"encrypt",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, FF_OFF(struct copy, encrypt) },
-		{ 'd',	"decrypt",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, FF_OFF(struct copy, decrypt) },
-		{ 'y',	"verify",	FFCMDARG_TSWITCH, FF_OFF(struct copy, verify) },
-		{ 0,	"rename-source",	FFCMDARG_TSWITCH, FF_OFF(struct copy, rename_source) },
-		{ 0,	"write-into",	FFCMDARG_TSWITCH, FF_OFF(struct copy, write_into) },
+		{ 'e',	"encrypt",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, O(encrypt) },
+		{ 'd',	"decrypt",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, O(decrypt) },
+		{ 'y',	"verify",	FFCMDARG_TSWITCH, O(verify) },
+		{ 0,	"rename-source",	FFCMDARG_TSWITCH, O(rename_source) },
+		{ 0,	"write-into",	FFCMDARG_TSWITCH, O(write_into) },
 		{}
 	};
 	if (0 != core->com->args_parse(cmd, args, c))
@@ -77,6 +79,8 @@ static int args_parse(struct copy *c, fcom_cominfo *cmd)
 
 	return 0;
 }
+
+#undef O
 
 static const char* copy_help()
 {
@@ -281,8 +285,7 @@ static void copy_run(fcom_op *op)
 				core->file->mtime_set(c->out, fffileinfo_mtime(&c->fi));
 			}
 
-			if (c->vf.md5_obj != NULL) {
-				verify_fin(c);
+			if (verify_fin(c)) {
 				c->st = I_VERIFY;
 				continue;
 			}

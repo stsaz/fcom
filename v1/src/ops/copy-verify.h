@@ -54,10 +54,13 @@ static void verify_process(struct copy *c, ffstr input)
 	c->vf.md5->update(c->vf.md5_obj, input.ptr, input.len);
 }
 
-static void verify_fin(struct copy *c)
+static int verify_fin(struct copy *c)
 {
+	if (c->vf.md5_obj == NULL) return 0;
+
 	c->vf.md5->fin(c->vf.md5_obj, c->vf.md5_result_r, 16);
 	c->vf.md5->close(c->vf.md5_obj);
 	c->vf.md5_obj = c->vf.md5->create();
 	c->out_off = 0;
+	return 1;
 }

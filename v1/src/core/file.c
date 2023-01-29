@@ -193,14 +193,14 @@ static int file_read(fcom_file_obj *_f, ffstr *d, int64 off)
 	if (off == -1)
 		off = f->cur_off;
 
-	ffuint64 offset = ffint_align_floor2(off, ALIGN);
-	if (NULL != (b = fcache_find(&f->fcache, offset))) {
+	if (NULL != (b = fcache_find(&f->fcache, off))) {
 		fcom_dbglog("%s: cache hit: %L @%U", f->name, b->len, b->off);
 		goto done;
 	}
 
 	b = fcache_nextbuf(&f->fcache);
 
+	ffuint64 offset = ffint_align_floor2(off, ALIGN);
 	ffssize r;
 	if (f->open_flags & FCOM_FILE_STDIN)
 		r = fffile_read(f->fd, b->ptr, f->buffer_size);
@@ -246,6 +246,8 @@ static int f_write(struct file *f, ffstr d, uint64 off)
 	fcom_dbglog("%s: written %L @%U", f->name, len, off);
 	if (off + d.len > f->size)
 		f->size = off + d.len;
+	if (f->prealloc < off + len)
+		f->prealloc = off + len;
 	return 0;
 }
 
@@ -413,6 +415,32 @@ static int dir_create(const char *name, uint flags)
 	return 0;
 }
 
+static int hlink_create(const char *oldpath, const char *newpath, uint flags)
+{
+	if (0 != fffile_hardlink(oldpath, newpath)) {
+		fcom_syserrlog("fffile_hardlink(): %s -> %s"
+			, oldpath, newpath);
+		return FCOM_FILE_ERR;
+	}
+
+	fcom_verblog("created hard link: %s -> %s"
+		, oldpath, newpath);
+	return 0;
+}
+
+static int slink_create(const char *target, const char *linkpath, uint flags)
+{
+	if (0 != fffile_symlink(target, linkpath)) {
+		fcom_syserrlog("fffile_symlink(): %s -> %s"
+			, linkpath, target);
+		return FCOM_FILE_ERR;
+	}
+
+	fcom_verblog("created symbolic link: %s -> %s"
+		, linkpath, target);
+	return 0;
+}
+
 static int file_move(ffstr old, ffstr _new, uint flags)
 {
 	int rc = FCOM_FILE_ERR;
@@ -463,6 +491,7 @@ const fcom_file _fcom_file = {
 	file_info, file_fd,
 	file_mtime_set, file_attr_set,
 	dir_create,
+	hlink_create, slink_create,
 	file_move,
 	file_delete,
 };

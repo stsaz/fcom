@@ -163,9 +163,11 @@ static void touch_run(fcom_op *op)
 	}
 
 end:
+	{
 	fcom_cominfo *cmd = t->cmd;
 	touch_close(t);
 	core->com->complete(cmd, rc);
+	}
 }
 
 static void touch_signal(fcom_op *op, uint signal)

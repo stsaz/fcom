@@ -136,9 +136,11 @@ static void hex_run(fcom_op *op)
 	}
 
 end:
+	{
 	fcom_cominfo *cmd = h->cmd;
 	hex_close(h);
 	core->com->complete(cmd, rc);
+	}
 }
 
 static void hex_signal(fcom_op *op, uint signal)

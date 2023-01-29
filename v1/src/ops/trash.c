@@ -321,9 +321,11 @@ static void trash_run(fcom_op *op)
 	}
 
 end:
+	{
 	fcom_cominfo *cmd = t->cmd;
 	trash_close(t);
 	core->com->complete(cmd, rc);
+	}
 }
 
 static void trash_signal(fcom_op *op, uint signal)

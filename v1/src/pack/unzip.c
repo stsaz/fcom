@@ -4,6 +4,7 @@
 #include <fcom.h>
 #include <ffpack/zipread.h>
 #include <FFOS/path.h>
+#include <ffbase/map.h>
 
 extern const fcom_core *core;
 
@@ -36,6 +37,9 @@ struct unzip {
 
 	// conf:
 	byte list;
+	byte autodir;
+	ffvec members_data;
+	ffmap members; // char*[]
 };
 
 static const char* unzip_help()
@@ -45,14 +49,71 @@ Unpack files from .zip.\n\
 Usage:\n\
   fcom unzip INPUT... [-C OUTPUT_DIR]\n\
     OPTIONS:\n\
+    -m, --members-from-file=FILE\n\
+                    Read archive member names from file\n\
     -l, --list      Just show the file list\n\
+        --autodir   Add to OUTPUT_DIR a directory with name = input archive name.\n\
+                     Same as manual 'unzip arc.zip -C odir/arc'.\n\
 ";
 }
+
+static int members_keyeq(void *opaque, const void *key, ffsize keylen, void *val)
+{
+	char *v = val;
+	if (!ffmem_cmp(key, v, keylen) && v[keylen] == '\n')
+		return 1;
+	return 0;
+}
+
+/** Return !=0 if name matches the list of archive members for inclusion. */
+static int members_find(ffmap *members, ffstr name)
+{
+	void *v = ffmap_find(members, name.ptr, name.len, NULL);
+	return (v == NULL) ? 0 : 1;
+}
+
+static int unzip_args_members_from_file(ffcmdarg_scheme *as, void *obj, char *fn)
+{
+	struct unzip *z = obj;
+
+	if (0 != fffile_readwhole(fn, &z->members_data, 100*1024*1024))
+		return 1;
+	ffvec_addchar(&z->members_data, '\n');
+
+	uint n = 0;
+	ffstr d = FFSTR_INITSTR(&z->members_data);
+	while (d.len != 0) {
+		ffstr ln;
+		ffstr_splitby(&d, '\n', &ln, &d);
+		if (ln.len == 0)
+			continue;
+
+		n++;
+	}
+
+	ffmap_init(&z->members, members_keyeq);
+	ffmap_alloc(&z->members, n);
+
+	ffstr_setstr(&d, &z->members_data);
+	while (d.len != 0) {
+		ffstr ln;
+		ffstr_splitby(&d, '\n', &ln, &d);
+		if (ln.len == 0)
+			continue;
+
+		ffmap_add(&z->members, ln.ptr, ln.len, ln.ptr);
+	}
+	return 0;
+}
+
+#define O(member)  FF_OFF(struct unzip, member)
 
 static int unzip_args_parse(struct unzip *z, fcom_cominfo *cmd)
 {
 	static const ffcmdarg_arg args[] = {
-		{ 'l', "list",	FFCMDARG_TSWITCH,	FF_OFF(struct unzip, list) },
+		{ 'm', "members-from-file",	FFCMDARG_TSTRZ,	(ffsize)unzip_args_members_from_file },
+		{ 'l', "list",	FFCMDARG_TSWITCH,	O(list) },
+		{ 0, "autodir",	FFCMDARG_TSWITCH,	O(autodir) },
 		{}
 	};
 	int r = core->com->args_parse(cmd, args, z);
@@ -70,6 +131,8 @@ static int unzip_args_parse(struct unzip *z, fcom_cominfo *cmd)
 	return 0;
 }
 
+#undef O
+
 static void unzip_log(void *udata, uint level, ffstr msg)
 {
 	fcom_dbglog("%S", &msg);
@@ -83,8 +146,11 @@ static void unzip_close(fcom_op *op)
 	if (z->del_on_close)
 		core->file->delete(z->oname, 0);
 	core->file->destroy(z->out);
+	ffvec_free(&z->files);
 	ffvec_free(&z->buf);
 	ffmem_free(z->oname);
+	ffvec_free(&z->members_data);
+	ffmap_free(&z->members);
 	ffmem_free(z);
 }
 
@@ -100,9 +166,6 @@ static fcom_op* unzip_create(fcom_cominfo *cmd)
 	fc.buffer_size = cmd->buffer_size;
 	z->in = core->file->create(&fc);
 	z->out = core->file->create(&fc);
-
-	z->rzip.log = unzip_log;
-	z->rzip.timezone_offset = core->tz.real_offset;
 
 	ffsize cap = (cmd->buffer_size != 0) ? cmd->buffer_size : 64*1024;
 	ffvec_alloc(&z->buf, cap, 1);
@@ -158,8 +221,9 @@ static void unzip_f_info(struct unzip *z)
 		&& (zf->compressed_size != 0 || zf->uncompressed_size != 0))
 		fcom_infolog("directory %S has non-zero size", &zf->name);
 
-	// if (!members_check(&z->members, zf->name))
-	// 	break;
+	if (z->members.len != 0
+		&& 0 == members_find(&z->members, zf->name))
+		return;
 
 	if (z->list) {
 		unzip_showinfo(z, zf);
@@ -177,9 +241,18 @@ static void unzip_f_info(struct unzip *z)
 	f->off = zf->hdr_offset;
 }
 
-/* `d/f` -> `out/d/f` */
+/*
+`d/f` -> `out/d/f`
+`d/f` -> `out/iname/d/f` (--autodir)
+*/
 static char* unzip_outname(struct unzip *z, ffstr lname, ffstr rpath)
 {
+	if (z->autodir) {
+		ffstr name;
+		ffpath_splitpath_str(z->iname, NULL, &name);
+		ffpath_splitname_str(name, &name, NULL);
+		return ffsz_allocfmt("%S%c%S%c%S%Z", &rpath, FFPATH_SLASH, &name, FFPATH_SLASH, &lname);
+	}
 	return ffsz_allocfmt("%S%c%S%Z", &rpath, FFPATH_SLASH, &lname);
 }
 
@@ -191,7 +264,7 @@ static int unzip_read(struct unzip *z, ffstr *input, ffstr *output)
 
 		case FFZIPREAD_FILEINFO:
 			unzip_f_info(z);
-			break;
+			continue;
 
 		case FFZIPREAD_FILEHEADER: {
 			const ffzipread_fileinfo_t *zf = ffzipread_fileinfo(&z->rzip);
@@ -199,7 +272,7 @@ static int unzip_read(struct unzip *z, ffstr *input, ffstr *output)
 
 			ffmem_free(z->oname);
 			z->oname = unzip_outname(z, zf->name, z->cmd->chdir);
-			return r;
+			return FFZIPREAD_FILEHEADER;
 		}
 
 		case FFZIPREAD_FILEDONE: {
@@ -207,24 +280,27 @@ static int unzip_read(struct unzip *z, ffstr *input, ffstr *output)
 			uint percent = (int)FFINT_DIVSAFE(z->rzip.file_rd * 100, z->rzip.file_wr);
 			fcom_dbglog("%S: %U => %U (%u%%)"
 				, &zf->name, z->rzip.file_rd, z->rzip.file_wr, percent);
-			return r;
+			return FFZIPREAD_FILEDONE;
 		}
 
 		case FFZIPREAD_DONE:
+			ffzipread_close(&z->rzip);
+			// fallthrough
 		case FFZIPREAD_DATA:
 		case FFZIPREAD_MORE:
 			return r;
 
 		case FFZIPREAD_SEEK:
 			z->roff = ffzipread_offset(&z->rzip);
-			return r;
+			return FFZIPREAD_SEEK;
 
 		case FFZIPREAD_WARNING:
+			fcom_warnlog("%s", ffzipread_error(&z->rzip));
+			continue;
+
 		case FFZIPREAD_ERROR:
 			fcom_errlog("%s", ffzipread_error(&z->rzip));
-			if (r == FFZIPREAD_ERROR)
-				return r;
-			break;
+			return FFZIPREAD_ERROR;
 		}
 	}
 }
@@ -274,14 +350,16 @@ static void unzip_run(fcom_op *op)
 				core->com->input_dir(z->cmd, fd);
 			}
 
-			// if (0 != core->com->input_allowed(z->cmd, z->iname)) {
-			// 	z->state = ;
-			// 	continue;
-			// }
+			if (0 != core->com->input_allowed(z->cmd, z->iname)) {
+				z->state = I_IN;
+				continue;
+			}
 
 			unzip_reset(z);
 
 			ffzipread_open(&z->rzip, fffileinfo_size(&fi));
+			z->rzip.log = unzip_log;
+			z->rzip.timezone_offset = core->tz.real_offset;
 
 			z->state = I_PARSE;
 			continue;
@@ -387,9 +465,11 @@ static void unzip_run(fcom_op *op)
 	}
 
 end:
+	{
 	fcom_cominfo *cmd = z->cmd;
 	unzip_close(z);
 	core->com->complete(cmd, rc);
+	}
 }
 
 static void unzip_signal(fcom_op *op, uint signal)

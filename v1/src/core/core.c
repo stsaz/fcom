@@ -139,6 +139,7 @@ static fcom_core* core_conf(struct fcom_core_conf *conf)
 {
 	gcore->conf = *conf;
 	gcore->conf.app_path = ffsz_dup(conf->app_path);
+	core->codepage = conf->codepage;
 	core->debug = conf->debug;
 	core->verbose = conf->debug | conf->verbose;
 
@@ -217,6 +218,7 @@ static void core_init()
 	gcore = ffmem_new(struct core);
 	gcore->kq = FFKQ_NULL;
 	gcore->tmr = FFTIMER_NULL;
+	core->codepage = FFUNICODE_WIN1252;
 	fftime_local(&core->tz);
 }
 
