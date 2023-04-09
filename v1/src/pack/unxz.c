@@ -70,7 +70,7 @@ static fcom_op* unxz_create(fcom_cominfo *cmd)
 		goto end;
 
 	struct fcom_file_conf fc = {};
-	fc.buffer_size = cmd->buffer_size;
+	fcom_cmd_file_conf(&fc, cmd);
 	z->in = core->file->create(&fc);
 	z->out = core->file->create(&fc);
 	return z;
@@ -101,10 +101,6 @@ static char* out_name(struct unxz *z, ffstr in, ffstr base)
 	fcom_dbglog("output file name: %s", ofn);
 	return ofn;
 }
-
-/** Protect against division by zero. */
-#define FFINT_DIVSAFE(val, by) \
-	((by) != 0 ? (val) / (by) : 0)
 
 static int xzread(struct unxz *z, ffstr *in, ffstr *out)
 {
@@ -149,6 +145,7 @@ static int xzread(struct unxz *z, ffstr *in, ffstr *out)
 		fcom_errlog("ffxzread_process: %s  offset:0x%xU", ffxzread_error(&z->unxz), z->in_off);
 		return 0xbad;
 	}
+	return 0xbad;
 }
 
 static void unxz_run(fcom_op *op)
@@ -189,7 +186,17 @@ static void unxz_run(fcom_op *op)
 		case I_READ:
 			r = core->file->read(z->in, &z->zdata, z->in_off);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 			if (r == FCOM_FILE_EOF) {
+				r = core->file->flush(z->out, 0);
+				if (r == FCOM_FILE_ASYNC) {
+					core->com->async(z->cmd);
+					return;
+				}
+
 				if (!z->next_chunk_begin) {
 					fcom_warnlog("file incomplete");
 					goto end;
@@ -240,7 +247,7 @@ static void unxz_run(fcom_op *op)
 			r = core->file->info(z->in, &fi);
 			if (r == FCOM_FILE_ERR) goto end;
 
-			core->file->mtime_set(z->out, fffileinfo_mtime(&fi));
+			core->file->mtime_set(z->out, fffileinfo_mtime1(&fi));
 
 			z->st = I_WRITE;
 			continue;
@@ -249,6 +256,10 @@ static void unxz_run(fcom_op *op)
 		case I_WRITE:
 			r = core->file->write(z->out, z->data, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 
 			z->st = I_DECOMP;
 			continue;

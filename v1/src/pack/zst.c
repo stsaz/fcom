@@ -90,7 +90,7 @@ static fcom_op* zst_create(fcom_cominfo *cmd)
 	zstd_encode_init(&z->zst, &zc);
 
 	struct fcom_file_conf fc = {};
-	fc.buffer_size = cmd->buffer_size;
+	fcom_cmd_file_conf(&fc, cmd);
 	z->in = core->file->create(&fc);
 	z->out = core->file->create(&fc);
 
@@ -120,10 +120,6 @@ static char* out_name(struct zst *z, ffstr in, ffstr base)
 	fcom_dbglog("output file name: %s", ofn);
 	return ofn;
 }
-
-/** Protect against division by zero. */
-#define FFINT_DIVSAFE(val, by) \
-	((by) != 0 ? (val) / (by) : 0)
 
 static void zst_run(fcom_op *op)
 {
@@ -170,6 +166,10 @@ static void zst_run(fcom_op *op)
 		case I_READ:
 			r = core->file->read(z->in, &z->data, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 			if (r == FCOM_FILE_EOF)
 				z->zst_flags = ZSTD_FFINISH;
 
@@ -208,12 +208,16 @@ static void zst_run(fcom_op *op)
 			}
 
 			z->st = I_WRITE;
-			// fallthrough
 		}
+			// fallthrough
 
 		case I_WRITE:
 			r = core->file->write(z->out, z->zdata, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 
 			z->st = I_COMP;
 			continue;

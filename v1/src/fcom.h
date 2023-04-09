@@ -11,8 +11,8 @@
 #include <ffbase/vector.h>
 #include <assert.h>
 
-#define FCOM_VER "1.0beta6"
-#define FCOM_CORE_VER 106
+#define FCOM_VER "1.0beta7"
+#define FCOM_CORE_VER 107
 
 #undef stdin
 #undef stdout
@@ -139,7 +139,8 @@ struct fcom_core {
 
 // COMMAND
 
-/** Shared data for all active modules */
+/** Shared data for all active modules
+All strings are transient (caller must allocate data and give it up). */
 typedef struct fcom_cominfo {
 	char **argv;
 	uint argc;
@@ -155,6 +156,7 @@ typedef struct fcom_cominfo {
 	// input file
 	byte stdin;
 	byte recursive;
+	fffd fd_stdin;
 
 	ffstr output;
 	char *outputz;
@@ -163,6 +165,7 @@ typedef struct fcom_cominfo {
 	byte overwrite;
 	byte test;
 	byte no_prealloc;
+	fffd fd_stdout;
 
 	uint buffer_size;
 	byte directio;
@@ -206,6 +209,9 @@ struct fcom_command {
 
 	/** Begin operation execution */
 	int (*run)(fcom_cominfo *c);
+
+	/** Operation is waiting for asynchronous signal */
+	void (*async)(fcom_cominfo *c);
 
 	/** Destroy object */
 	void (*destroy)(fcom_cominfo *c);
@@ -270,7 +276,19 @@ struct fcom_operation {
 struct fcom_file_conf {
 	uint buffer_size;
 	uint n_buffers;
+
+	/** FDs used for FCOM_FILE_STDxx.
+	By default stdin/stdout are used. */
+	fffd fd_stdin, fd_stdout;
 };
+
+/** Fill default config for a file descriptor */
+static inline void fcom_cmd_file_conf(struct fcom_file_conf *fc, const fcom_cominfo *cmd)
+{
+	fc->buffer_size = cmd->buffer_size;
+	fc->fd_stdin = cmd->fd_stdin;
+	fc->fd_stdout = cmd->fd_stdout;
+}
 
 enum FCOM_FILE_OPEN {
 	FCOM_FILE_READ,
@@ -321,7 +339,7 @@ enum FCOM_FILE_RET {
 
 enum FCOM_FILE_BEH {
 	FCOM_FBEH_SEQ, // Sequential access behaviour
-	FCOM_FBEH_RANDOM, // Rando access behaviour
+	FCOM_FBEH_RANDOM, // Random access behaviour
 	FCOM_FBEH_TRUNC_PREALLOC, // Truncate the currently preallocated space
 };
 
@@ -365,6 +383,8 @@ struct fcom_file {
 	int (*write)(fcom_file_obj *f, ffstr d, int64 off);
 	int (*write_fmt)(fcom_file_obj *_f, const char *fmt, ...);
 
+	int (*flush)(fcom_file_obj *f, uint flags);
+
 	int (*trunc)(fcom_file_obj *f, int64 size);
 
 	/**
@@ -377,6 +397,8 @@ struct fcom_file {
 	flags: enum FCOM_FILE_FD */
 	fffd (*fd)(fcom_file_obj *f, uint flags);
 
+	/**
+	mtime: Time since year 1. */
 	int (*mtime_set)(fcom_file_obj *f, fftime mtime);
 
 	int (*attr_set)(fcom_file_obj *f, uint attr);
@@ -399,6 +421,13 @@ struct fcom_file {
 	/** Delete file */
 	int (*delete)(const char *name, uint flags);
 };
+
+static inline fftime fffileinfo_mtime1(const fffileinfo *fi)
+{
+	fftime t = fffileinfo_mtime(fi);
+	t.sec += FFTIME_1970_SECONDS;
+	return t;
+}
 
 
 // HASH

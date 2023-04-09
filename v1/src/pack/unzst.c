@@ -68,7 +68,7 @@ static fcom_op* unzst_create(fcom_cominfo *cmd)
 		goto end;
 
 	struct fcom_file_conf fc = {};
-	fc.buffer_size = cmd->buffer_size;
+	fcom_cmd_file_conf(&fc, cmd);
 	z->in = core->file->create(&fc);
 	z->out = core->file->create(&fc);
 
@@ -102,10 +102,6 @@ static char* out_name(struct unzst *z, ffstr in, ffstr base)
 	fcom_dbglog("output file name: %s", ofn);
 	return ofn;
 }
-
-/** Protect against division by zero. */
-#define FFINT_DIVSAFE(val, by) \
-	((by) != 0 ? (val) / (by) : 0)
 
 static int zst_read(struct unzst *z, ffstr *input, ffstr *output)
 {
@@ -165,7 +161,17 @@ static void unzst_run(fcom_op *op)
 		case I_READ:
 			r = core->file->read(z->in, &z->zdata, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 			if (r == FCOM_FILE_EOF) {
+				r = core->file->flush(z->out, 0);
+				if (r == FCOM_FILE_ASYNC) {
+					core->com->async(z->cmd);
+					return;
+				}
+
 				fcom_verblog("%s: %U => %U (%u%%)"
 					, z->oname, z->in_total, z->out_total, (uint)FFINT_DIVSAFE(z->out_total * 100, z->in_total));
 				zstd_decode_free(z->zst);  z->zst = NULL;
@@ -196,8 +202,6 @@ static void unzst_run(fcom_op *op)
 		case I_DECOMP:
 			r = zst_read(z, &z->zdata, &z->data);
 			switch (r) {
-			case 0:
-				continue;
 			case 0xfeed:
 				z->st = I_READ;
 				continue;
@@ -219,7 +223,7 @@ static void unzst_run(fcom_op *op)
 			r = core->file->info(z->in, &fi);
 			if (r == FCOM_FILE_ERR) goto end;
 
-			core->file->mtime_set(z->out, fffileinfo_mtime(&fi));
+			core->file->mtime_set(z->out, fffileinfo_mtime1(&fi));
 
 			z->st = I_DECOMP;
 			continue;
@@ -228,6 +232,10 @@ static void unzst_run(fcom_op *op)
 		case I_WRITE:
 			r = core->file->write(z->out, z->data, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 
 			z->st = I_DECOMP;
 			continue;

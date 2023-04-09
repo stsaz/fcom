@@ -3,23 +3,39 @@ General usage:
   fcom OPERATION [INPUT] [-o OUTPUT] [OPTIONS]
 
 OPERATION:
-  copy                  Copy files, plus encryption & verification
-  gz                    Compress file into .gz
-  hex                   Print file contents in hexadecimal format
-  list                  List directory contents
-  move                  Move and/or rename files
-  sync                  Compare/synchronize directories or create a file tree snapshot
-  textcount             Analyze text files (e.g. print number of lines)
-  touch                 Change file date/time
-  trash                 Move files to user's trash directory, plus obfuscation
-  un7z                  Unpack files from .7z
-  ungz                  Decompress file from .gz
-  untar                 Unpack file into .tar
-  unxz                  Decompress file from .xz
-  unzip                 Unpack files from .zip
-  unzst                 Decompress file from .zst
-  zip                   Pack files into .zip
-  zst                   Compress file into .zst
+  General:
+    copy                Copy files from one place to another, plus encryption & verification
+    list                List directory contents
+    move                Move and/or rename files
+    touch               Change file date/time
+    trash               Move files to user's trash directory, plus obfuscation
+
+  Pack files:
+    gz                  Compress file into .gz
+    iso                 Pack files into .iso
+    tar                 Pack files into .tar
+    zip                 Pack files into .zip
+    zst                 Compress file into .zst
+
+  Unpack files:
+    un7z                Unpack files from .7z
+    ungz                Decompress file from .gz
+    uniso               Unpack files from .iso
+    unpack              Unpack files from all supported archive types
+    untar               Unpack files from .tar
+    unxz                Decompress file from .xz
+    unzip               Unpack files from .zip
+    unzst               Decompress file from .zst
+
+  Other:
+    hex                 Print file contents in hexadecimal format
+    listdisk            List logical volumes (Windows)
+    md5                 Compute MD5 hash
+    mount               Mount logical volumes (Windows)
+    pic                 Convert images (.bmp)
+    sync                Compare/synchronize directories or create a file tree snapshot
+    textcount           Analyze text files (e.g. print number of lines)
+    utf8                Convert files to UTF-8
 
 INPUT:
   ""                    Process data from STDIN

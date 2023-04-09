@@ -33,6 +33,8 @@ static int output_fin(struct copy *c)
 {
 	switch (c->ostate) {
 	case 0:
+		if (1)
+			core->file->attr_set(c->out, fffileinfo_attr(&c->fi));
 		core->file->close(c->out);
 		c->del_on_close = 0;
 
@@ -130,6 +132,15 @@ static int output_open(struct copy *c)
 		if (fffile_isdir(fffileinfo_attr(&c->ofi))) {
 			fcom_errlog("output file is an existing directory. Use '-C DIR' to copy files into this directory.");
 			return 0xbad;
+		}
+
+		if (c->update) {
+			fftime imt = fffileinfo_mtime(&c->fi);
+			fftime omt = fffileinfo_mtime(&c->ofi);
+			if (fftime_cmp(&imt, &omt) <= 0) {
+				fcom_dbglog("--update: skipping file");
+				return 'skip';
+			}
 		}
 
 		if (!c->write_into) {

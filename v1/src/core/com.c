@@ -31,6 +31,9 @@ struct cmd {
 	fcom_op *op;
 	fcom_task task;
 
+	char **argv_orig;
+	ffslice args; //char*[]
+
 	fntree_block *ftree;
 	fntree_cursor ftree_cur;
 	ffvec ftree_name;
@@ -89,7 +92,7 @@ static void cmd_destroy(fcom_cominfo *cmd)
 	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
 
 	if (cmd->on_complete != NULL) {
-		fcom_dbglog("calling on_complete(): %d", c->result);
+		fcom_dbglog("%s: calling on_complete(): %d", cmd->operation, c->result);
 		cmd->on_complete(cmd->opaque, c->result);
 	}
 
@@ -119,10 +122,26 @@ static void cmd_destroy(fcom_cominfo *cmd)
 	if (cmd->input_fd != FFFILE_NULL && cmd->input_fd != ffstdin)
 		fffile_close(cmd->input_fd);
 	fflist_rm(&com.cmds, &c->sib);
+
+	char **itc;
+	FFSLICE_WALK(&c->args, itc) {
+		ffmem_free(*itc);
+	}
+	ffslice_free(&c->args);
+
 	char *op = cmd->operation;
 	ffmem_free(c);
 	fcom_dbglog("%s: command finished", op);
 	ffmem_free(op);
+}
+
+static void cmd_run_async(void *param);
+
+static void cmd_async(fcom_cominfo *cmd)
+{
+	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
+	fcom_dbglog("%s: async", cmd->operation);
+	core->task(&c->task, cmd_run_async, c);
 }
 
 static void cmd_complete(fcom_cominfo *cmd, int code)
@@ -195,7 +214,8 @@ static int args_input(ffcmdarg_scheme *as, struct fcom_cominfo *cmd, ffstr *s)
 		return 0;
 
 #ifdef FF_WIN
-	} else if (ffstr_findany(s, "*?", 2) >= 0) {
+	} else if (ffstr_findany(s, "*?", 2) >= 0
+		&& !ffstr_matchz(s, "\\\\?\\")) {
 		return wc_expand(cmd, s);
 #endif
 
@@ -299,12 +319,17 @@ static int args_parse(struct cmd *c)
 static void cmd_run_async(void *param)
 {
 	struct cmd *c = param;
+	fcom_dbglog("%s: run", c->cmd.operation);
 	c->opif->run(c->op);
 }
 
 static int cmd_run(fcom_cominfo *cmd)
 {
 	struct cmd *c = FF_STRUCTPTR(struct cmd, cmd, cmd);
+	c->argv_orig = cmd->argv;
+	ffvec v = {};
+	ffvec_addT(&v, cmd->argv, cmd->argc, char*);
+	ffslice_set2(&c->args, &v);
 
 	if (0 != args_parse(c))
 		goto err;
@@ -578,7 +603,7 @@ const struct fcom_command _fcom_com = {
 	com_provide,
 	com_signal_all,
 	cmd_create,
-	cmd_run,
+	cmd_run, cmd_async,
 	cmd_destroy, cmd_complete,
 	cmd_input_next, cmd_input_dir, cmd_input_allowed,
 	cmd_args_parse,

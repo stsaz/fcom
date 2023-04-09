@@ -122,8 +122,7 @@ next:
 			if (!l->long_fmt) {
 				r = ffstr_addfmt((ffstr*)&l->buf, l->buf.cap, "%S\r\n", &l->name);
 			} else {
-				fftime mtime = fffileinfo_mtime(&l->fi);
-				mtime.sec += FFTIME_1970_SECONDS;
+				fftime mtime = fffileinfo_mtime1(&l->fi);
 				ffdatetime dt;
 				fftime_split1(&dt, &mtime);
 				char date[128];

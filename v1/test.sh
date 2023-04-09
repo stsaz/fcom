@@ -1,39 +1,40 @@
+#!/bin/bash
 # fcom/v1 tester
+
+CMDS_OPS=(copy hex list md5 move pic sync textcount touch trash utf8)
+# listdisk mount
+CMDS_PACK=(gz iso tar un7z unxz zip zst unpack)
+
+if test "$#" -lt 1 ; then
+	echo Usage: bash test.sh all
+	echo Usage: bash test.sh CMD...
+	echo "CMD: ${CMDS_OPS[@]} ${CMDS_PACK[@]}"
+	exit 1
+fi
 
 set -x
 set -e
 
-CMD=$1
+CMDS=("$@")
+if test "$1" == "all" ; then
+	CMDS=("${CMDS_OPS[@]}")
+	CMDS+=("${CMDS_PACK[@]}")
+fi
+
+for CMD in "${CMDS[@]}" ; do
 
 rm -rf ./fcomtest ; mkdir fcomtest
 
-if test "$CMD" == "all" ; then
-
-	sh $0 copy
-	sh $0 hex
-	sh $0 list
-	sh $0 move
-	sh $0 sync
-	sh $0 textcount
-	sh $0 touch
-	sh $0 trash
-
-	sh $0 gz
-	sh $0 iso
-	sh $0 tar
-	sh $0 un7z
-	sh $0 unxz
-	sh $0 zip
-	sh $0 zst
-
-elif test "$CMD" == "copy" ; then
+if test "$CMD" == "copy" ; then
 
 	cd fcomtest
 	echo hello >file
 
 	# file -> file
+	chmod a+x file
 	../fcom copy "file" -o "file.out"
 	diff file file.out
+	ls -l file file.out
 
 	# file -> file (exists)
 	../fcom copy "file" -o "file.out" || true
@@ -54,6 +55,9 @@ elif test "$CMD" == "copy" ; then
 	mkdir dirempty
 	../fcom copy "dirempty" -o "dirempty2"
 	test -d dirempty2
+
+	# Update
+	../fcom copy --update "file" -o "testfile2" -v
 
 	# Verify
 	../fcom copy "file" -o "file.out.verify" --verify -f
@@ -119,6 +123,8 @@ elif test "$CMD" == "copy" ; then
 	../fcom copy -R "dir" -C "dircopy" -I "*.d*" -v
 	diff dir/d2/file.doc dircopy/dir/d2/file.doc
 
+	cd ..
+
 elif test "$CMD" == "hex" ; then
 
 	echo abc123 >fcomtest/hex
@@ -132,6 +138,12 @@ elif test "$CMD" == "list" ; then
 
 	./fcom list "@fcomtest/list"
 	echo fcomtest | ./fcom list "@"
+
+elif test "$CMD" == "md5" ; then
+
+	echo 1234567890123456789012345678901234567890 >fcomtest/file
+	echo qwerqwerqwerqwerqwerqwerqwerqwer >fcomtest/file2
+	./fcom md5 "fcomtest/file" "fcomtest/file2"
 
 elif test "$CMD" == "move" ; then
 
@@ -151,14 +163,22 @@ elif test "$CMD" == "move" ; then
 	# replace
 	echo hi >>fcomtest/unbranch/a/test
 	./fcom move "fcomtest/unbranch/a/test" --replace="test/new" -v
-	test -f "fcomtest/unbranch/a/new"
+	test -f fcomtest/unbranch/a/new
 
 	# unbranch-flat
 	cd fcomtest
 	echo hi >>unbranch/a/hi
 	../fcom move --unbranch-flat "./unbranch" -v
-	test -f "hi"
+	test -f hi
 	cd ..
+
+elif test "$CMD" == "pic" ; then
+
+	spectacle -o fcomtest/file.bmp -b
+
+	./fcom pic "fcomtest/file.bmp" -o "fcomtest/file2.bmp"
+	test -f fcomtest/file2.bmp
+	# diff fcomtest/file.bmp fcomtest/file2.bmp
 
 elif test "$CMD" == "sync" ; then
 
@@ -177,17 +197,27 @@ elif test "$CMD" == "sync" ; then
 	echo rightmod >right/d/mod
 	echo l >left/l
 	echo r >right/r
-	../fcom sync --diff "left" -o "right" -v
-	../fcom sync --diff --plain --add "left" -o "right" -v
-	../fcom sync --diff --plain --update "left" -o "right" -v
-
-	# sync 2 dirs
-	../fcom sync "left" -o "right" -v --add
-	../fcom sync "left" -o "right" -v --delete -f
+	../fcom sync --diff="" --source-path-strip1 --target-path-strip1 "left" -o "right" -v
+	../fcom sync --diff="" --source-path-strip1 --target-path-strip1 --plain --add "left" -o "right" -v
+	../fcom sync --diff="" --source-path-strip1 --target-path-strip1 --plain --update "left" -o "right" -v
 
 	# write snapshot, diff snapshot and dir
-	../fcom sync "left" --snapshot -o "fcomtest.snap" -v -f
-	../fcom sync --diff --source-snap "fcomtest.snap" -o "right" -v
+	../fcom sync --snapshot "left" -o "fcomtest.snap" -v -f
+	../fcom sync --source-path-strip1 --target-path-strip1 --diff="" --source-snap "fcomtest.snap" -o "right" -v 2>LOG
+	grep 'moved:1  add:1  del:1  upd:1  eq:1  total:5/5' LOG
+
+	# diff 2 snapshots
+	../fcom sync --snapshot "right" -o "fcomtest-right.snap" -v -f
+	../fcom sync --source-path-strip1 --target-path-strip1 --diff="" --source-snap "fcomtest.snap" --target-snap -o "fcomtest-right.snap" -v 2>LOG
+	grep 'moved:1  add:1  del:1  upd:1  eq:1  total:5/5' LOG
+
+	# snapshot 2 dirs
+	../fcom sync --snapshot "left" "right" -o "fcomtest2.snap" -v -f
+	cat fcomtest2.snap
+
+	# sync 2 dirs
+	../fcom sync --source-path-strip1 --target-path-strip1 "left" -o "right" -v --add
+	../fcom sync --source-path-strip1 --target-path-strip1 "left" -o "right" -v --delete -f
 
 	cd ..
 
@@ -229,6 +259,12 @@ elif test "$CMD" == "trash" ; then
 	echo 123 >fcomtest/trash
 	echo 123 >fcomtest/trash2
 	./fcom trash "fcomtest/trash" "fcomtest/trash2" --wipe --rename -v -f
+
+elif test "$CMD" == "utf8" ; then
+
+	# ./fcom utf8 "fcomtest/file-utf16" -o "fcomtest/file-utf8"
+	# diff fcomtest/file fcomtest/file-utf8
+	echo
 
 # PACK
 
@@ -322,9 +358,41 @@ elif test "$CMD" == "iso" ; then
 	../fcom uniso "iso.iso" -C "unisodir" -l -v
 	cd ..
 
+elif test "$CMD" == "unpack" ; then
+
+	echo 1234567890123456789012345678901234567890 >fcomtest/file
+	./fcom gz "fcomtest/file" -o "fcomtest/gz.gz"
+	./fcom tar "fcomtest/file" -o "fcomtest/tar.tar"
+	./fcom zip "fcomtest/file" -o "fcomtest/zip.zip"
+	./fcom zst "fcomtest/file" -o "fcomtest/zst.zst"
+
+	./fcom unpack "fcomtest/tar.tar" "fcomtest/zip.zip" -C "fcomtest" --autodir -v
+	diff fcomtest/file fcomtest/tar/fcomtest/file
+	diff fcomtest/file fcomtest/zip/fcomtest/file
+
+	./fcom unpack "fcomtest/gz.gz" -C "fcomtest/gz" -v
+	diff fcomtest/file fcomtest/gz/file
+
+	./fcom unpack "fcomtest/zst.zst" -C "fcomtest/zst" -v
+	diff fcomtest/file fcomtest/zst/zst
+
+	./fcom zst "fcomtest/tar.tar" -o "fcomtest/tarzst.tar.zst"
+	./fcom unpack "fcomtest/tarzst.tar.zst" -C "fcomtest/tarzst" -v
+	diff fcomtest/file fcomtest/tarzst/fcomtest/file
+
+	./fcom gz "fcomtest/tar.tar" -o "fcomtest/targz.tar.gz"
+	./fcom unpack "fcomtest/targz.tar.gz" -C "fcomtest/targz" -v
+	diff fcomtest/file fcomtest/targz/fcomtest/file
+
+	# xz "fcomtest/tar.tar" -o "fcomtest/tarxz.tar.xz"
+	# ./fcom unpack "fcomtest/tarxz.tar.xz" -C "fcomtest/tarxz"
+	# diff fcomtest/file fcomtest/tarxz/fcomtest/file
+
 else
 	exit 1
 fi
+
+done
 
 rm -rf ./fcomtest
 echo DONE

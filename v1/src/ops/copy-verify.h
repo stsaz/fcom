@@ -10,7 +10,7 @@ static int verify_init(struct copy *c)
 		return -1;
 	}
 
-	if (NULL == (c->vf.md5 = core->com->provide("crypto.md5", 0)))
+	if (NULL == (c->vf.md5 = core->com->provide("md5.fcom_md5", 0)))
 		return -1;
 
 	return 0;

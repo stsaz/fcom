@@ -161,7 +161,7 @@ static fcom_op* uniso_create(fcom_cominfo *cmd)
 		goto end;
 
 	struct fcom_file_conf fc = {};
-	fc.buffer_size = cmd->buffer_size;
+	fcom_cmd_file_conf(&fc, cmd);
 	c->in = core->file->create(&fc);
 	c->out = core->file->create(&fc);
 
@@ -310,6 +310,10 @@ static void uniso_run(fcom_op *op)
 		case I_FILEREAD:
 			r = core->file->read(c->in, &c->isodata, c->roff);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(c->cmd);
+				return;
+			}
 			if (r == FCOM_FILE_EOF) {
 				fcom_errlog("incomplete archive");
 				goto end;
@@ -329,8 +333,10 @@ static void uniso_run(fcom_op *op)
 				}
 				c->state = I_OUT_OPEN; break;
 
-			case FFISOREAD_FILEDONE:
-				core->file->mtime_set(c->out, c->curfile->mtime);
+			case FFISOREAD_FILEDONE: {
+				fftime t = c->curfile->mtime;
+				t.sec += FFTIME_1970_SECONDS;
+				core->file->mtime_set(c->out, t);
 
 				if (!(c->curfile->attr & ISO_FILE_DIR)) {
 					core->file->close(c->out);
@@ -339,6 +345,7 @@ static void uniso_run(fcom_op *op)
 				}
 				c->state = I_OUT_OPEN;
 				break;
+			}
 
 			case FFISOREAD_MORE:
 			case FFISOREAD_SEEK:
@@ -386,6 +393,11 @@ static void uniso_run(fcom_op *op)
 		case I_WRITE:
 			r = core->file->write(c->out, c->plain, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(c->cmd);
+				return;
+			}
+
 			c->total_uncomp += c->plain.len;
 			c->state = I_PARSE;
 			continue;

@@ -13,32 +13,41 @@ Contents:
 
 ## Features
 
-* `copy` - Copy files from one place to another, plus encryption & verification
-* `hex` - Print file contents in hexadecimal format
-* `list` - List directory contents
-* `move` - Move and/or rename files
-* `sync` - Compare/synchronize directories or create a file tree snapshot
-* `textcount` - Analyze text files (e.g. print number of lines)
-* `touch` - Change file date/time
-* `trash` - Move files to user's trash directory, plus obfuscation
+```
+  General:
+    copy                Copy files from one place to another, plus encryption & verification
+    list                List directory contents
+    move                Move and/or rename files
+    touch               Change file date/time
+    trash               Move files to user's trash directory, plus obfuscation
 
-Pack files:
+  Pack files:
+    gz                  Compress file into .gz
+    iso                 Pack files into .iso
+    tar                 Pack files into .tar
+    zip                 Pack files into .zip
+    zst                 Compress file into .zst
 
-* `gz` - Compress file into .gz
-* `iso` - Pack files into .iso
-* `zip` - Pack files into .zip
-* `zst` - Compress file into .zst
+  Unpack files:
+    un7z                Unpack files from .7z
+    ungz                Decompress file from .gz
+    uniso               Unpack files from .iso
+    unpack              Unpack files from all supported archive types
+    untar               Unpack files from .tar
+    unxz                Decompress file from .xz
+    unzip               Unpack files from .zip
+    unzst               Decompress file from .zst
 
-Unpack files:
-
-* `un7z` - Unpack files from .7z
-* `ungz` - Decompress file from .gz
-* `uniso` - Unpack files from .iso
-* `untar` - Unpack files from .tar
-* `unxz` - Decompress file from .xz
-* `unzip` - Unpack files from .zip
-* `unzst` - Decompress file from .zst
-
+  Other:
+    hex                 Print file contents in hexadecimal format
+    listdisk            List logical volumes (Windows)
+    md5                 Compute MD5 hash
+    mount               Mount logical volumes (Windows)
+    pic                 Convert images (.bmp)
+    sync                Compare/synchronize directories or create a file tree snapshot
+    textcount           Analyze text files (e.g. print number of lines)
+    utf8                Convert files to UTF-8
+```
 
 ## Third-party code
 
@@ -83,6 +92,7 @@ Many thanks to all the people who created and implemented those algorithms!!!
 		git clone --depth=1 https://github.com/stsaz/ffbase
 		git clone --depth=1 https://github.com/stsaz/ffos
 		git clone --depth=1 https://github.com/stsaz/ffpack
+		git clone --depth=1 https://github.com/stsaz/avpack
 		git clone --depth=1 -b v1 https://github.com/stsaz/fcom
 
 3. Build third-party code:

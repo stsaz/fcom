@@ -77,7 +77,7 @@ static fcom_op* gz_create(fcom_cominfo *cmd)
 		goto end;
 
 	struct fcom_file_conf fc = {};
-	fc.buffer_size = cmd->buffer_size;
+	fcom_cmd_file_conf(&fc, cmd);
 	z->in = core->file->create(&fc);
 	z->out = core->file->create(&fc);
 
@@ -117,10 +117,6 @@ static char* out_name(struct gz *z, ffstr in, ffstr base)
 	return ofn;
 }
 
-/** Protect against division by zero. */
-#define FFINT_DIVSAFE(val, by) \
-	((by) != 0 ? (val) / (by) : 0)
-
 static int gzcomp(struct gz *z, ffstr *in, ffstr *out)
 {
 	ffsize n = in->len;
@@ -144,6 +140,7 @@ static int gzcomp(struct gz *z, ffstr *in, ffstr *out)
 		fcom_errlog("ffgzwrite_process: %s", ffgzwrite_error(&z->gz));
 		return 0xbad;
 	}
+	return 0xbad;
 }
 
 static void gz_run(fcom_op *op)
@@ -206,6 +203,10 @@ static void gz_run(fcom_op *op)
 		case I_READ:
 			r = core->file->read(z->in, &z->data, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 			if (r == FCOM_FILE_EOF)
 				ffgzwrite_finish(&z->gz);
 
@@ -232,6 +233,10 @@ static void gz_run(fcom_op *op)
 		case I_WRITE:
 			r = core->file->write(z->out, z->zdata, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 
 			z->st = I_COMP;
 			continue;

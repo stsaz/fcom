@@ -102,8 +102,13 @@ static fntree_cmp_ent* moved_find_add(struct sync *s, fntree_entry *e, fntree_cm
 static void diff_init(struct sync *s)
 {
 	ffmap_init(&s->cmp.moved, moved_keyeq);
-	const fntree_block *l = _fntr_ent_first(s->src.root)->children;
-	const fntree_block *r = _fntr_ent_first(s->dst.root)->children;
+
+	const fntree_block *l = s->src.root, *r = s->dst.root;
+	if (s->left_path_strip)
+		l = _fntr_ent_first(s->src.root)->children;
+	if (s->right_path_strip)
+		r = _fntr_ent_first(s->dst.root)->children;
+
 	fntree_cmp_init(&s->cmp.fcmp, l, r, data_cmp, NULL);
 	ffvec_allocT(&s->cmp.ents, s->src.total + s->dst.total, fntree_cmp_ent);
 }
@@ -115,7 +120,7 @@ static int diff_next(struct sync *s)
 	fntree_block *lb, *rb;
 	int r = fntree_cmp_next(&s->cmp.fcmp, &le, &re, &lb, &rb);
 	if (r < 0) {
-		fcom_infolog("Diff status: moved:%u  add:%u  del:%u  mod:%u  eq:%u  total:%U/%U"
+		fcom_infolog("Diff status: moved:%u  add:%u  del:%u  upd:%u  eq:%u  total:%U/%U"
 			, s->cmp.stats.moved, s->cmp.stats.left, s->cmp.stats.right, s->cmp.stats.neq, s->cmp.stats.eq
 			, s->src.total, s->dst.total);
 		return 1;
@@ -203,6 +208,65 @@ static int diff_next(struct sync *s)
 	return 0;
 }
 
+static void status_print(struct sync *s, fntree_cmp_ent *ce, ffvec lname, ffvec rname)
+{
+	if (ce->status & FNTREE_CMP_MOVED) {
+		if (s->diff_flags & DIFF_MOVE)
+			fcom_infolog("MOV       %*S  ->  %S", WIDTH_NAME, &lname, &rname);
+		return;
+	}
+
+	uint st = ce->status;
+
+	switch (ce->status & 0x0f) {
+	case FNTREE_CMP_LEFT:
+		if (s->diff_flags & DIFF_LEFT)
+			fcom_infolog("ADD       %*S  >>", WIDTH_NAME, &lname);
+		break;
+
+	case FNTREE_CMP_RIGHT:
+		if (s->diff_flags & DIFF_RIGHT)
+			fcom_infolog("DEL       %*c  <<  %S", WIDTH_NAME, ' ', &rname);
+		break;
+
+	case FNTREE_CMP_NEQ: {
+		if (!(s->diff_flags & DIFF_MOD))
+			break;
+
+		int a1 = '.', a2 = '.', a3 = '.';
+
+		if (st & FNTREE_CMP_NEWER)
+			a1 = 'N';
+		else if (st & FNTREE_CMP_OLDER)
+			a1 = 'O';
+
+		if (st & FNTREE_CMP_LARGER)
+			a2 = '>';
+		else if (st & FNTREE_CMP_SMALLER)
+			a2 = '<';
+
+		if (st & FNTREE_CMP_ATTR)
+			a3 = 'A';
+
+		const struct entdata *ld = fntree_data(ce->l), *rd = fntree_data(ce->r);
+		ffvec v = {};
+
+		ffvec_addfmt(&v, "UPD[%c%c%c]  %*S  !=  %*S"
+			, a1, a2, a3
+			, WIDTH_NAME, &lname, WIDTH_NAME, &rname);
+
+		if (st & (FNTREE_CMP_LARGER | FNTREE_CMP_SMALLER)) {
+			ffvec_addfmt(&v, " %" WIDTH_SIZE "U %" WIDTH_SIZE "U"
+				, ld->size, rd->size);
+		}
+
+		fcom_infolog("%S", &v);
+		ffvec_free(&v);
+		break;
+	}
+	}
+}
+
 /** Show next difference from 'cmp.ents' */
 static int diff_show_next(struct sync *s)
 {
@@ -236,7 +300,7 @@ static int diff_show_next(struct sync *s)
 	}
 
 	if (ce->status & FNTREE_CMP_MOVED) {
-		fcom_infolog("MOVE      %*S  ->  %S", WIDTH_NAME, &s->cmp.lname, &s->cmp.rname);
+		status_print(s, ce, s->cmp.lname, s->cmp.rname);
 		return 0;
 	}
 
@@ -244,46 +308,18 @@ static int diff_show_next(struct sync *s)
 
 	switch (st & 0x0f) {
 	case FNTREE_CMP_LEFT:
-		fcom_infolog("ADD       %*S  >>", WIDTH_NAME, &s->cmp.lname);
+		status_print(s, ce, s->cmp.lname, s->cmp.rname);
 		break;
 
 	case FNTREE_CMP_RIGHT:
-		fcom_infolog("DEL       %*c  <<  %S", WIDTH_NAME, ' ', &s->cmp.rname);
+		status_print(s, ce, s->cmp.lname, s->cmp.rname);
 		break;
 
 	case FNTREE_CMP_EQ:
 		break;
 
 	case FNTREE_CMP_NEQ: {
-		int a1 = '.', a2 = '.', a3 = '.';
-
-		if (st & FNTREE_CMP_NEWER)
-			a1 = 'N';
-		else if (st & FNTREE_CMP_OLDER)
-			a1 = 'O';
-
-		if (st & FNTREE_CMP_LARGER)
-			a2 = '>';
-		else if (st & FNTREE_CMP_SMALLER)
-			a2 = '<';
-
-		if (st & FNTREE_CMP_ATTR)
-			a3 = 'A';
-
-		const struct entdata *ld = fntree_data(ce->l), *rd = fntree_data(ce->r);
-		ffvec v = {};
-
-		ffvec_addfmt(&v, "MOD[%c%c%c]  %*S  !=  %*S"
-			, a1, a2, a3
-			, WIDTH_NAME, &s->cmp.lname, WIDTH_NAME, &s->cmp.rname);
-
-		if (st & (FNTREE_CMP_LARGER | FNTREE_CMP_SMALLER)) {
-			ffvec_addfmt(&v, " %" WIDTH_SIZE "U %" WIDTH_SIZE "U"
-				, ld->size, rd->size);
-		}
-
-		fcom_infolog("%S", &v);
-		ffvec_free(&v);
+		status_print(s, ce, s->cmp.lname, s->cmp.rname);
 		break;
 	}
 

@@ -78,7 +78,8 @@ static void hex_run(fcom_op *op)
 		switch (h->st) {
 
 		case I_OUT_OPEN: {
-			uint oflags = fcom_file_cominfo_flags_o(h->cmd);
+			uint oflags = FCOM_FILE_WRITE;
+			oflags |= fcom_file_cominfo_flags_o(h->cmd);
 			r = core->file->open(h->out, h->cmd->output.ptr, oflags);
 			if (r == FCOM_FILE_ERR) goto end;
 

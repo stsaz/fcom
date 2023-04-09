@@ -12,5 +12,3 @@ struct args {
 
 int args_read(struct args *a, uint argc, char **argv);
 void args_destroy(struct args *conf);
-
-char* path(const char *fn);

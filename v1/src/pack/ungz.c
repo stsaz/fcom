@@ -70,7 +70,7 @@ static fcom_op* ungz_create(fcom_cominfo *cmd)
 		goto end;
 
 	struct fcom_file_conf fc = {};
-	fc.buffer_size = cmd->buffer_size;
+	fcom_cmd_file_conf(&fc, cmd);
 	z->in = core->file->create(&fc);
 	z->out = core->file->create(&fc);
 	return z;
@@ -107,10 +107,6 @@ static char* out_name(struct ungz *z, ffstr gzname, ffstr in, ffstr base)
 	fcom_dbglog("output file name: %s", ofn);
 	return ofn;
 }
-
-/** Protect against division by zero. */
-#define FFINT_DIVSAFE(val, by) \
-	((by) != 0 ? (val) / (by) : 0)
 
 static int gzread(struct ungz *z, ffstr *in, ffstr *out)
 {
@@ -159,6 +155,7 @@ static int gzread(struct ungz *z, ffstr *in, ffstr *out)
 		fcom_errlog("ffgzread_process: %s  offset:0x%xU", ffgzread_error(&z->ungz), z->in_off);
 		return 0xbad;
 	}
+	return 0xbad;
 }
 
 static void ungz_run(fcom_op *op)
@@ -195,7 +192,17 @@ static void ungz_run(fcom_op *op)
 		case I_READ:
 			r = core->file->read(z->in, &z->zdata, z->in_off);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 			if (r == FCOM_FILE_EOF) {
+				r = core->file->flush(z->out, 0);
+				if (r == FCOM_FILE_ASYNC) {
+					core->com->async(z->cmd);
+					return;
+				}
+
 				if (!z->next_chunk_begin) {
 					fcom_warnlog("file incomplete");
 					goto end;
@@ -214,9 +221,10 @@ static void ungz_run(fcom_op *op)
 			switch (r) {
 			case 0:
 				continue;
+
 			case 0x1f0: {
 				ffgzread_info *info = ffgzread_getinfo(&z->ungz);
-				z->mtime.sec = info->mtime;
+				z->mtime.sec = info->mtime + FFTIME_1970_SECONDS;
 				if (!z->out_opened) {
 					z->out_opened = 1;
 					if (!z->cmd->stdout)
@@ -225,13 +233,16 @@ static void ungz_run(fcom_op *op)
 				}
 				continue;
 			}
+
 			case 0xdeed:
 				z->next_chunk_begin = 1;
 				z->del_on_close = 0;
-				// fallthrough
+				continue;
+
 			case 0xfeed:
 				z->st = I_READ;
 				continue;
+
 			case 0xbad:
 				goto end;
 			}
@@ -253,6 +264,10 @@ static void ungz_run(fcom_op *op)
 		case I_WRITE:
 			r = core->file->write(z->out, z->data, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 
 			z->st = I_DECOMP;
 			continue;

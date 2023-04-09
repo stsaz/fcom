@@ -76,10 +76,6 @@ end:
 	return NULL;
 }
 
-/** Protect against division by zero. */
-#define FFINT_DIVSAFE(val, by) \
-	((by) != 0 ? (val) / (by) : 0)
-
 /** Set the minimum value.
 The same as: dst = min(dst, src) */
 #define ffint_setmin(dst, src) \

@@ -151,7 +151,7 @@ static fcom_op* un7z_create(fcom_cominfo *cmd)
 		goto end;
 
 	struct fcom_file_conf fc = {};
-	fc.buffer_size = cmd->buffer_size;
+	fcom_cmd_file_conf(&fc, cmd);
 	z->in = core->file->create(&fc);
 	z->out = core->file->create(&fc);
 
@@ -341,6 +341,10 @@ static void un7z_run(fcom_op *op)
 		case I_FILEREAD:
 			r = core->file->read(z->in, &z->zdata, z->roff);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 			if (r == FCOM_FILE_EOF) {
 				fcom_errlog("incomplete archive");
 				goto end;
@@ -353,8 +357,10 @@ static void un7z_run(fcom_op *op)
 			r = un7z_read(z, &z->zdata, &z->plain);
 			switch (r) {
 
-			case FF7ZREAD_FILEDONE:
-				core->file->mtime_set(z->out, z->curfile->mtime);
+			case FF7ZREAD_FILEDONE: {
+				fftime t = z->curfile->mtime;
+				t.sec += FFTIME_1970_SECONDS;
+				core->file->mtime_set(z->out, t);
 
 				if (!(z->curfile->attr & FFFILE_WIN_DIR)) {
 #ifdef FF_WIN
@@ -366,6 +372,7 @@ static void un7z_run(fcom_op *op)
 					z->del_on_close = 0;
 				}
 				break;
+			}
 
 			case 0xdeed:
 				z->state = I_IN; break;
@@ -407,6 +414,11 @@ static void un7z_run(fcom_op *op)
 		case I_WRITE:
 			r = core->file->write(z->out, z->plain, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
+
 			z->total_uncomp += z->plain.len;
 			z->state = I_PARSE;
 			continue;

@@ -396,7 +396,7 @@ static inline int ffcmdarg_parse_object2(const ffcmdarg_arg *args, void *obj, co
 			, &a.val, err);
 	}
 
-	if (r == 0 && skipped.len < *argc) {
+	if (r == 0 && (scheme_flags & FFCMDARG_SCF_REMOVE_PROCESSED) && skipped.len < *argc) {
 		ffmem_copy(argv, skipped.ptr, skipped.len * sizeof(void*));
 		argv[skipped.len] = NULL;
 		*argc = skipped.len;

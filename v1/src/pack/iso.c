@@ -100,7 +100,7 @@ static fcom_op* iso_create(fcom_cominfo *cmd)
 		goto end;
 
 	struct fcom_file_conf fc = {};
-	fc.buffer_size = cmd->buffer_size;
+	fcom_cmd_file_conf(&fc, cmd);
 	c->in = core->file->create(&fc);
 	c->out = core->file->create(&fc);
 	return c;
@@ -146,7 +146,7 @@ static void iso_run(fcom_op *op)
 {
 	struct iso *c = op;
 	int r, rc = 1;
-	enum { I_OUT_OPEN, I_IN, I_INFO, I_IN_NEXT_OPEN, I_FILEREAD, I_PROC, I_DONE, };
+	enum { I_OUT_OPEN, I_IN, I_INFO, I_IN_NEXT_OPEN, I_FILEREAD, I_PROC, I_WRITE, I_DONE, };
 
 	while (!FFINT_READONCE(c->stop)) {
 		switch (c->st) {
@@ -232,8 +232,12 @@ static void iso_run(fcom_op *op)
 		case I_FILEREAD:
 			r = core->file->read(c->in, &c->plain, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(c->cmd);
+				return;
+			}
 			if (r == FCOM_FILE_EOF) {
-				c->st = c->st = I_IN_NEXT_OPEN;
+				c->st = I_IN_NEXT_OPEN;
 				continue;
 			}
 			c->st = I_PROC;
@@ -249,10 +253,7 @@ static void iso_run(fcom_op *op)
 				c->st = I_FILEREAD; break;
 
 			case FFISOWRITE_DATA:
-				r = core->file->write(c->out, c->isodata, c->woff);
-				if (r == FCOM_FILE_ERR) goto end;
-				c->woff = -1;
-				break;
+				c->st = I_WRITE; break;
 
 			case FFISOWRITE_DONE:
 				c->st = I_DONE;
@@ -261,6 +262,17 @@ static void iso_run(fcom_op *op)
 			case FFISOWRITE_ERROR:
 				goto end;
 			}
+			continue;
+
+		case I_WRITE:
+			r = core->file->write(c->out, c->isodata, c->woff);
+			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(c->cmd);
+				return;
+			}
+			c->woff = -1;
+			c->st = I_PROC;
 			continue;
 
 		case I_DONE:

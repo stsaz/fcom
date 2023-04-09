@@ -46,11 +46,11 @@ static void sync_copy(struct sync *s, fntree_cmp_ent *ce)
 	fcom_cominfo *c = core->com->create();
 	c->operation = ffsz_dup("copy");
 
-	static const char* argv[] = {
-		"--verify"
-	};
-	c->argv = (char**)argv;
-	c->argc = FF_COUNT(argv);
+	ffvec a = {};
+	*ffvec_pushT(&a, char*) = ffsz_dup("--verify");
+	ffvec_zpushT(&a, char*);
+	c->argv = a.ptr;
+	c->argc = a.len - 1;
 
 	ffstr *p = ffvec_pushT(&c->input, ffstr);
 	char *sz = ffsz_dupstr((ffstr*)&s->sc.lname);

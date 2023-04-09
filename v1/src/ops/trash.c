@@ -139,6 +139,9 @@ static int f_wipe(struct trash *t, const char *fn)
 		data_rnd(&d, 4096);
 		fsize -= d.len;
 
+		if (FFINT_READONCE(t->stop))
+			goto end;
+
 		r = core->file->write(f, *(ffstr*)&d, -1);
 		if (r == FCOM_FILE_ERR) goto end;
 	}

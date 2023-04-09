@@ -39,7 +39,7 @@ static void wsnap_ent_serialize(ffvec *buf, const struct ent *e)
 
 	// TODO escape
 	// f|d "file" size unixattr/winattr uid:gid yyyy-mm-dd+hh:mm:ss.msc crc32
-	ffvec_addfmt(buf, "\t%c \"%S\" %U %xu/%xu %u:%u %S+%S %u\r\n"
+	ffvec_addfmt(buf, "\t%c \"%S\"\t%U\t%xu/%xu\t%u:%u\t%S+%S\t%u\r\n"
 		, e->type, &e->name
 		, d->size, d->unixattr, d->winattr, d->uid, d->gid, &date, &time, d->crc32);
 }

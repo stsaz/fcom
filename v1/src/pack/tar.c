@@ -74,7 +74,7 @@ static fcom_op* tar_create(fcom_cominfo *cmd)
 		goto end;
 
 	struct fcom_file_conf fc = {};
-	fc.buffer_size = cmd->buffer_size;
+	fcom_cmd_file_conf(&fc, cmd);
 	t->in = core->file->create(&fc);
 	t->out = core->file->create(&fc);
 
@@ -132,7 +132,7 @@ static void tar_run(fcom_op *op)
 {
 	struct tar *t = op;
 	int r, rc = 1;
-	enum { I_OUT_OPEN, I_IN, I_INFO, I_ADD, I_FILEREAD, I_PROC, I_DONE, };
+	enum { I_OUT_OPEN, I_IN, I_INFO, I_ADD, I_FILEREAD, I_PROC, I_WRITE, I_DONE, };
 
 	while (!FFINT_READONCE(t->stop)) {
 		switch (t->st) {
@@ -205,6 +205,10 @@ static void tar_run(fcom_op *op)
 		case I_FILEREAD:
 			r = core->file->read(t->in, &t->plain, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(t->cmd);
+				return;
+			}
 			if (r == FCOM_FILE_EOF)
 				fftarwrite_filefinish(&t->wtar);
 			t->st = I_PROC;
@@ -217,9 +221,7 @@ static void tar_run(fcom_op *op)
 				t->st = I_FILEREAD; break;
 
 			case FFTARWRITE_DATA:
-				r = core->file->write(t->out, t->tardata, -1);
-				if (r == FCOM_FILE_ERR) goto end;
-				break;
+				t->st = I_WRITE; break;
 
 			case FFTARWRITE_FILEDONE:
 				t->st = I_IN; break;
@@ -231,6 +233,16 @@ static void tar_run(fcom_op *op)
 			case FFTARWRITE_ERROR:
 				goto end;
 			}
+			continue;
+
+		case I_WRITE:
+			r = core->file->write(t->out, t->tardata, -1);
+			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(t->cmd);
+				return;
+			}
+			t->st = I_PROC;
 			continue;
 
 		case I_DONE:

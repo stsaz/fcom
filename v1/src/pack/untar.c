@@ -142,7 +142,7 @@ static fcom_op* untar_create(fcom_cominfo *cmd)
 		goto end;
 
 	struct fcom_file_conf fc = {};
-	fc.buffer_size = cmd->buffer_size;
+	fcom_cmd_file_conf(&fc, cmd);
 	t->in = core->file->create(&fc);
 	t->out = core->file->create(&fc);
 
@@ -154,13 +154,6 @@ end:
 	untar_close(t);
 	return NULL;
 }
-
-/** Protect against division by zero. */
-#define FFINT_DIVSAFE(val, by) \
-({ \
-	__typeof__(by) _by = (by); \
-	((_by != 0) ? (val) / _by : 0); \
-})
 
 /* "size date name" */
 static void untar_showinfo(struct untar *t, const fftarread_fileinfo_t *tf)
@@ -323,6 +316,10 @@ static void untar_run(fcom_op *op)
 		case I_FILEREAD:
 			r = core->file->read(t->in, &t->tardata, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(t->cmd);
+				return;
+			}
 			if (r == FCOM_FILE_EOF) {
 				fcom_errlog("incomplete archive");
 				goto end;
@@ -337,7 +334,9 @@ static void untar_run(fcom_op *op)
 			case FFTARREAD_FILEDONE: {
 				const fftarread_fileinfo_t *tf = fftarread_fileinfo(&t->rtar);
 
-				core->file->mtime_set(t->out, tf->mtime);
+				fftime t1 = tf->mtime;
+				t1.sec += FFTIME_1970_SECONDS;
+				core->file->mtime_set(t->out, t1);
 
 				if (tf->type != TAR_DIR) {
 #ifdef FF_UNIX
@@ -412,6 +411,11 @@ static void untar_run(fcom_op *op)
 		case I_WRITE:
 			r = core->file->write(t->out, t->plain, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(t->cmd);
+				return;
+			}
+
 			t->state = I_PARSE;
 			continue;
 		}

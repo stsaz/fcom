@@ -38,7 +38,7 @@ static const char* zip_help()
 Pack files into .zip.\n\
 Implies '--recursive'.\n\
 Usage:\n\
-  fcom zip INPUT... [OPTIONS] -o OUTPUT.zip\n\
+  fcom zip INPUT... [OPTIONS] [-o OUTPUT.zip]\n\
     OPTIONS:\n\
     -m, --method=STR    Compression method:\n\
                           deflate (default), zstd, store\n\
@@ -85,9 +85,14 @@ static int args_parse(struct zip *z, fcom_cominfo *cmd)
 	if (r != 0)
 		return r;
 
+	// set default output file
 	if (cmd->output.len == 0) {
-		fcom_fatlog("Use --out to set output file name");
-		return -1;
+		ffstr path = ((ffstr*)cmd->input.ptr)[0];
+		ffstr name;
+		ffpath_splitpath_str(path, NULL, &name);
+		ffstr_free(&cmd->output);
+		ffsize cap = 0;
+		ffstr_growfmt(&cmd->output, &cap, "%S.zip%Z", &name);
 	}
 
 	return 0;
@@ -103,7 +108,8 @@ static void zip_close(fcom_op *op)
 	if (z->del_on_close)
 		core->file->delete(z->cmd->output.ptr, 0);
 	core->file->destroy(z->out);
-	z->crc32->close(z->crc32_obj);
+	if (z->crc32_obj != NULL)
+		z->crc32->close(z->crc32_obj);
 	ffvec_free(&z->buf);
 	ffmem_free(z);
 }
@@ -120,7 +126,7 @@ static fcom_op* zip_create(fcom_cominfo *cmd)
 		goto end;
 
 	struct fcom_file_conf fc = {};
-	fc.buffer_size = cmd->buffer_size;
+	fcom_cmd_file_conf(&fc, cmd);
 	z->in = core->file->create(&fc);
 	z->out = core->file->create(&fc);
 
@@ -191,10 +197,6 @@ static int zip_file_add(struct zip *z)
 	return 0;
 }
 
-/** Protect against division by zero. */
-#define FFINT_DIVSAFE(val, by) \
-	((by) != 0 ? (val) / (by) : 0)
-
 static int zip_write(struct zip *z, ffstr *in, ffstr *out)
 {
 	for (;;) {
@@ -227,7 +229,7 @@ static void zip_run(fcom_op *op)
 {
 	struct zip *z = op;
 	int r, rc = 1;
-	enum { I_OUT_OPEN, I_IN, I_INFO, I_ADD, I_FILEREAD, I_PROC, I_DONE, };
+	enum { I_OUT_OPEN, I_IN, I_INFO, I_ADD, I_FILEREAD, I_PROC, I_WRITE, I_DONE, };
 
 	while (!FFINT_READONCE(z->stop)) {
 		switch (z->st) {
@@ -308,6 +310,10 @@ static void zip_run(fcom_op *op)
 		case I_FILEREAD:
 			r = core->file->read(z->in, &z->plain, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 			if (r == FCOM_FILE_EOF)
 				ffzipwrite_filefinish(&z->wzip);
 			z->st = I_PROC;
@@ -320,10 +326,7 @@ static void zip_run(fcom_op *op)
 				z->st = I_FILEREAD; break;
 
 			case FFZIPWRITE_DATA:
-				r = core->file->write(z->out, z->zipdata, z->woff);
-				if (r == FCOM_FILE_ERR) goto end;
-				z->woff = -1;
-				break;
+				z->st = I_WRITE; break;
 
 			case FFZIPWRITE_FILEDONE:
 				z->st = I_IN; break;
@@ -335,6 +338,18 @@ static void zip_run(fcom_op *op)
 			case FFZIPWRITE_ERROR:
 				goto end;
 			}
+			continue;
+
+		case I_WRITE:
+			r = core->file->write(z->out, z->zipdata, z->woff);
+			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
+
+			z->woff = -1;
+			z->st = I_PROC;
 			continue;
 
 		case I_DONE:

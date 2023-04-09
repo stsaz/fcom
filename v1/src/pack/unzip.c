@@ -163,7 +163,7 @@ static fcom_op* unzip_create(fcom_cominfo *cmd)
 		goto end;
 
 	struct fcom_file_conf fc = {};
-	fc.buffer_size = cmd->buffer_size;
+	fcom_cmd_file_conf(&fc, cmd);
 	z->in = core->file->create(&fc);
 	z->out = core->file->create(&fc);
 
@@ -175,13 +175,6 @@ end:
 	unzip_close(z);
 	return NULL;
 }
-
-/** Protect against division by zero. */
-#define FFINT_DIVSAFE(val, by) \
-({ \
-	__typeof__(by) _by = (by); \
-	((_by != 0) ? (val) / _by : 0); \
-})
 
 /* "size zsize(%) date name" */
 static void unzip_showinfo(struct unzip *z, const ffzipread_fileinfo_t *zf)
@@ -238,6 +231,7 @@ static void unzip_f_info(struct unzip *z)
 	f->size = zf->uncompressed_size;
 	f->zsize = zf->compressed_size;
 	f->mtime = zf->mtime;
+	f->mtime.sec += FFTIME_1970_SECONDS;
 	f->off = zf->hdr_offset;
 }
 
@@ -368,6 +362,10 @@ static void unzip_run(fcom_op *op)
 		case I_FILEREAD:
 			r = core->file->read(z->in, &z->zipdata, z->roff);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
 			if (r == FCOM_FILE_EOF) {
 				fcom_errlog("incomplete archive");
 				goto end;
@@ -458,6 +456,11 @@ static void unzip_run(fcom_op *op)
 		case I_WRITE:
 			r = core->file->write(z->out, z->plain, -1);
 			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(z->cmd);
+				return;
+			}
+
 			z->total_uncomp += z->plain.len;
 			z->state = I_PARSE;
 			continue;

@@ -52,6 +52,7 @@ struct copy {
 	ffstr encrypt, decrypt;
 	byte preserve_date;
 	byte rename_source;
+	byte update;
 	byte write_into;
 };
 
@@ -68,6 +69,7 @@ static int args_parse(struct copy *c, fcom_cominfo *cmd)
 		{ 'd',	"decrypt",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, O(decrypt) },
 		{ 'y',	"verify",	FFCMDARG_TSWITCH, O(verify) },
 		{ 0,	"rename-source",	FFCMDARG_TSWITCH, O(rename_source) },
+		{ 'u',	"update",	FFCMDARG_TSWITCH, O(update) },
 		{ 0,	"write-into",	FFCMDARG_TSWITCH, O(write_into) },
 		{}
 	};
@@ -88,6 +90,7 @@ static const char* copy_help()
 Copy files, plus encryption & verification.\n\
 Implies '--recursive'.\n\
 Uses large '--buffer' by default.\n\
+File properties are preserved.\n\
 Usage:\n\
   fcom copy INPUT... [-o OUTPUT_FILE] [-C OUTPUT_DIR] [OPTIONS]\n\
     OPTIONS:\n\
@@ -100,8 +103,8 @@ Usage:\n\
     -y, --verify        Verify data consistency with MD5.\n\
                         Implies '--directio' on output file.\n\
 \n\
-        --rename-source\n\
-                        Rename source file to *.deleted after successful operation\n\
+        --rename-source Rename source file to *.deleted after successful operation\n\
+    -u, --update        Overwrite only older files\n\
         --write-into\n\
                         Overwrite file data instead of deleting the old target\n\
 ";
@@ -196,6 +199,8 @@ static void copy_run(fcom_op *op)
 			if (r == FCOM_FILE_ERR) goto end;
 
 			if (!c->cmd->stdout) {
+				ffmem_free0(c->oname);
+				ffmem_free0(c->oname_tmp);
 				if (NULL == (c->oname = out_name(c, c->name, c->basename)))
 					goto end;
 				c->oname_tmp = ffsz_allocfmt("%s.fcomtmp", c->oname);
@@ -229,7 +234,12 @@ static void copy_run(fcom_op *op)
 		}
 
 		case I_OPEN_OUT: {
-			if (0 != output_open(c)) goto end;
+			r = output_open(c);
+			if (r == 'skip') {
+				c->st = I_SRC;
+				continue;
+			}
+			if (r != 0) goto end;
 			core->file->behaviour(c->in, FCOM_FBEH_SEQ);
 
 			if (0 != crypt_open(c)) goto end;
@@ -282,7 +292,7 @@ static void copy_run(fcom_op *op)
 		case I_RD_DONE:
 			core->file->behaviour(c->out, FCOM_FBEH_TRUNC_PREALLOC);
 			if (c->preserve_date) {
-				core->file->mtime_set(c->out, fffileinfo_mtime(&c->fi));
+				core->file->mtime_set(c->out, fffileinfo_mtime1(&c->fi));
 			}
 
 			if (verify_fin(c)) {
