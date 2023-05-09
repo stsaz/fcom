@@ -4,7 +4,6 @@
 
 /*
 ffcmdarg_from_line ffcmdarg_from_linew
-ffcmdarg_errstr
 ffcmdarg_init
 ffcmdarg_fin
 ffcmdarg_parse
@@ -99,7 +98,7 @@ static inline char** ffcmdarg_from_linew(const wchar_t *cmdline, int *argc)
 
 typedef struct ffcmdarg {
 	ffuint state;
-	ffuint iarg;
+	int iarg;
 	ffstr val;
 	ffstr longval;
 
@@ -108,62 +107,37 @@ typedef struct ffcmdarg {
 } ffcmdarg;
 
 enum FFCMDARG_R {
-	FFCMDARG_RVAL = 1, // any stand-alone value
+	FFCMDARG_DONE,
+	FFCMDARG_RVAL, // any stand-alone value
 	FFCMDARG_RKEYSHORT, // -s
 	FFCMDARG_RKEYLONG, // --long
 	FFCMDARG_RKEYVAL, // --long=VAL
 };
 
-enum FFCMDARG_E {
-	FFCMDARG_DONE,
-	FFCMDARG_ERROR,
-	FFCMDARG_ESHORT,
-	FFCMDARG_ENOVAL,
-	FFCMDARG_ESCHEME,
-	FFCMDARG_FIN,
-};
-
-/** Get error string from code (<0) */
-static inline const char* ffcmdarg_errstr(int err)
-{
-	static const char* const cmdarg_err[] = {
-		"FFCMDARG_DONE",
-		"FFCMDARG_ERROR",
-		"FFCMDARG_ESHORT",
-		"FFCMDARG_ENOVAL",
-		"FFCMDARG_ESCHEME",
-		"FFCMDARG_FIN",
-	};
-	if ((ffuint)-err >= FF_COUNT(cmdarg_err))
-		return "";
-	return cmdarg_err[-err];
-}
-
 /** Initialize reader, skipping the first argument (program name) */
 static inline void ffcmdarg_init(ffcmdarg *p, const char **argv, ffuint argc)
 {
 	ffmem_zero_obj(p);
-	p->argv = argv + 1;
-	p->argc = argc - 1;
+	p->iarg = -1;
+	p->argv = argv;
+	p->argc = argc;
 }
 
 static inline int ffcmdarg_fin(ffcmdarg *p)
 {
-	if (p->state != 0)
-		return -FFCMDARG_ENOVAL;
 	return 0;
 }
 
 /** Get next argument
-Return enum FFCMDARG_R
-  <0: enum FFCMDARG_E */
+Return enum FFCMDARG_R */
 static inline int ffcmdarg_parse(ffcmdarg *p, ffstr *dst)
 {
-	enum { I_KV = 0, I_VAL, };
+	enum { I_KV, I_VAL, };
 	ffstr s;
 	switch (p->state) {
 	case I_KV:
-		if (p->iarg >= p->argc)
+		p->iarg++;
+		if ((ffuint)p->iarg >= p->argc)
 			return FFCMDARG_DONE;
 
 		ffstr_setz(&s, p->argv[p->iarg]);
@@ -174,35 +148,27 @@ static inline int ffcmdarg_parse(ffcmdarg *p, ffstr *dst)
 				ffssize pos = ffstr_splitby(&s, '=', &s, &p->longval);
 				if (pos >= 0)
 					p->state = I_VAL;
-				else
-					p->iarg++;
-				ffstr_set(&p->val, &s.ptr[2], s.len - 2);
+				p->val = s;
 				*dst = p->val;
 				return FFCMDARG_RKEYLONG;
 			}
 
-			if (s.len != 2)
-				return -FFCMDARG_ESHORT;
-
-			p->iarg++;
-			ffstr_set(&p->val, &s.ptr[1], 1);
+			p->val = s;
 			*dst = p->val;
 			return FFCMDARG_RKEYSHORT;
 		}
 
-		p->iarg++;
 		p->val = s;
 		*dst = p->val;
 		return FFCMDARG_RVAL;
 
 	case I_VAL:
 		p->state = I_KV;
-		p->iarg++;
 		p->val = p->longval;
 		ffstr_null(&p->longval);
 		*dst = p->val;
 		return FFCMDARG_RKEYVAL;
 	}
 
-	return -FFCMDARG_ERROR;
+	return -1;
 }

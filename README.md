@@ -1,296 +1,137 @@
-fcom is a fast file commander for Windows, Linux and FreeBSD.
-Its goal is to include functions for working with files of different types: text, binary, archives, pictures, etc.
-
-### Contents:
-* FEATURES
-* INSTALL
-	* INSTALL ON WINDOWS
-	* INSTALL ON LINUX
-	* BUILD ON LINUX
-
-
----------------
-FEATURES
----------------
-
-* Files
-	* `fcom touch` - create/set attributes on files or directories
-	* `fcom crc` - compute file checksums
-	* `fcom rename` - rename files (search and replace)
-	* `fcom sync` - show the difference of 2 file trees
-	* `fcom sync-snapshot` - save directory tree to a file
-	* `fcom peinfo` - Show PE format information
-	* `fcom encrypt` - encrypt files
-	* `fcom decrypt` - decrypt files
-	* `fcom hexprint` - print data in hexadecimal/text format
-	* `fcom list` - list input file names
-* Text files
-	* `fcom textcount` - show information about text files
-	* `fcom utf8` - convert text files to UTF-8
-* Archives (pack)
-	* `fcom gz` - pack files to .gz
-	* `fcom zst` - pack files to .zst
-	* `fcom tar` - pack files to .tar
-	* `fcom zip` - pack files to .zip
-	* `fcom iso` - create .iso image
-* Archives (unpack)
-	* `fcom ungz` - unpack .gz files
-	* `fcom unzst` - unpack .zst files
-	* `fcom unxz` - unpack .xz files
-	* `fcom untar` - unpack .tar files
-	* `fcom unzip` - unpack .zip files
-	* `fcom un7z` - unpack .7z files
-	* `fcom uniso` - unpack .iso files
-	* `fcom unpack` - unpack archives (determine format by file extension)
-* Pictures
-	* `fcom pic-convert` - convert pictures
-	* `fcom screenshots` - show GUI to save screenshots to disk (Windows)
-* Network
-	* `fcom dns` - resolve host address
-* Windows-only
-	* `fcom wregfind` - search within Windows system registry
-	* `fcom disk` - list available disk volumes
-	* `fcom mount` - mount disk to a directory
-* Other
-	* `fcom gsync` - show GUI for synchronizing file trees
-
-### Files
-
-#### fcom touch - create/set attributes on files or directories
-
-Create an empty file:
-
-	fcom touch ./myfile
-
-Set the current date on an existing file:
-
-	fcom touch ./myfile
-
-Set the specified date on a new/existing file:
-
-	fcom touch ./myfile --date="2011-01-01 00:00:00"
-	fcom touch ./myfile2 --date-as=./myfile
-
-#### fcom crc - compute file checksums
-
-Compute CRC32 checksum:
-
-	fcom crc myfile
-
-#### fcom rename - rename files (search and replace)
-
-Rename all files within the current directory - replace 'old' with 'new':
-
-	fcom rename * --replace='old/new'
-
-#### fcom sync - show the difference of 2 file trees
-
-	fcom sync DIR -o DIR
-
-#### fcom sync-snapshot - save directory tree to a file
-
-Scan the current directory and save the snapshot to a file:
-
-	fcom sync-snapshot . -o /tmp/snapshot.txt
-
-#### fcom peinfo - Show PE format information
-
-Show PE header, data directories, sections info:
-
-	fcom peinfo file.exe
-
-#### fcom encrypt - encrypt files
-
-Encrypt all .txt files and create the output files with .crypto extension:
-
-	fcom encrypt --password=123 *.txt -o .crypto
-
-#### fcom decrypt - decrypt files
-
-Decrypt all .crypto files and create the output files with .txt extension:
-
-	fcom decrypt --password=123 *.crypto -o .txt
-
-#### fcom hexprint - print data in hexadecimal/text format
-
-	fcom hexprint *.data
-
-### Text files
-
-#### fcom textcount - show information about text files
-
-Count lines in all files in directory:
-
-	fcom textcount ./mydir -R
-
-
-#### fcom utf8 - convert text files to UTF-8
-
-Convert files to UTF-8, create new files in "new/" directory (file tree is preserved):
-
-	fcom utf8 -R text/ -o new/.txt
-
-
-### Archives
-
-#### fcom gz - pack file to .gz
-
-Pack to separate .gz files in the current directory:
-
-	fcom gz /file1.txt /file2.txt
-
-#### fcom tar - pack files to .tar
-#### fcom zip - pack files to .zip
-
-	fcom zip /file1.txt /file2.txt -o arc.zip
-
-Pack with `--exclude` option:
-
-	fcom zip . -R -o arc.zip --exclude="*/.git;./tmpdir;*.bak"
-
-Here we exclude all `.git` directories (but not files with `.git` extension), `./tmpdir` directory and all `*.bak` files.
-
-#### fcom iso - create .iso image
-
-	fcom iso ./mydir -o myimage.iso
-
-#### fcom ungz - unpack .gz files
-#### fcom unxz - unpack .xz files
-
-Unpack to the current directory:
-
-	fcom unxz ./file1.xz ./file2.xz
-
-Specify output file:
-
-	fcom unxz ./file1.xz -o ./file1.txt
-
-#### fcom untar - unpack .tar files
-#### fcom unzip - unpack .zip files
-#### fcom un7z - unpack .7z files
-#### fcom uniso - unpack .iso files
-
-Unpack 2 files from gzip-compressed tar archive to the specified directory:
-
-	fcom untar ./arc.tar.gz --member=file1.txt --member=file2.txt --outdir=mydir
-
-#### fcom unpack - unpack archives (determine format by file extension)
-
-	fcom unpack ./arc.tar.gz ./arc.zip ./arc.7z
-
-### Pictures
-
-#### fcom pic-convert - convert pictures
-
-Convert BMP to JPEG:
-
-	fcom pic-convert pic.bmp -o pic.jpg
-
-Convert files to JPEG, create new files along the original files:
-
-	fcom pic-convert -R pictures/ -o .jpg
-
-Convert files to JPEG, create new files in "new/" directory (file tree is preserved):
-
-	fcom pic-convert -R pictures/ -o new/.jpg
-
-#### fcom screenshots - show GUI to save screenshots to disk (Windows)
-
-Save screenshots of your desktop or a top-level window by pressing a global hotkey.  Supports BMP, PNG, JPEG output formats.
-
-
-### Network
-
-#### fcom dns - resolve host address
-
-Resolve IPv4 and IPv6 addresses of the hosts using default DNS server:
-
-	fcom dns example.org example.com
-
-Resolve host address using Quad9 DNS server:
-
-	fcom dns example.org --servers='9.9.9.9'
-
-
-### Windows-only
-
-#### fcom wregfind - search within Windows system registry
-
-Search "sometext" in HKEY_CURRENT_USER:
-
-	fcom wregfind sometext --member=HKCU
-
-#### fcom disk - list available disk volumes
-
-	fcom disk
-
-#### fcom mount - mount disk to a directory
-
-Create a mount point:
-
-	fcom mount \\?\Volume{GUID}\ -o c:\mount\
-
-Delete a mount point:
-
-	fcom mount "" -o c:\mount\
-
-
-### Other
-
-#### fcom gsync - show GUI for synchronizing file trees
-
-How to use:
-1. Select directory for "Source path" and "Target path"
-2. Command -> Compare
-3. Select checkboxes near the files you wish to synchronize (Windows)
-3. Select the files you wish to synchronize (Linux)
-4. Command -> Synchronize
-
-
----------------
-INSTALL
----------------
-
-### INSTALL ON WINDOWS
-
-1. Unpack archive to the directory of your choice, e.g. to `"C:\Program Files\fcom"`
-
-### INSTALL ON LINUX
-
-1. Unpack archive to the directory of your choice, e.g. to `/usr/local/fcom-0`:
-
-		tar Jxf ./fcom-0.5-linux-amd64.tar.xz -C /usr/local
+## Welcome to fcom project!
+
+fcom is a small, fast and portable file commander for Linux and Windows.
+Its goal is to include the most useful functions for working with files of different types: text, binary, archives, pictures, etc.
+
+Contents:
+
+* [Features](#features)
+* [Third-party code](#third-party-code)
+* [Install on Linux](#install-on-linux)
+* [Install on Windows](#install-on-windows)
+* [Build on Linux](#build-on-linux)
+
+## Features
+
+```
+  General:
+    copy                Copy files from one place to another, plus encryption & verification
+    list                List directory contents
+    move                Move and/or rename files
+    touch               Change file date/time
+    trash               Move files to user's trash directory, plus obfuscation
+
+  Compress files:
+    gz                  Compress file into .gz
+    zst                 Compress file into .zst
+
+  Pack files:
+    iso                 Pack files into .iso
+    tar                 Pack files into .tar
+    zip                 Pack files into .zip
+
+  Decompress files:
+    ungz                Decompress file from .gz
+    unxz                Decompress file from .xz
+    unzst               Decompress file from .zst
+
+  Unpack files:
+    unpack              Unpack files from all supported archive types
+    un7z                Unpack files from .7z
+    uniso               Unpack files from .iso
+    untar               Unpack files from .tar
+    unzip               Unpack files from .zip
+
+  Other:
+    hex                 Print file contents in hexadecimal format
+    ico-extract         Extract images from .ico
+    listdisk            List logical volumes (Windows)
+    md5                 Compute MD5 hash
+    mount               Mount logical volumes (Windows)
+    pic                 Convert images (.bmp/.jpg/.png)
+    reg                 Windows Registry utils: search
+    sync                Compare/synchronize directories or create a file tree snapshot
+    textcount           Analyze text files (e.g. print number of lines)
+    utf8                Convert files to UTF-8
+```
+
+## Third-party code
+
+fcom uses third-party code that implements complex algorithms such as data encryption and cryptographic hashing functions:
+
+* AES (Brian Gladman)
+* CRC32 (xz)
+* libjpeg-turbo
+* libpng
+* lzma (xz)
+* MD5 (nginx)
+* SHA-256 (glibc)
+* zlib
+* zstd
+
+Many thanks to all the people who created and implemented those algorithms!!!
+
+
+## Install on Linux
+
+1. Unpack the archive to the directory of your choice, e.g. to Home/bin:
+
+		tar xf fcom-v1.0beta1-linux-amd64.tar.zst --zstd -C ~/bin
 
 2. Optionally, create a symbolic link:
 
-		ln -s /usr/local/fcom-0/fcom /usr/local/bin/fcom
+		ln -s ~/bin/fcom-1/fcom ~/bin/fcom
 
-### BUILD ON LINUX
 
-1. Create a directory for all needed sources:
+## Install on Windows
+
+1. Unpack the archive to the directory of your choice.
+2. Optionally, add the path to `fcom.exe` to `PATH`.
+
+
+## Build on Linux
+
+1. Create a directory for the source code:
 
 		mkdir fcom-src && cd fcom-src
 
-2. Download all needed source repositories:
+2. Download the repositories:
 
 		git clone --depth=1 https://github.com/stsaz/ffbase
-		git clone --depth=1 https://github.com/stsaz/ffpack
 		git clone --depth=1 https://github.com/stsaz/ffos
-		git clone --depth=1 https://github.com/stsaz/fcom
+		git clone --depth=1 https://github.com/stsaz/ffpack
+		git clone --depth=1 https://github.com/stsaz/avpack
+		git clone --depth=1 -b v1 https://github.com/stsaz/fcom
 
-3. Build ffpack libs, cryptolib3, piclib3 (3rd-party libraries) or use the binaries from the previous fcom release.
+3. Build third-party code:
+
+		cd fcom/3pt
+		make -Rr -j8
+		make md5check
+		make install
+		cd ../..
+
+		cd fcom/3pt-pic
+		make -Rr -j8
+		make md5check
+		make install
+		cd ../..
+
+		cd ffpack
+		make -Rr -j8
+		make md5check
+		make install
+		cd ..
 
 4. Build fcom:
 
 		cd fcom
-		make install
+		make -Rr -j8
 
-	You can explicitly specify path to each of FF source repositories, e.g.:
+`fcom-1` is the app directory.  Now you may move it anywhere you want (see section "Install on Linux").
 
-		make install FFOS=~/ffos FFPACK=~/ffpack
 
-	Default architecture is amd64.  You can specify different target architecture like this:
+## License
 
-		make install ARCH=i686
-
-5. Ready!  You can copy the directory `./fcom-0` anywhere you want (see section "INSTALL ON LINUX").
+fcom is in the public-domain.
+Third-party code is the property of their authors.

@@ -10,12 +10,14 @@ ffcmdarg_parse_object
 
 #pragma once
 #include "cmdarg.h"
+#include <ffbase/vector.h>
 
 enum FFCMDARG_SCHEME_T {
 	FFCMDARG_TSWITCH,
 	FFCMDARG_TSTR,
 	FFCMDARG_TSTRZ,
 	_FFCMDARG_TINT,
+	_FFCMDARG_TSIZE, // number with multiplier suffix (e.g. 1k, 1m, 1g)
 	_FFCMDARG_TFLOAT,
 
 	FFCMDARG_F32BIT = 0x20,
@@ -25,6 +27,8 @@ enum FFCMDARG_SCHEME_T {
 	FFCMDARG_FNOTEMPTY = 0x0200,
 	FFCMDARG_FSIGN = 0x0400,
 
+	FFCMDARG_TSIZE64 = _FFCMDARG_TSIZE,
+	FFCMDARG_TSIZE32 = _FFCMDARG_TSIZE | FFCMDARG_F32BIT,
 	FFCMDARG_TINT64 = _FFCMDARG_TINT,
 	FFCMDARG_TINT32 = _FFCMDARG_TINT | FFCMDARG_F32BIT,
 	FFCMDARG_TINT16 = _FFCMDARG_TINT | FFCMDARG_F16BIT,
@@ -84,7 +88,8 @@ typedef struct ffcmdarg_scheme {
 } ffcmdarg_scheme;
 
 enum FFCMDARG_SCHEME_F {
-	FFCMDARG_SCF_DUMMY,
+	FFCMDARG_SCF_SKIP_UNKNOWN = 1, // skip unknown keys
+	FFCMDARG_SCF_REMOVE_PROCESSED = 2, // remove processed arguments
 };
 
 /** Initialize parser object
@@ -121,8 +126,27 @@ static inline const ffcmdarg_arg* _ffcmdarg_arg_find_short(const ffcmdarg_arg *a
 	return NULL;
 }
 
+#define FFCMDARG_ESCHEME  2
+#define FFCMDARG_ESKIP  3
+
 #define _FFCMDARG_ERR(a, msg) \
 	(a)->errmsg = msg,  -FFCMDARG_ESCHEME
+
+/** Get bits to shift by size suffix K, M, G, T */
+static ffuint _ffcmdarg_sizesfx(int suffix)
+{
+	switch (suffix | 0x20) {
+	case 'k':
+		return 10;
+	case 'm':
+		return 20;
+	case 'g':
+		return 30;
+	case 't':
+		return 40;
+	}
+	return 0;
+}
 
 /** Process 1 argument
 Return 'r';
@@ -161,13 +185,20 @@ static inline int ffcmdarg_scheme_process(ffcmdarg_scheme *as, int r)
 		if (as->arg != NULL)
 			return _FFCMDARG_ERR(as, "expected value for the previous argument");
 
-		if (r == FFCMDARG_RKEYSHORT)
-			as->arg = _ffcmdarg_arg_find_short(as->args, val.ptr[0]);
-		else
-			as->arg = _ffcmdarg_arg_find(as->args, val);
+		if (r == FFCMDARG_RKEYSHORT) {
+			if (val.len > 2)
+				return _FFCMDARG_ERR(as, "short options must be of '-x' format");
+			as->arg = _ffcmdarg_arg_find_short(as->args, val.ptr[1]);
+		} else {
+			ffstr v = FFSTR_INITN(val.ptr+2, val.len-2);
+			as->arg = _ffcmdarg_arg_find(as->args, v);
+		}
 
-		if (as->arg == NULL)
-			return _FFCMDARG_ERR(as, "no such key in scheme");
+		if (as->arg == NULL) {
+			if (as->flags & FFCMDARG_SCF_SKIP_UNKNOWN)
+				return -FFCMDARG_ESKIP;
+			return _FFCMDARG_ERR(as, "unknown key");
+		}
 
 		ffuint i = as->arg - as->args;
 		if (i < sizeof(as->used_bits)*8
@@ -197,8 +228,11 @@ static inline int ffcmdarg_scheme_process(ffcmdarg_scheme *as, int r)
 		// fallthrough
 
 	case FFCMDARG_RKEYVAL:
-		if (as->arg == NULL)
+		if (as->arg == NULL) {
+			if (as->flags & FFCMDARG_SCF_SKIP_UNKNOWN)
+				return -FFCMDARG_ESKIP;
 			return _FFCMDARG_ERR(as, "unexpected value");
+		}
 
 		type = as->arg->flags & 0x0f;
 		flags = as->arg->flags;
@@ -241,7 +275,15 @@ static inline int ffcmdarg_scheme_process(ffcmdarg_scheme *as, int r)
 			break;
 		}
 
+		case _FFCMDARG_TSIZE:
 		case _FFCMDARG_TINT: {
+			ffuint shift = 0;
+			if (type == _FFCMDARG_TSIZE && val.len >= 2) {
+				shift = _ffcmdarg_sizesfx(val.ptr[val.len - 1]);
+				if (shift != 0)
+					val.len--;
+			}
+
 			ffint64 i = 0;
 			ffuint f = FFS_INT64;
 			if (flags & FFCMDARG_F32BIT)
@@ -256,6 +298,7 @@ static inline int ffcmdarg_scheme_process(ffcmdarg_scheme *as, int r)
 
 			if (!ffstr_toint(&val, &i, f))
 				return _FFCMDARG_ERR(as, "integer expected");
+			i <<= shift;
 
 			if (as->arg->dst < MAX_OFF) {
 				if (flags & FFCMDARG_F32BIT)
@@ -317,11 +360,12 @@ scheme_flags: enum FFCMDARG_SCHEME_F
 errmsg: (optional) error message; must free with ffstr_free()
 Return 0 on success
   <0 on error: enum FFCMDARG_E */
-static inline int ffcmdarg_parse_object(const ffcmdarg_arg *args, void *obj, const char **argv, ffuint argc, ffuint scheme_flags, ffstr *errmsg)
+static inline int ffcmdarg_parse_object2(const ffcmdarg_arg *args, void *obj, const char **argv, ffuint *argc, ffuint scheme_flags, ffstr *errmsg)
 {
+	ffvec skipped = {};
 	int r;
 	ffcmdarg a;
-	ffcmdarg_init(&a, argv, argc);
+	ffcmdarg_init(&a, argv, *argc);
 
 	ffcmdarg_scheme as;
 	ffcmdarg_scheme_init(&as, args, obj, &a, scheme_flags);
@@ -332,19 +376,32 @@ static inline int ffcmdarg_parse_object(const ffcmdarg_arg *args, void *obj, con
 		if (r < 0)
 			break;
 
+		int r2 = r;
 		r = ffcmdarg_scheme_process(&as, r);
-		if (r <= 0)
+		if (r == -FFCMDARG_ESKIP) {
+			if (r2 != FFCMDARG_RKEYVAL
+				&& (scheme_flags & FFCMDARG_SCF_REMOVE_PROCESSED)) {
+				*ffvec_pushT(&skipped, void*) = (void*)argv[a.iarg];
+			}
+		} else if (r <= 0)
 			break;
 	}
 
 	if (r != 0 && errmsg != NULL) {
 		ffsize cap = 0;
-		const char *err = ffcmdarg_errstr(r);
+		const char *err = "";
 		if (r == -FFCMDARG_ESCHEME)
 			err = as.errmsg;
 		ffstr_growfmt(errmsg, &cap, "near '%S': %s"
 			, &a.val, err);
 	}
+
+	if (r == 0 && (scheme_flags & FFCMDARG_SCF_REMOVE_PROCESSED) && skipped.len < *argc) {
+		ffmem_copy(argv, skipped.ptr, skipped.len * sizeof(void*));
+		argv[skipped.len] = NULL;
+		*argc = skipped.len;
+	}
+	ffvec_free(&skipped);
 
 	return r;
 }

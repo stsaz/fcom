@@ -1,0 +1,9 @@
+include ../../ffbase/test/makeconf
+
+# Set utils
+CURL := curl -L
+UNTAR_BZ2 := tar xjf
+UNTAR_GZ := tar xzf
+UNTAR_XZ := tar xJf
+UNTAR_ZST := tar -x --zstd -f
+UNZIP := unzip

@@ -1,114 +1,79 @@
-fcom OPERATION [OPTIONS] ...
+General usage:
 
-OPERATION
+  fcom OPERATION [INPUT] [-o OUTPUT] [OPTIONS]
 
- copy FILE -o FILE [--resume]
- crc FILE...
- encrypt|decrypt --password=STR FILE... -o FILE...
- hexprint FILE...
- list FILE...
- mount DISKNAME -o DIR
- rename FILE... [--unbranch] [--replace='SEARCH/REPLACE']
- sync (DIR | FILE.txt) -o DIR
- sync-snapshot FILE -o FILE.txt
- textcount FILE...
- touch FILE... [--date=DATE] [--date-as=FILE]
- utf8 FILE... -o FILE
+OPERATION:
 
-Windows-only:
- disk
- wregfind STR... [--member=KEY]...
+  General:
+    copy                Copy files from one place to another, plus encryption & verification
+    list                List directory contents
+    move                Move and/or rename files
+    touch               Change file date/time
+    trash               Move files to user's trash directory, plus obfuscation
 
-GUI:
- gsync
- screenshots
+  Compress files:
+    gz                  Compress file into .gz
+    zst                 Compress file into .zst
 
-Pack files (.gz, .tar, .zip, .iso):
- gz FILE... [--out=FILE.gz] [--deflate-level=INT]
- iso DIR --out=FILE.iso
- tar FILE... --out=FILE(.tar | .tar.gz | .tgz | .tar.zst) [--deflate-level=INT] [--zstd-level=INT] [--zstd-workers=INT]
- zip FILE... --out=FILE.zip [--compression-method=STR] [--deflate-level=INT] [--zstd-level=INT] [--zstd-workers=INT]
- zst FILE... [--out=FILE.zst] [--zstd-level=INT] [--zstd-workers=INT]
+  Pack files:
+    iso                 Pack files into .iso
+    tar                 Pack files into .tar
+    zip                 Pack files into .zip
 
-Unpack archives (.gz, .xz, .zst, .tar, .zip, .zipx, .7z, .iso, .ico):
- unpack FILE... [--out=FILE] [--member=FILE]... [--show]
- un7z FILE... [--out=FILE] [--member=FILE]... [--show]
- ungz FILE... [--out=FILE]
- uniso FILE... [--out=FILE] [--member=FILE]... [--show]
- untar FILE(.tar | .tar.gz | .tgz | .tar.zst)... [--out=FILE] [--member=FILE]... [--show]
- unxz FILE... [--out=FILE]
- unzip FILE... [--out=FILE] [--member=WILDCARD]... [--show]
- unzst FILE... [--out=FILE]
+  Decompress files:
+    ungz                Decompress file from .gz
+    unxz                Decompress file from .xz
+    unzst               Decompress file from .zst
 
-Convert pictures (.bmp, .jpg, .png):
- pic-convert FILE... --out=FILE [--colors=INT] [--crop=INT:INT]
+  Unpack files:
+    unpack              Unpack files from all supported archive types
+    un7z                Unpack files from .7z
+    uniso               Unpack files from .iso
+    untar               Unpack files from .tar
+    unzip               Unpack files from .zip
 
-Network:
- dns HOSTNAME... [--servers='DNS_SERVER_ADDR;...']
+  Other:
+    hex                 Print file contents in hexadecimal format
+    ico-extract         Extract images from .ico
+    listdisk            List logical volumes (Windows)
+    md5                 Compute MD5 hash
+    mount               Mount logical volumes (Windows)
+    pic                 Convert images (.bmp/.jpg/.png)
+    reg                 Windows Registry utils: search
+    sync                Compare/synchronize directories or create a file tree snapshot
+    textcount           Analyze text files (e.g. print number of lines)
+    utf8                Convert files to UTF-8
 
--------
-OPTIONS
+INPUT:
+  ""                    Process data from STDIN
+  FILE                  File name (relative or absolute)
+    OPTIONS:
+        --directio      Use direct I/O, bypassing system cache
+        --buffer=N      Set file buffer size (=64k)
+  DIR                   Directory name (relative or absolute)
+    OPTIONS:
+    -R, --recursive     Expand subdirectories recursively
+    -I, --include=WILDCARD
+                        Include only matching names of files and directories (-R)
+    -E, --exclude=WILDCARD
+                        Exclude matching names of files and directories (-R)
+  "@"                   Get FILE and DIR names from STDIN
+  "@FILE"               Get FILE and DIR names from FILE (can be specified only once)
+  WILDCARD              Expands to a set of FILE or DIR (meaningful only for cmd.exe on Windows)
 
-INPUT
- "FILE"             Input file path
-                     @stdin - read from standard input
- --flist=FILE       Read filenames from FILE
- --include='WILDCARD[;WILDCARD]'
-                    Only include files matching a pattern (full path or wildcard) (case-insensitive)
- --exclude='WILDCARD[;WILDCARD]'
-                    Exclude files & directories matching a pattern (full path or wildcard) (case-insensitive)
- -R, --recurse      Recurse into sub-directories
- --delete-source    Delete source file after successful operation
+    -o, --out=OUTPUT    Set output file
+OUTPUT:
+  "STDOUT"              Print data to STDOUT
+  FILE                  File name (relative or absolute)
+    OPTIONS:
+    -f, --overwrite     Overwrite
+    -C, --chdir=DIR     Change (logically) current directory
+    -T, --test          Test mode: don't actually write anything
+        --directio      Use direct I/O, bypassing system cache
+        --buffer=N      Set file buffer size (=64k)
+        --no-prealloc   Don't preallocate disk space
 
-ARCHIVE READING
- --member='WILDCARD[;WILDCARD]'
- --members-from-file=FILE
-                    Names and wildcards (all case-insensitive) of the archive members to process
- --show             Just show file listing, don't unpack files
-
-ARCHIVE WRITING
- --compression-method=STR
-                        Use specific compression method: store, deflate, zstd
- --deflate-level=INT    Set compression level for Deflate algorithm (1..9).  Default: 6.
- --zstd-level=INT       Set compression level for ZStandard algorithm (-7..22).  Default: 3.
- --zstd-workers=INT     Set max. number of worker threads for zstd compression
-
-FILE RENAMING
- --unbranch         Move (rename) a file out of its directory structure (e.g. "./a/file" -> "./a - file")
- --replace='SEARCH/REPLACE'
-                    Set search and replace text pattern
-
-IMAGE PROCESSING
- --jpeg-quality=INT     Set JPEG quality (0..100)
- --png-compression=INT  Set PNG compression level (0..9)
- --colors=INT           Set output picture color format: 24 (24-bit)
- --crop=[INT]:[INT]     Crop image to width:height pixels
-
-OUTPUT
- -o, --out=FILE     Set output file
-                     @stdout - write to standard output
- -C, --outdir=DIR   Set output directory
- -f, --force        Overwrite output files
- --resume           Resume copy from the target file size
- -t, --test         Read-only mode
-
- --date=DATE        Set modification date
-                    DATE: [YYYY-MM-DD] [hh:mm:ss]
- --date-as=FILE     Get date from file FILE
- --preserve-date    Copy modification date from input file
-
-MISC
- --password=STR     Password for encryption/decryption
- -w, --workers=INT  Set max. number of worker threads (see fcom.conf::workers)
- -k, --skip-errors  Print but skip errors and continue operation
- -v, --verbose      Print more information to stdout
- -D, --debug        Print debug log messages to stdout
- --benchmark        Show the time spent for command execution
- --help             Show help
-
-Notes:
- FILE: a file or a directory
- DIR: a directory
- INT: integer number
- WILDCARD: a string with support for wildcards (* or ?)
- DNS_SERVER_ADDR: DNS server address: IP[:PORT]
+General options:
+    -v, --verbose       Print more information to stdout
+    -D, --debug         Print debug log messages to stdout
+    -h, --help          Show general help or for a specific operation (use `fcom OPERATION -h`)

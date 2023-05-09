@@ -1,318 +1,417 @@
-/** Pictures processing.
-Copyright (c) 2017 Simon Zolin
-*/
+/** fcom: Convert images
+2023, Simon Zolin */
 
 #include <fcom.h>
+#include <util/pixel-conv.h>
+#include <avpack/bmp-read.h>
+#include <avpack/bmp-write.h>
+#include <../3pt-pic/jpeg-turbo/jpeg-ff.h>
+#include <../3pt-pic/png/png-ff.h>
+#include <FFOS/path.h>
 
-#include <pic/util/pic.h>
-#include <util/path.h>
+static const fcom_core *core;
 
+struct pic;
+typedef int (*pic_io)(struct pic *p, ffstr *input, ffstr *output);
 
-const fcom_core *core;
-const fcom_command *com;
+struct pic {
+	uint st;
+	fcom_cominfo *cmd;
+	ffstr name, basepath, inameonly;
+	ffstr idata, tdata, odata;
+	struct {
+		uint format; // enum PIC_FMT
+		uint width, height;
+	} in_info, out_info;
+	uint in_line_size, out_line_size;
+	fcom_file_obj *in, *out;
+	fffileinfo ifi;
+	int64 in_off, out_off;
+	ffvec buf;
+	pic_io read, write;
+	char *oname;
+	ffstr autoname_ext;
 
-// MODULE
-static int pic_sig(uint signo);
-static const void* pic_iface(const char *name);
-static int pic_conf(const char *name, ffconf_scheme *cs);
-static const fcom_mod pic_mod = {
-	.sig = &pic_sig, .iface = &pic_iface, .conf = &pic_conf,
-	.ver = FCOM_VER,
-	.name = "Pictures processing", .desc = "Convert pictures: .bmp, .jpg, .png",
+	bmpread bmpr;
+	bmpwrite bmpw;
+
+	struct jpeg_reader *jpegr;
+	struct jpeg_writer *jpegw;
+	ffvec jpg_buf, jpg_wbuf;
+
+	struct png_reader *pngr;
+	struct png_writer *pngw;
+	ffvec png_buf;
+
+	uint stop;
+	uint out_opened :1;
+	uint r_done :1;
+	uint writer_opened :1;
+	uint reader_opened :1;
+	uint conv :1;
+
+	byte jpeg_quality;
+	byte png_comp;
 };
 
-// PICTURE CONVERTOR
-static void* piconv_open(fcom_cmd *cmd);
-static void piconv_close(void *p, fcom_cmd *cmd);
-static int piconv_process(void *p, fcom_cmd *cmd);
-static const fcom_filter piconv_filt = { &piconv_open, &piconv_close, &piconv_process };
+#include <pic/bmp.h>
+#include <pic/jpg.h>
+#include <pic/png.h>
 
-#include <pic/conv.h>
-#include <pic/crop.h>
-
-extern const fcom_filter bmpi_filt;
-extern const fcom_filter bmpo_filt;
-
-extern const fcom_filter jpgi_filt;
-extern const fcom_filter jpgo_filt;
-extern struct jpgo_conf *jpgo_conf;
-extern int jpgo_config(ffconf_scheme *cs);
-
-extern const fcom_filter pngi_filt;
-extern const fcom_filter pngo_filt;
-extern struct pngo_conf *pngo_conf;
-extern int pngo_config(ffconf_scheme *cs);
-
-FF_EXP const fcom_mod* fcom_getmod(const fcom_core *_core)
+static const char* pic_help()
 {
-	core = _core;
-	return &pic_mod;
+	return "\
+Convert images (.bmp/.jpg/.png).\n\
+Usage:\n\
+  fcom pic INPUT... -o OUTPUT\n\
+  \n\
+    OUTPUT\n\
+      Output file name with extension (.bmp/.jpg/.png).\n\
+      If only an extension is given, use source file name automatically.\n\
+  \n\
+    OPTIONS:\n\
+    -q, --jpeg-quality=INT\n\
+                        Set JPEG quality: 1..100 (default: 85)\n\
+        --png-compression=INT\n\
+                        Set PNG compression level: 0..9 (default: 9)\n\
+";
 }
 
-struct cmd {
-	const char *name;
-	const char *mod;
-	const fcom_filter *iface;
-};
-static const struct cmd commands[] = {
-	{ "pic-convert", "pic.conv", NULL },
-};
+#define O(member)  FF_OFF(struct pic, member)
 
-static const struct cmd filters[] = {
-	{ "conv", NULL, &piconv_filt },
-	{ "pxconv", NULL, &pxconv_filt },
-	{ "crop", NULL, &piccrop_filt },
-	{ "bmp-in", NULL, &bmpi_filt },
-	{ "bmp-out", NULL, &bmpo_filt },
-	{ "jpg-in", NULL, &jpgi_filt },
-	{ "jpg-out", NULL, &jpgo_filt },
-	{ "png-in", NULL, &pngi_filt },
-	{ "png-out", NULL, &pngo_filt },
-};
-
-static int pic_sig(uint signo)
+static pic_io get_format_w(ffstr oext)
 {
-	switch (signo) {
-	case FCOM_SIGINIT: {
-		com = core->iface("core.com");
-		const struct cmd *c;
-		FFARR_WALKNT(commands, FFCNT(commands), c, struct cmd) {
-			if (0 != com->reg(c->name, c->mod))
-				return -1;
-		}
-		break;
-	}
-	case FCOM_SIGFREE:
-		ffmem_safefree(jpgo_conf);
-		ffmem_safefree(pngo_conf);
-		break;
-	}
-	return 0;
+	pic_io io = bmp_write;
+	if (ffstr_eqz(&oext, "jpg"))
+		io = pic_jpg_write;
+	else if (ffstr_eqz(&oext, "png"))
+		io = pic_png_write;
+	return io;
 }
 
-static const void* pic_iface(const char *name)
+static pic_io get_format_r(ffstr oext)
 {
-	const struct cmd *cmd;
-	FFARRS_FOREACH(filters, cmd) {
-		if (ffsz_eq(name, cmd->name))
-			return cmd->iface;
-	}
-	return NULL;
+	pic_io io = bmp_read;
+	if (ffstr_eqz(&oext, "jpg"))
+		io = pic_jpg_read;
+	else if (ffstr_eqz(&oext, "png"))
+		io = pic_png_read;
+	return io;
 }
 
-static int pic_conf(const char *name, ffconf_scheme *cs)
+static inline ffstr ffstr_sub(ffstr s, ffsize from, ffssize len)
 {
-	if (ffsz_eq(name, "jpg-out"))
-		return jpgo_config(cs);
-	else if (ffsz_eq(name, "png-out"))
-		return pngo_config(cs);
-	return 1;
-}
-
-
-#define FILT_NAME  "pic.conv"
-
-struct piconv {
-	fcom_cmd *cmd;
-	ffatomic nsubtasks;
-	uint close :1;
-};
-
-static void* piconv_open(fcom_cmd *cmd)
-{
-	struct piconv *c;
-	if (NULL == (c = ffmem_new(struct piconv)))
-		return FCOM_OPEN_SYSERR;
-	c->cmd = cmd;
-	return c;
-}
-
-static void piconv_close(void *p, fcom_cmd *cmd)
-{
-	struct piconv *c = p;
-
-	if (0 != ffatom_get(&c->nsubtasks)) {
-		// wait until the last subtask is finished
-		c->close = 1;
-		return;
-	}
-
-	ffmem_free(c);
-}
-
-static const char exts[][8] = {
-	"bmp",
-	"jpeg",
-	"jpg",
-	"png",
-};
-static const char *const ifilters[] = {
-	"pic.bmp-in",
-	"pic.jpg-in",
-	"pic.jpg-in",
-	"pic.png-in",
-};
-static const char *const ofilters[] = {
-	"pic.bmp-out",
-	"pic.jpg-out",
-	"pic.jpg-out",
-	"pic.png-out",
-};
-
-/** The same as ffpath_split3() except that for fullname="path/.ext" ".ext" is treated as extension. */
-static void path_split3(const char *fullname, size_t len, ffstr *path, ffstr *name, ffstr *ext)
-{
-	ffpath_split2(fullname, len, path, name);
-	char *dot = ffs_rfind(name->ptr, name->len, '.');
-	ffs_split2(name->ptr, name->len, dot, name, ext);
-}
-
-struct pictask {
-	struct piconv *c;
-	char *ifn, *ofn;
-};
-
-void pictask_free(struct pictask *t)
-{
-	ffmem_free(t->ifn);
-	ffmem_free(t->ofn);
-	ffmem_free(t);
-}
-
-static void picconv_task_done(fcom_cmd *cmd, uint sig, void *param)
-{
-	struct pictask *t = param;
-	struct piconv *c = t->c;
-
-	if (cmd->del_source && !cmd->err) {
-		char *newfn = ffsz_allocfmt("%s.deleted", cmd->input.fn);
-		if (0 != fffile_rename(cmd->input.fn, newfn))
-			fcom_syserrlog(FILT_NAME, "file rename: %s -> %s", cmd->input.fn, newfn);
-		ffmem_free(newfn);
-	}
-
-	pictask_free(t);
-
-	if (0 == ffatom_decret(&c->nsubtasks) && c->close) {
-		piconv_close(c, NULL);
-		return;
-	}
-
-	com->ctrl(c->cmd, FCOM_CMD_RUNASYNC);
-}
-
-static void fcom_cmd_set(fcom_cmd *dst, const fcom_cmd *src)
-{
-	ffmemcpy(dst, src, sizeof(*dst));
-	ffstr_null(&dst->in);
-	ffstr_null(&dst->out);
-}
-
-/** Create a sub-command for picture conversion.
-Filter chain: f.in -> p.in -> [filters] -> p.out -> f.out */
-static int piconv_process1(struct piconv *c, fcom_cmd *cmd, const char *ifn)
-{
-	struct pictask *t = ffmem_new(struct pictask);
-	ffarr buf = {};
-	const char *ofn;
-	void *nc;
-	int r, ii, oi;
-	ffstr idir, iname, iext;
-	ffstr odir, oname, oext;
-	ffstr_setz(&iname, ifn);
-	ffpath_split3(iname.ptr, iname.len, &idir, &iname, &iext);
-
-	if (0 > (ii = ffcharr_findsorted(exts, FFCNT(exts), sizeof(exts[0]), iext.ptr, iext.len))) {
-		fcom_errlog(FILT_NAME, "unknown picture file extension .%S", &iext);
-		r = FCOM_ERR;
-		goto err;
-	}
-
-	fcom_cmd ncmd = {};
-	fcom_cmd_set(&ncmd, cmd);
-	ncmd.name = "pic.conv-task";
-	ncmd.flags = FCOM_CMD_EMPTY | FCOM_CMD_INTENSE;
-	t->ifn = ffsz_dup(ifn);
-	ncmd.input.fn = t->ifn;
-
-	if (cmd->output.fn == NULL) {
-		fcom_errlog(FILT_NAME, "output file isn't set", 0);
-		r = FCOM_ERR;
-		goto err;
-	}
-	ffstr_setz(&oname, cmd->output.fn);
-	path_split3(oname.ptr, oname.len, &odir, &oname, &oext);
-
-	if (0 > (oi = ffcharr_findsorted(exts, FFCNT(exts), sizeof(exts[0]), oext.ptr, oext.len))) {
-		fcom_errlog(FILT_NAME, "unknown picture file extension .%S", &oext);
-		r = FCOM_ERR;
-		goto err;
-	}
-
-	ofn = cmd->output.fn;
-	if (oname.len == 0) {
-		if (0 != ffpath_makefn_out(&buf, &idir, &iname, &odir, &oext)) {
-			r = FCOM_SYSERR;
-			goto err;
-		}
-		t->ofn = buf.ptr;
-		ffarr_null(&buf);
-		ofn = t->ofn;
-	}
-	ncmd.output.fn = ofn;
-	ncmd.out_fn_copy = 1;
-
-	if (NULL == (nc = com->create(&ncmd))) {
-		r = FCOM_ERR;
-		goto err;
-	}
-
-	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_IN(&ncmd));
-	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, ifilters[ii]);
-
-	if (cmd->crop.width != 0 || cmd->crop.height != 0)
-		com->ctrl(nc, FCOM_CMD_FILTADD_LAST, "pic.crop");
-
-	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, ofilters[oi]);
-	com->ctrl(nc, FCOM_CMD_FILTADD_LAST, FCOM_CMD_FILT_OUT(&ncmd));
-	t->c = c;
-	com->fcom_cmd_monitor_func(nc, picconv_task_done, t);
-	ffatom_inc(&c->nsubtasks);
-	com->ctrl(nc, FCOM_CMD_RUNASYNC);
-	return FCOM_MORE;
-
-err:
-	ffarr_free(&buf);
-	pictask_free(t);
+	FF_ASSERT(from <= s.len);
+	if (len == -1)
+		len = s.len - from;
+	FF_ASSERT(from + len <= s.len);
+	ffstr r = FFSTR_INITN(s.ptr + from, len);
 	return r;
 }
 
-/**
-Note: on error core.com module won't wait for the tasks already running -
- they will be forced to stop. */
-static int piconv_process(void *p, fcom_cmd *cmd)
+static int args_parse(struct pic *p, fcom_cominfo *cmd)
 {
-	struct piconv *c = p;
-	const char *ifn;
-	int r;
+	p->jpeg_quality = 85;
+	p->png_comp = 9;
 
-	for (;;) {
+	static const ffcmdarg_arg args[] = {
+		{ 'q', "jpeg-quality",	FFCMDARG_TINT8,	O(jpeg_quality) },
+		{ 0, "png-compression",	FFCMDARG_TINT8,	O(png_comp) },
+		{}
+	};
+	int r = core->com->args_parse(cmd, args, p);
+	if (r != 0)
+		return r;
 
-		if (NULL == (ifn = com->arg_next(cmd, FCOM_CMD_ARG_FILE))) {
-			if (0 != ffatom_get(&c->nsubtasks))
-				return FCOM_ASYNC;
-			return FCOM_DONE;
-		}
-
-		r = piconv_process1(c, cmd, ifn);
-		if (r != FCOM_MORE)
-			return r;
-
-		if (0 == core->cmd(FCOM_WORKER_AVAIL))
-			break;
+	if (!(p->png_comp <= 9)) {
+		fcom_fatlog("png-compression: must be 0..9");
+		return -1;
 	}
 
-	return FCOM_ASYNC;
+	if (!(p->jpeg_quality > 0 && p->jpeg_quality <= 100)) {
+		fcom_fatlog("jpeg-quality: must be 1..100");
+		return -1;
+	}
+
+	if (!cmd->output.len) {
+		fcom_fatlog("Please set output file with `-o file.ext`");
+		return -1;
+	}
+
+	ffstr oname, oext;
+	ffpath_splitpath_str(cmd->output, NULL, &oname);
+	if (0 == ffpath_splitname_str(oname, NULL, &oext)) {
+		oext = ffstr_sub(oname, 1, -1);
+		p->autoname_ext = oext;
+		cmd->output.len = 0;
+	}
+	p->write = get_format_w(oext);
+
+	return 0;
 }
 
-#undef FILT_NAME
+#undef O
+
+static void pic_reset(struct pic *p)
+{
+	bmp_free(p);
+	pic_jpeg_free(p);
+	png_free(p);
+	p->writer_opened = 0;
+	p->reader_opened = 0;
+	p->conv = 0;
+	p->idata.len = 0;
+	ffmem_zero_obj(&p->in_info);
+	ffmem_zero_obj(&p->out_info);
+
+	if (p->out != NULL)
+		core->file->close(p->out);
+	p->out_opened = 0;
+	p->in_off = 0;
+	p->out_off = 0;
+}
+
+static void pic_close(fcom_op *op)
+{
+	struct pic *p = op;
+	pic_reset(p);
+	core->file->destroy(p->in);
+	core->file->destroy(p->out);
+	ffvec_free(&p->buf);
+	ffvec_free(&p->jpg_wbuf);
+	ffvec_free(&p->jpg_buf);
+	ffvec_free(&p->png_buf);
+	ffmem_free(p->oname);
+	ffmem_free(p);
+}
+
+static fcom_op* pic_create(fcom_cominfo *cmd)
+{
+	struct pic *p = ffmem_new(struct pic);
+	p->cmd = cmd;
+
+	if (0 != args_parse(p, cmd))
+		goto end;
+
+	struct fcom_file_conf fc = {};
+	fc.buffer_size = cmd->buffer_size;
+	p->in = core->file->create(&fc);
+	p->out = core->file->create(&fc);
+
+	ffsize cap = (cmd->buffer_size != 0) ? cmd->buffer_size : 64*1024;
+	ffvec_alloc(&p->buf, cap, 1);
+	return p;
+
+end:
+	pic_close(p);
+	return NULL;
+}
+
+static int pic_conv(struct pic *p, ffstr *input, ffstr *output)
+{
+	if (p->in_info.format == p->out_info.format) {
+		*output = *input;
+		return 0;
+	}
+
+	if (0 != pic_convert(p->in_info.format, input->ptr, p->out_info.format, p->buf.ptr, p->out_info.width)) {
+		fcom_errlog("unsupported pixel conversion");
+		return -1;
+	}
+	ffstr_set(output, p->buf.ptr, p->out_line_size);
+	return 0;
+}
+
+/** Prepare output file name */
+static char* pic_oname(struct pic *p, ffstr in, ffstr base)
+{
+	ffstr dir = p->cmd->chdir, name = p->cmd->output, ext = p->autoname_ext;
+	if (!p->cmd->output.len) {
+		// [-C "dir"] -o ".ext"
+		if (!base.len)
+			base = in;
+		ffstr nm;
+		ffpath_splitpath_str(base, NULL, &nm);
+		if (nm.len)
+			ffstr_shift(&in, nm.ptr - base.ptr);
+		name = in;
+		ffpath_splitname_str(name, &name, NULL);
+
+	} else {
+		// -o "name.ext"
+		// -C "dir" -o "name.ext"
+	}
+
+	ffsize path_len = (dir.len) ? 1 : 0;
+	ffsize ext_len = (ext.len) ? 1 : 0;
+	char *s = ffsz_allocfmt("%S%*c%S%*c%S"
+		, &dir, path_len, FFPATH_SLASH
+		, &name
+		, ext_len, '.', &ext);
+
+	fcom_dbglog("output file name: %s", s);
+	return s;
+}
+
+static void pic_run(fcom_op *op)
+{
+	struct pic *p = op;
+	int r, rc = 1;
+	enum { I_IN, I_READ, I_INPUT, I_CONV, I_OUTPUT, I_OUT_OPEN, I_WRITE, };
+
+	while (!FFINT_READONCE(p->stop)) {
+		switch (p->st) {
+
+		case I_IN: {
+			if (0 > (r = core->com->input_next(p->cmd, &p->name, &p->basepath, 0))) {
+				if (r == FCOM_COM_RINPUT_NOMORE) {
+					rc = 0;
+				}
+				goto end;
+			}
+
+			uint flags = fcom_file_cominfo_flags_i(p->cmd);
+			flags |= FCOM_FILE_READ;
+			r = core->file->open(p->in, p->name.ptr, flags);
+			if (r == FCOM_FILE_ERR) goto end;
+
+			r = core->file->info(p->in, &p->ifi);
+			if (r == FCOM_FILE_ERR) goto end;
+
+			if (fffile_isdir(fffileinfo_attr(&p->ifi))) {
+				fffd fd = core->file->fd(p->in, FCOM_FILE_ACQUIRE);
+				core->com->input_dir(p->cmd, fd);
+				continue;
+			}
+
+			if (0 != core->com->input_allowed(p->cmd, p->name))
+				continue;
+
+			ffstr iext;
+			ffpath_splitpath_str(p->name, NULL, &iext);
+			ffpath_splitname_str(iext, &p->inameonly, &iext);
+			p->read = get_format_r(iext);
+
+			p->st = I_INPUT;
+			continue;
+		}
+
+		case I_READ:
+			r = core->file->read(p->in, &p->idata, p->in_off);
+			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_EOF) goto end;
+			p->in_off += p->idata.len;
+
+			p->st = I_INPUT;
+			// fallthrough
+
+		case I_INPUT:
+			r = p->read(p, &p->idata, &p->tdata);
+			switch (r) {
+			case 'head': {
+				p->out_info.width = p->in_info.width;
+				p->out_info.height = p->in_info.height;
+				continue;
+			}
+
+			case 'more':
+				p->st = I_READ;
+				continue;
+
+			case 'erro': goto end;
+			}
+
+			p->st = I_OUTPUT;
+			if (p->conv)
+				p->st = I_CONV;
+			continue;
+
+		case I_CONV:
+			r = pic_conv(p, &p->tdata, &p->tdata);
+			if (r != 0) goto end;
+			p->st = I_OUTPUT;
+			continue;
+
+		case I_OUTPUT:
+			r = p->write(p, &p->tdata, &p->odata);
+			switch (r) {
+			case 'conv':
+				p->conv = 1;
+				p->out_line_size = p->out_info.width * (p->out_info.format & 0xff) / 8;
+				ffvec_realloc(&p->buf, p->out_line_size, 1);
+				p->st = I_CONV;
+				continue;
+
+			case 'more':
+				p->st = I_INPUT;
+				continue;
+
+			case 'done':
+				pic_reset(p);
+				p->st = I_IN;
+				continue;
+
+			case 'erro': goto end;
+			}
+
+			p->st = I_WRITE;
+			if (!p->out_opened) {
+				p->out_opened = 1;
+				p->st = I_OUT_OPEN;
+			}
+			continue;
+
+		case I_OUT_OPEN: {
+			uint oflags = FCOM_FILE_WRITE;
+			oflags |= fcom_file_cominfo_flags_o(p->cmd);
+			ffmem_free(p->oname);
+			p->oname = pic_oname(p, p->name, p->basepath);
+			r = core->file->open(p->out, p->oname, oflags);
+			if (r == FCOM_FILE_ERR) goto end;
+			p->st = I_WRITE;
+		}
+			// fallthrough
+
+		case I_WRITE:
+			r = core->file->write(p->out, p->odata, p->out_off);
+			if (r == FCOM_FILE_ERR) goto end;
+			p->out_off += p->odata.len;
+
+			p->st = I_OUTPUT;
+			continue;
+		}
+	}
+
+end:
+	{
+	fcom_cominfo *cmd = p->cmd;
+	pic_close(p);
+	core->com->complete(cmd, rc);
+	}
+}
+
+static void pic_signal(fcom_op *op, uint signal)
+{
+	struct pic *p = op;
+	FFINT_WRITEONCE(p->stop, 1);
+}
+
+static const fcom_operation fcom_op_pic = {
+	pic_create, pic_close,
+	pic_run, pic_signal,
+	pic_help,
+};
+
+
+static void pic_init(const fcom_core *_core) { core = _core; }
+static void pic_destroy() {}
+static const fcom_operation* pic_provide_op(const char *name)
+{
+	if (ffsz_eq(name, "pic"))
+		return &fcom_op_pic;
+	return NULL;
+}
+FF_EXP const struct fcom_module fcom_module = {
+	FCOM_VER, FCOM_CORE_VER,
+	pic_init, pic_destroy, pic_provide_op,
+};

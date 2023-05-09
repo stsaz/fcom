@@ -1,106 +1,103 @@
-/** User task queue.
-Copyright (c) 2013 Simon Zolin
+/** ff: task queue: First in, first out.  One reader/deleter, multiple writers.
+2013, 2022 Simon Zolin
+*/
+
+/*
+fftask_set
+fftaskqueue_init
+fftaskqueue_active
+fftaskqueue_post fftaskqueue_post4
+fftaskqueue_del
+fftaskqueue_run
 */
 
 #pragma once
-
-#include "list.h"
-#include "ffos-compat/atomic.h"
-
+#include <ffbase/list.h>
+#include <ffbase/lock.h>
 
 typedef void (*fftask_handler)(void *param);
 
 typedef struct fftask {
 	fftask_handler handler;
 	void *param;
-	fflist_item sib;
+	ffchain_item sib;
 } fftask;
 
-#define fftask_set(tsk, func, udata) \
-	(tsk)->handler = (func),  (tsk)->param = (udata)
+#define fftask_set(t, func, udata) \
+	(t)->handler = (func),  (t)->param = (udata)
 
-/** Queue of arbitrary length containing tasks - user callback functions.
-First in, first out.
-One reader/deleter, multiple writers.
-*/
-typedef struct fftaskmgr {
+typedef struct fftaskqueue {
 	fflist tasks; //fftask[]
 	fflock lk;
-	uint max_run; //max. tasks to execute per fftask_run()
-} fftaskmgr;
+} fftaskqueue;
 
-static inline void fftask_init(fftaskmgr *mgr)
+static inline void fftaskqueue_init(fftaskqueue *tq)
 {
-	fflist_init(&mgr->tasks);
-	fflk_init(&mgr->lk);
-	mgr->max_run = 64;
+	fflist_init(&tq->tasks);
+	fflock_init(&tq->lk);
 }
 
 /** Return TRUE if a task is in the queue. */
-#define fftask_active(mgr, task)  ((task)->sib.next != NULL)
+#define fftaskqueue_active(tq, t)  ((t)->sib.next != NULL)
 
 /** Add item into task queue.  Thread-safe.
 Return 1 if the queue was empty. */
-static inline uint fftask_post(fftaskmgr *mgr, fftask *task)
+static inline ffuint fftaskqueue_post(fftaskqueue *tq, fftask *t)
 {
-	uint r = 0;
+	ffuint r = 0;
 
-	fflk_lock(&mgr->lk);
-	if (fftask_active(mgr, task))
+	fflock_lock(&tq->lk);
+	if (fftaskqueue_active(tq, t))
 		goto done;
-	r = fflist_empty(&mgr->tasks);
-	fflist_add(&mgr->tasks, &task->sib);
+	r = fflist_empty(&tq->tasks);
+	fflist_add(&tq->tasks, &t->sib);
+
 done:
-	fflk_unlock(&mgr->lk);
+	fflock_unlock(&tq->lk);
 	return r;
 }
 
-#define fftask_post4(mgr, task, func, _param) \
+#define fftaskqueue_post4(tq, t, func, _param) \
 do { \
-	(task)->handler = func; \
-	(task)->param = _param; \
-	fftask_post(mgr, task); \
+	(t)->handler = func; \
+	(t)->param = _param; \
+	fftaskqueue_post(tq, t); \
 } while (0)
 
 /** Remove item from task queue. */
-static inline void fftask_del(fftaskmgr *mgr, fftask *task)
+static inline void fftaskqueue_del(fftaskqueue *tq, fftask *t)
 {
-	fflk_lock(&mgr->lk);
-	if (!fftask_active(mgr, task))
+	fflock_lock(&tq->lk);
+	if (!fftaskqueue_active(tq, t))
 		goto done;
-	fflist_rm(&mgr->tasks, &task->sib);
+	fflist_rm(&tq->tasks, &t->sib);
+
 done:
-	fflk_unlock(&mgr->lk);
+	fflock_unlock(&tq->lk);
 }
 
 /** Call a handler for each task.
 Return the number of tasks executed. */
-static inline uint fftask_run(fftaskmgr *mgr)
+static inline ffuint fftaskqueue_run(fftaskqueue *tq)
 {
-	fflist_item *it, *sentl = fflist_sentl(&mgr->tasks);
-	uint n, ntasks;
+	ffchain_item *it, *sentl = fflist_sentl(&tq->tasks);
+	ffuint n = 0;
 
-	for (n = mgr->max_run;  n != 0;  n--) {
+	for (;;) {
 
-		it = FF_READONCE(fflist_first(&mgr->tasks));
+		it = FFINT_READONCE(fflist_first(&tq->tasks));
 		if (it == sentl)
-			break; //list is empty
+			break; // list is empty
 
-		fflk_lock(&mgr->lk);
-		FF_ASSERT(mgr->tasks.len != 0);
-		_ffchain_link2(it->prev, it->next);
-		it->next = NULL;
-		ntasks = mgr->tasks.len--;
-		fflk_unlock(&mgr->lk);
+		fflock_lock(&tq->lk);
+		fflist_rm(&tq->tasks, it);
+		fflock_unlock(&tq->lk);
 
-		fftask *task = FF_GETPTR(fftask, sib, it);
+		fftask *t = FF_STRUCTPTR(fftask, sib, it);
+		t->handler(t->param);
 
-		(void)ntasks;
-		FFDBG_PRINTLN(10, "[%L] %p handler=%p, param=%p"
-			, ntasks, task, task->handler, task->param);
-
-		task->handler(task->param);
+		n++;
 	}
 
-	return mgr->max_run - n;
+	return n;
 }
