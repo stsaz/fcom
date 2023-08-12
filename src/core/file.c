@@ -542,6 +542,13 @@ static int file_move(ffstr old, ffstr _new, uint flags)
 	}
 
 	int r = fffile_rename(src, dst);
+	if (r != 0 && fferr_notexist(fferr_last())) {
+		if (0 != ffdir_make_path(dst, 0)) {
+			fcom_syserrlog("ffdir_make_path: for filename %s", dst);
+			goto end;
+		}
+		r = fffile_rename(src, dst);
+	}
 	if (r != 0) {
 		fcom_syserrlog("move: %S -> %S", &old, &_new);
 		goto end;

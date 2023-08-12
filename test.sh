@@ -13,20 +13,16 @@ if test "$#" -lt 1 ; then
 	exit 1
 fi
 
-set -x
-set -e
-
 CMDS=("$@")
 if test "$1" == "all" ; then
 	CMDS=("${CMDS_OPS[@]}")
 	CMDS+=("${CMDS_PACK[@]}")
 fi
 
-for CMD in "${CMDS[@]}" ; do
+set -x
+set -e
 
-rm -rf ./fcomtest ; mkdir fcomtest
-
-if test "$CMD" == "copy" ; then
+test_copy() {
 
 	cd fcomtest
 	echo hello >file
@@ -125,28 +121,32 @@ if test "$CMD" == "copy" ; then
 	diff dir/d2/file.doc dircopy/dir/d2/file.doc
 
 	cd ..
+}
 
-elif test "$CMD" == "hex" ; then
+test_hex() {
 
 	echo abc123 >fcomtest/hex
 	echo qwerqwerqwerqwerqwerqwerqwerqwer >fcomtest/hex2
 	./fcom hex fcomtest/hex*
+}
 
-elif test "$CMD" == "list" ; then
+test_list() {
 
 	./fcom list "fcomtest"
 	echo fcomtest >fcomtest/list
 
 	./fcom list "@fcomtest/list"
 	echo fcomtest | ./fcom list "@"
+}
 
-elif test "$CMD" == "md5" ; then
+test_md5() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
 	echo qwerqwerqwerqwerqwerqwerqwerqwer >fcomtest/file2
 	./fcom md5 "fcomtest/file" "fcomtest/file2"
+}
 
-elif test "$CMD" == "move" ; then
+test_move() {
 
 	mkdir fcomtest/unbranch
 	mkdir fcomtest/unbranch/a
@@ -173,7 +173,14 @@ elif test "$CMD" == "move" ; then
 	test -f hi
 	cd ..
 
-elif test "$CMD" == "pic" ; then
+	# tree
+	mkdir -p fcomtest/idir fcomtest/idir/idir2
+	echo hi >>fcomtest/idir/idir2/hi
+	./fcom move fcomtest/idir -C fcomtest/odir --tree
+	test -f fcomtest/odir/fcomtest/idir/idir2/hi
+}
+
+test_pic() {
 
 	spectacle -o fcomtest/fileo.bmp -b
 
@@ -207,23 +214,33 @@ elif test "$CMD" == "pic" ; then
 	test -f fcomtest/filepng.bmp
 
 	# autoname
+	mkdir fcomtest/multi
+	cd fcomtest/multi
+	../../fcom pic "../file.bmp" "../filepng.bmp" -o ".jpg" -v
+	cd ../..
+	diff fcomtest/multi/file.jpg fcomtest/multi/filepng.jpg
+
+	# autoname + -C
 	mkdir -p fcomtest/dir1 fcomtest/dir1/dir2
 	mv fcomtest/file.bmp fcomtest/filepng.bmp fcomtest/dir1/dir2/
 	./fcom pic fcomtest/dir1 -C "fcomtest/multi" -o ".jpg" -v
 	diff fcomtest/multi/dir1/dir2/file.jpg fcomtest/multi/dir1/dir2/filepng.jpg
+}
 
-elif test "$CMD" == "unico" ; then
+test_unico() {
 
 	./fcom unico "fmedia.ico"
 	./fcom pic "fmedia-1.png" -o ".bmp" -v
+}
 
-elif test "$CMD" == "reg-search" ; then
+test_reg-search() {
 
 	wine ./fcom reg search "HKEY_CURRENT_USER" "CaretWidth" "MenuShowDelay" >LOG
 	grep 'HKEY_CURRENT_USER\\Control Panel\\Desktop\\CaretWidth = "0x00000001 (1)"' LOG
 	grep 'HKEY_CURRENT_USER\\Control Panel\\Desktop\\MenuShowDelay = "400"' LOG
+}
 
-elif test "$CMD" == "sync" ; then
+test_sync() {
 
 	echo hello >fcomtest/file
 
@@ -263,15 +280,17 @@ elif test "$CMD" == "sync" ; then
 	../fcom sync --source-path-strip1 --target-path-strip1 "left" -o "right" -v --delete -f
 
 	cd ..
+}
 
-elif test "$CMD" == "textcount" ; then
+test_textcount() {
 
 	echo 123 >>fcomtest/textcount
 	echo 3456 >>fcomtest/textcount
 	echo 7890 >>fcomtest/textcount
 	./fcom textcount -R "fcomtest" -v
+}
 
-elif test "$CMD" == "touch" ; then
+test_touch() {
 
 	echo 123 >fcomtest/touch
 	echo 123 >fcomtest/touch2
@@ -289,8 +308,9 @@ elif test "$CMD" == "touch" ; then
 	echo 123 >fcomtest/dirtouch/d2/touch2
 	./fcom touch -R "fcomtest/dirtouch" --date="2022-09-01 01:02:03" -v
 	ls -Rl fcomtest/dirtouch
+}
 
-elif test "$CMD" == "trash" ; then
+test_trash() {
 	echo 123 >fcomtest/trash
 	echo 123 >fcomtest/trash2
 	./fcom trash "fcomtest/trash" "fcomtest/trash2" -v -f
@@ -302,16 +322,18 @@ elif test "$CMD" == "trash" ; then
 	echo 123 >fcomtest/trash
 	echo 123 >fcomtest/trash2
 	./fcom trash "fcomtest/trash" "fcomtest/trash2" --wipe --rename -v -f
+}
 
-elif test "$CMD" == "utf8" ; then
+test_utf8() {
 
 	# ./fcom utf8 "fcomtest/file-utf16" -o "fcomtest/file-utf8"
 	# diff fcomtest/file fcomtest/file-utf8
 	echo
+}
 
 # PACK
 
-elif test "$CMD" == "tar" ; then
+test_tar() {
 
 	mkdir fcomtest/tardir fcomtest/untardir
 	echo 1234567890123456789012345678901234567890 >fcomtest/tardir/file
@@ -321,8 +343,9 @@ elif test "$CMD" == "tar" ; then
 	diff fcomtest/tardir/file fcomtest/untardir/fcomtest/tardir/file
 
 	./fcom untar "fcomtest/tar.tar" -C "fcomtest/untardir" -l -v
+}
 
-elif test "$CMD" == "un7z" ; then
+test_un7z() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
 	7z a fcomtest/7z.7z fcomtest/file
@@ -330,8 +353,9 @@ elif test "$CMD" == "un7z" ; then
 	diff fcomtest/un7z/fcomtest/file fcomtest/file
 
 	./fcom un7z "fcomtest/7z.7z" -C "fcomtest/un7z" -l -v
+}
 
-elif test "$CMD" == "zip" ; then
+test_zip() {
 
 	mkdir fcomtest/zipdir fcomtest/unzipdir
 	echo 1234567890123456789012345678901234567890 >fcomtest/zipdir/file
@@ -362,8 +386,9 @@ elif test "$CMD" == "zip" ; then
 	# --autodir
 	./fcom unzip "fcomtest/zip.zip" -C "fcomtest" --autodir
 	diff fcomtest/zipdir/file1 fcomtest/zip/fcomtest/zipdir/file1
+}
 
-elif test "$CMD" == "gz" ; then
+test_gz() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
 	./fcom gz "fcomtest/file" -C "fcomtest"
@@ -371,8 +396,9 @@ elif test "$CMD" == "gz" ; then
 	echo 1234567890123456789012345678901234567890 >>fcomtest/file
 	./fcom ungz "fcomtest/file.gz" -o "fcomtest/file-d" -v
 	diff fcomtest/file-d fcomtest/file
+}
 
-elif test "$CMD" == "zst" ; then
+test_zst() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
 	./fcom zst "fcomtest/file" -C "fcomtest"
@@ -380,15 +406,17 @@ elif test "$CMD" == "zst" ; then
 	echo 1234567890123456789012345678901234567890 >>fcomtest/file
 	./fcom unzst "fcomtest/file.zst" -o "fcomtest/file-d" -v
 	diff fcomtest/file-d fcomtest/file
+}
 
-elif test "$CMD" == "unxz" ; then
+test_unxz() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
 	xz "fcomtest/file" -c >>fcomtest/file.xz
 	./fcom unxz "fcomtest/file.xz" -o "fcomtest/file-d" -v
 	diff fcomtest/file-d fcomtest/file
+}
 
-elif test "$CMD" == "iso" ; then
+test_iso() {
 
 	mkdir fcomtest/isodir fcomtest/unisodir
 	echo 1234567890123456789012345678901234567890 >fcomtest/isodir/file
@@ -400,8 +428,9 @@ elif test "$CMD" == "iso" ; then
 
 	../fcom uniso "iso.iso" -C "unisodir" -l -v
 	cd ..
+}
 
-elif test "$CMD" == "unpack" ; then
+test_unpack() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
 	./fcom gz "fcomtest/file" -o "fcomtest/gz.gz"
@@ -430,10 +459,12 @@ elif test "$CMD" == "unpack" ; then
 	# xz "fcomtest/tar.tar" -o "fcomtest/tarxz.tar.xz"
 	# ./fcom unpack "fcomtest/tarxz.tar.xz" -C "fcomtest/tarxz"
 	# diff fcomtest/file fcomtest/tarxz/fcomtest/file
+}
 
-else
-	exit 1
-fi
+for CMD in "${CMDS[@]}" ; do
+
+	rm -rf ./fcomtest ; mkdir fcomtest
+	test_$CMD
 
 done
 

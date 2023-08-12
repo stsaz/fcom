@@ -62,6 +62,7 @@ typedef struct fntree_cmp_ent {
 } fntree_cmp_ent;
 
 struct srcdst {
+	ffstr root_dir;
 	fntree_block *root, *parent_blk;
 	fntree_cursor cur;
 	ffvec name;
@@ -126,6 +127,8 @@ struct sync {
 	byte write_snapshot;
 	byte left_snapshot, right_snapshot;
 	byte left_path_strip, right_path_strip;
+	byte diff_no_attr, diff_no_time;
+	byte diff_full_name;
 };
 
 static void sync_close(fcom_op *op);
@@ -154,6 +157,9 @@ Usage:\n\
 \n\
     -d, --diff=STR      Just show difference table between source and target\n\
                         STR: empty (\"\") or a set of flags [ADUM]\n\
+        --diff-no-attr  diff: Don't check file attributes\n\
+        --diff-no-time  diff: Don't check file time\n\
+        --diff-fullname diff: Don't cut file names\n\
     -p, --plain         Plain list of file names\n\
 \n\
         --add           Copy new files\n\
@@ -163,13 +169,13 @@ Usage:\n\
 Examples:\n\
 \n\
 Compare 2 directories:\n\
-  fcom sync /home --diff -o /home2\n\
+  fcom sync /home --diff=\"\" -o /home2\n\
 \n\
 Create file tree snapshot of '/home' directory:\n\
   fcom sync /home --snapshot -o home.snap\n\
 \n\
 Use snapshot file and compare it with '/home2' directory:\n\
-  fcom sync home.snap --source-snap --diff -o /home2\n\
+  fcom sync home.snap --source-snap --diff=\"\" -o /home2\n\
 ";
 }
 
@@ -185,6 +191,9 @@ static int args_parse(struct sync *s, fcom_cominfo *cmd)
 		{ 0,	"target-path-strip1",	FFCMDARG_TSWITCH, O(right_path_strip) },
 
 		{ 'd',	"diff",	FFCMDARG_TSTRZ, O(diff_flags_str) },
+		{ 0,	"diff-no-attr",	FFCMDARG_TSWITCH, O(diff_no_attr) },
+		{ 0,	"diff-no-time",	FFCMDARG_TSWITCH, O(diff_no_time) },
+		{ 0,	"diff-fullname",	FFCMDARG_TSWITCH, O(diff_full_name) },
 		{ 'p',	"plain",	FFCMDARG_TSWITCH, O(plain_list) },
 
 		{ 0,	"add",	FFCMDARG_TSWITCH, O(sync_add) },
@@ -216,8 +225,8 @@ static int args_parse(struct sync *s, fcom_cominfo *cmd)
 		fcom_fatlog("'--plain' requires '--diff'");
 		return -1;
 	}
-	if (s->plain_list && !(s->sync_add || s->sync_update) && !s->sync_del) {
-		fcom_fatlog("'--plain' requires '--add' or '--update'");
+	if (s->plain_list && !(s->sync_add || s->sync_del || s->sync_update) && !s->sync_del) {
+		fcom_fatlog("'--plain' requires '--add', '--delete' or '--update'");
 		return -1;
 	}
 
@@ -368,10 +377,12 @@ static int f_info(struct sync *s, ffstr name, struct ent *e, struct entdata *d, 
 	d->unixattr = fffileinfo_attr(&fi);
 	d->uid = fi.st_uid;
 	d->gid = fi.st_gid;
+	d->winattr = 0;
 	if (e->type == 'd')
 		d->winattr |= FFFILE_WIN_DIR;
 #else
 	d->winattr = fffileinfo_attr(&fi);
+	d->unixattr = 0;
 	if (e->type == 'd')
 		d->unixattr |= FFFILE_UNIX_DIR;
 #endif
@@ -412,6 +423,8 @@ static void sync_run(fcom_op *op)
 				if (NULL == fntree_add(&s->src.root, *it, sizeof(struct entdata)))
 					goto end;
 			}
+			if (s->cmd->input.len == 1)
+				s->src.root_dir = *ffslice_itemT(&s->cmd->input, 0, ffstr);
 
 			struct fcom_file_conf fc = {};
 			fc.buffer_size = s->cmd->buffer_size;

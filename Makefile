@@ -47,15 +47,17 @@ BINS := $(BIN) core.$(SO) $(MODS)
 CFLAGS := -I$(FCOM_DIR)/src -I$(FFOS_DIR) -I$(FFBASE_DIR) \
 	-DFFBASE_HAVE_FFERR_STR -DFFBASE_MEM_ASSERT \
 	-Wall -Wextra -Wno-unused-parameter -Wno-multichar \
-	-fPIC \
-	-march=nehalem
+	-fPIC
+CFLAGS += -march=nehalem
 ifeq "$(DEBUG)" "1"
 	CFLAGS += -g -O0 -DFF_DEBUG -Werror
-# 	CFLAGS += -fsanitize=address
-# 	LINKFLAGS += -fsanitize=address
 else
 	CFLAGS += -O3 -fno-strict-aliasing -fvisibility=hidden
 	LINKFLAGS += -s
+endif
+ifeq "$(ASAN)" "1"
+	CFLAGS += -fsanitize=address
+	LINKFLAGS += -fsanitize=address
 endif
 
 3PT_DIR := $(FCOM_DIR)/3pt/_$(OS)-$(CPU)
@@ -121,6 +123,8 @@ md5.$(SO): md5.o \
 		$(3PT_DIR)/MD5.a
 	$(LINK) -shared $+ $(LINKFLAGS) -o $@
 
+LIBS3 += $(3PT_PIC_DIR)/libjpeg-turbo-ff.$(SO) \
+	$(3PT_PIC_DIR)/libpng-ff.$(SO)
 %.o: $(FCOM_DIR)/src/pic/%.c $(GDEPS) \
 		$(wildcard $(FCOM_DIR)/src/pic/*.h)
 	$(C) $(CFLAGS) -I$(AVPACK_DIR) $< -o $@
@@ -128,6 +132,9 @@ pic.$(SO): pic.o
 	$(LINK) -shared $+ $(LINKFLAGS) -L$(3PT_PIC_DIR) -ljpeg-turbo-ff -lpng-ff $(LINK_RPATH_ORIGIN) -o $@
 
 # PACK
+LIBS3 += $(FFPACK_BINDIR)/liblzma-ffpack.$(SO) \
+	$(FFPACK_BINDIR)/libz-ffpack.$(SO) \
+	$(FFPACK_BINDIR)/libzstd-ffpack.$(SO)
 
 %.o: $(FCOM_DIR)/src/pack/%.c $(GDEPS) \
 		$(wildcard $(FFPACK_DIR)/ffpack/*.h)
@@ -184,15 +191,7 @@ app:
 	$(MKDIR) fcom-1/ops
 	chmod 0755 fcom-1/ops
 	$(CP) $(MODS) fcom-1/ops
-	$(CP) \
-		$(FFPACK_BINDIR)/liblzma-ffpack.$(SO) \
-		$(FFPACK_BINDIR)/libz-ffpack.$(SO) \
-		$(FFPACK_BINDIR)/libzstd-ffpack.$(SO) \
-		fcom-1/ops
-	$(CP) \
-		$(3PT_PIC_DIR)/libjpeg-turbo-ff.$(SO) \
-		$(3PT_PIC_DIR)/libpng-ff.$(SO) \
-		fcom-1/ops
+	$(CP) $(LIBS3) fcom-1/ops
 	chmod 0644 fcom-1/ops/*.$(SO)
 
 

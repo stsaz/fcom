@@ -16,6 +16,8 @@ struct move {
 
 	byte unbranch, unbranch_flat;
 	byte replace_once;
+	byte tree;
+	byte skip_errors;
 	ffstr replace_pair, search, replace;
 };
 
@@ -35,10 +37,12 @@ static int args_replace(ffcmdarg_scheme *as, struct move *m, ffstr *val)
 static int args_parse(struct move *m, fcom_cominfo *cmd)
 {
 	static const ffcmdarg_arg args[] = {
-		{ 'u',	"unbranch",	FFCMDARG_TSWITCH, O(unbranch) },
-		{ 0,	"unbranch-flat",	FFCMDARG_TSWITCH, O(unbranch_flat) },
-		{ 'r',	"replace",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, (ffsize)args_replace },
-		{ 0,	"replace-once",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, O(replace_once) },
+		{ 'u',	"unbranch",			FFCMDARG_TSWITCH,		O(unbranch) },
+		{ 0,	"unbranch-flat",	FFCMDARG_TSWITCH,		O(unbranch_flat) },
+		{ 'r',	"replace",			FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY,		(ffsize)args_replace },
+		{ 0,	"replace-once",		FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY,		O(replace_once) },
+		{ 't',	"tree",				FFCMDARG_TSWITCH,		O(tree) },
+		{ 'k',	"skip-errors",		FFCMDARG_TSWITCH,		O(skip_errors) },
 		{}
 	};
 	if (0 != core->com->args_parse(cmd, args, m))
@@ -48,8 +52,12 @@ static int args_parse(struct move *m, fcom_cominfo *cmd)
 		fcom_fatlog("--unbranch and --unbranch-flat can't be used together");
 		return -1;
 
-	} else if (!(m->unbranch || m->unbranch_flat || m->replace_pair.len != 0)) {
-		fcom_fatlog("Please use --unbranch and/or --replace");
+	} else if (m->tree && !cmd->chdir.len) {
+		fcom_fatlog("Please use --tree with --chdir");
+		return -1;
+
+	} else if (!(cmd->chdir.len || m->unbranch || m->unbranch_flat || m->replace_pair.len)) {
+		fcom_fatlog("Please use --chdir / --unbranch / --replace");
 		return -1;
 	}
 
@@ -66,14 +74,18 @@ Usage:\n\
   fcom move INPUT... [OPTIONS]\n\
     OPTIONS:\n\
     -u, --unbranch      Move and rename a file out of its directory structure, e.g.\n\
-                          \"fcom --unbranch ./a\"\n\
-                         moves/renames \"./a/b/file\" -> \"./a - b - file\"\n\
+                            fcom move --unbranch ./a\n\
+                          moves/renames \"./a/b/file\" -> \"./a - b - file\"\n\
         --unbranch-flat Move a file out of its directory structure, e.g.\n\
-                          \"fcom --unbranch-flat ./a\"\n\
-                         moves \"./a/b/file\" -> \"./file\"\n\
+                            fcom move --unbranch-flat ./a\n\
+                          moves \"./a/b/file\" -> \"./file\"\n\
     -r, --replace='SEARCH/REPLACE'\n\
                         Replace SEARCH text in file name with REPLACE\n\
         --replace-once  Replace only the first occurrence\n\
+    -t, --tree          Preserve directory tree, e.g.\n\
+                            fcom move --tree a/b/c -C out\n\
+                          moves \"a/b/c\" to \"out/a/b/c\"\n\
+    -k, --skip-errors   Don't fail on error\n\
 ";
 }
 
@@ -106,9 +118,9 @@ end:
 	return NULL;
 }
 
-/** Prepare new file name.
+/** --unbranch: prepare output file name.
 "parent/base/a/file" -> "parent/base - a - file" */
-static void unbranch(struct move *m, ffstr in, ffstr base, ffstr *out)
+static ffstr name_unbranch(struct move *m, ffstr in, ffstr base)
 {
 	ffstr parent;
 	if (ffpath_splitpath_str(base, &parent, &base) >= 0) {
@@ -125,13 +137,14 @@ static void unbranch(struct move *m, ffstr in, ffstr base, ffstr *out)
 		if (!last)
 			ffvec_addsz(&m->oname, " - ");
 	}
-	ffstr_setstr(out, &m->oname);
+	ffstr out = *(ffstr*)&m->oname;
 	m->oname.len = 0;
+	return out;
 }
 
-/** Prepare new file name.
+/** --unbranch-flat: prepare output file name.
 "parent/base/a/file" -> "parent/file" */
-static void unbranch_flat(struct move *m, ffstr in, ffstr base, ffstr *out)
+static ffstr name_unbranch_flat(struct move *m, ffstr in, ffstr base)
 {
 	ffstr parent;
 	if (ffpath_splitpath_str(base, &parent, NULL) >= 0) {
@@ -141,8 +154,20 @@ static void unbranch_flat(struct move *m, ffstr in, ffstr base, ffstr *out)
 	ffstr name;
 	ffpath_splitpath_str(in, NULL, &name);
 	ffvec_addstr(&m->oname, &name);
-	ffstr_setstr(out, &m->oname);
+	ffstr out = *(ffstr*)&m->oname;
 	m->oname.len = 0;
+	return out;
+}
+
+/** --tree: prepare output file name.
+"a/b/file" -> "chdir/a/b/file" */
+static ffstr name_tree(struct move *m, ffstr in, ffstr base)
+{
+	ffvec_addfmt(&m->oname, "%S%c%S"
+		, &m->cmd->chdir, FFPATH_SLASH, &in);
+	ffstr out = *(ffstr*)&m->oname;
+	m->oname.len = 0;
+	return out;
 }
 
 /** Search and replace in a file name
@@ -174,17 +199,24 @@ static void move_run(fcom_op *op)
 {
 	struct move *m = op;
 	int r, rc = 1;
-	enum { I_IN, };
+	enum { I_IN, I_MOVE, };
+	ffstr in, out;
 
 	while (!FFINT_READONCE(m->stop)) {
 		switch (m->st) {
 		case I_IN: {
-			ffstr in, base, out;
+			ffstr base;
 			if (0 > (r = core->com->input_next(m->cmd, &in, &base, 0))) {
 				if (r == FCOM_COM_RINPUT_NOMORE) {
 					rc = 0;
 				}
 				goto end;
+			}
+
+			if (m->tree) {
+				out = name_tree(m, in, base);
+				m->st = I_MOVE;
+				continue;
 			}
 
 			uint flags = fcom_file_cominfo_flags_i(m->cmd);
@@ -210,14 +242,19 @@ static void move_run(fcom_op *op)
 
 			out = in;
 			if (m->unbranch)
-				unbranch(m, in, base, &out);
+				out = name_unbranch(m, in, base);
 			else if (m->unbranch_flat)
-				unbranch_flat(m, in, base, &out);
+				out = name_unbranch_flat(m, in, base);
 
 			if (m->search.len != 0) {
 				replace(m, &out);
 			}
+			m->st = I_MOVE;
+			continue;
+		}
 
+		case I_MOVE:
+			m->st = I_IN;
 			if (ffstr_eq2(&in, &out))
 				continue;
 
@@ -227,9 +264,8 @@ static void move_run(fcom_op *op)
 			}
 
 			r = core->file->move(in, out, FCOM_FILE_MOVE_SAFE);
-			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ERR && !m->skip_errors) goto end;
 			continue;
-		}
 		}
 	}
 

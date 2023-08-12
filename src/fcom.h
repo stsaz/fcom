@@ -11,7 +11,7 @@
 #include <ffbase/vector.h>
 #include <assert.h>
 
-#define FCOM_VER "1.0beta7"
+#define FCOM_VER "1.0beta8"
 #define FCOM_CORE_VER 107
 
 #undef stdin

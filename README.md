@@ -106,19 +106,19 @@ Many thanks to all the people who created and implemented those algorithms!!!
 3. Build third-party code:
 
 		cd fcom/3pt
-		make -Rr -j8
+		make -j8
 		make md5check
 		make install
 		cd ../..
 
 		cd fcom/3pt-pic
-		make -Rr -j8
+		make -j8
 		make md5check
 		make install
 		cd ../..
 
 		cd ffpack
-		make -Rr -j8
+		make -j8
 		make md5check
 		make install
 		cd ..
@@ -126,7 +126,7 @@ Many thanks to all the people who created and implemented those algorithms!!!
 4. Build fcom:
 
 		cd fcom
-		make -Rr -j8
+		make -j8
 
 `fcom-1` is the app directory.  Now you may move it anywhere you want (see section "Install on Linux").
 
