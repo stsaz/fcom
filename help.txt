@@ -52,10 +52,10 @@ INPUT:
         --buffer=N      Set file buffer size (=64k)
   DIR                   Directory name (relative or absolute)
     OPTIONS:
-    -R, --recursive     Expand subdirectories recursively
-    -I, --include=WILDCARD
+    -R, --Recursive     Expand subdirectories recursively
+    -I, --Include=WILDCARD
                         Include only matching names of files and directories (-R)
-    -E, --exclude=WILDCARD
+    -E, --Exclude=WILDCARD
                         Exclude matching names of files and directories (-R)
   "@"                   Get FILE and DIR names from STDIN
   "@FILE"               Get FILE and DIR names from FILE (can be specified only once)
@@ -75,5 +75,5 @@ OUTPUT:
 
 General options:
     -v, --verbose       Print more information to stdout
-    -D, --debug         Print debug log messages to stdout
+    -D, --Debug         Print debug log messages to stdout
     -h, --help          Show general help or for a specific operation (use `fcom OPERATION -h`)

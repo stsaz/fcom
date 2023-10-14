@@ -6,10 +6,10 @@ Its goal is to include the most useful functions for working with files of diffe
 Contents:
 
 * [Features](#features)
-* [Third-party code](#third-party-code)
 * [Install on Linux](#install-on-linux)
 * [Install on Windows](#install-on-windows)
-* [Build on Linux](#build-on-linux)
+* [Build](#build)
+* [Third-party code](#third-party-code)
 
 ## Features
 
@@ -55,22 +55,6 @@ Contents:
     utf8                Convert files to UTF-8
 ```
 
-## Third-party code
-
-fcom uses third-party code that implements complex algorithms such as data encryption and cryptographic hashing functions:
-
-* AES (Brian Gladman)
-* CRC32 (xz)
-* libjpeg-turbo
-* libpng
-* lzma (xz)
-* MD5 (nginx)
-* SHA-256 (glibc)
-* zlib
-* zstd
-
-Many thanks to all the people who created and implemented those algorithms!!!
-
 
 ## Install on Linux
 
@@ -89,46 +73,26 @@ Many thanks to all the people who created and implemented those algorithms!!!
 2. Optionally, add the path to `fcom.exe` to `PATH`.
 
 
-## Build on Linux
+## Build
 
-1. Create a directory for the source code:
+[Building fcom](BUILDING.md)
 
-		mkdir fcom-src && cd fcom-src
 
-2. Download the repositories:
+## Third-party code
 
-		git clone --depth=1 https://github.com/stsaz/ffbase
-		git clone --depth=1 https://github.com/stsaz/ffos
-		git clone --depth=1 https://github.com/stsaz/ffpack
-		git clone --depth=1 https://github.com/stsaz/avpack
-		git clone --depth=1 -b v1 https://github.com/stsaz/fcom
+fcom uses third-party code that implements complex algorithms such as data encryption and cryptographic hashing functions:
 
-3. Build third-party code:
+* AES (Brian Gladman)
+* CRC32 (xz)
+* libjpeg-turbo
+* libpng
+* lzma (xz)
+* MD5 (nginx)
+* SHA-256 (glibc)
+* zlib
+* zstd
 
-		cd fcom/3pt
-		make -j8
-		make md5check
-		make install
-		cd ../..
-
-		cd fcom/3pt-pic
-		make -j8
-		make md5check
-		make install
-		cd ../..
-
-		cd ffpack
-		make -j8
-		make md5check
-		make install
-		cd ..
-
-4. Build fcom:
-
-		cd fcom
-		make -j8
-
-`fcom-1` is the app directory.  Now you may move it anywhere you want (see section "Install on Linux").
+Many thanks to all the people who created and implemented those algorithms!!!
 
 
 ## License

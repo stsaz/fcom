@@ -60,7 +60,8 @@ static int output_fin(struct copy *c)
 		// fallthrough
 
 	case 1:
-		if (0 != fffile_rename(c->oname_tmp, c->oname)) {
+		if (!c->cmd->stdout
+			&& 0 != fffile_rename(c->oname_tmp, c->oname)) {
 			fcom_syserrlog("fffile_rename: %s -> %s", c->oname_tmp, c->oname);
 			return 0xbad;
 		}

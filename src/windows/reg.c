@@ -32,7 +32,7 @@ struct reg {
 	} stat;
 };
 
-#include <ops/reg-search.h>
+#include <windows/reg-search.h>
 
 static int args_parse(struct reg *g, fcom_cominfo *cmd)
 {

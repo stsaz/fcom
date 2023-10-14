@@ -110,12 +110,12 @@ test_copy() {
 	! test -f dircopy/dir/file
 	rm -rf dircopy/*
 
-	# Recursive Include: --include rejects directory
+	# Recursive Include: --Include rejects directory
 	../fcom copy -R "dir" -C "dircopy" -I "*.d*" -v
 	! test -d dircopy/dir/d2
 	rm -rf dircopy/*
 
-	# Recursive Include: --include accepts directory
+	# Recursive Include: --Include accepts directory
 	echo hello >dir/d2/file.doc
 	../fcom copy -R "dir" -C "dircopy" -I "*.d*" -v
 	diff dir/d2/file.doc dircopy/dir/d2/file.doc

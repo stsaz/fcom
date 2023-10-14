@@ -111,9 +111,9 @@ Usage:\n\
 }
 
 static void copy_run(fcom_op *op);
-#include <ops/copy-crypt.h>
-#include <ops/copy-output.h>
-#include <ops/copy-verify.h>
+#include <fs/copy-crypt.h>
+#include <fs/copy-output.h>
+#include <fs/copy-verify.h>
 
 static void copy_close(fcom_op *op);
 

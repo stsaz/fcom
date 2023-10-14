@@ -2,14 +2,14 @@
 2022, Simon Zolin */
 
 #include <fcom.h>
-#include <args.h>
+#include <exe/args.h>
 #include <util/cmdarg-scheme.h>
 
 void stdlog(uint flags, const char *fmt, ...);
 
 static const ffcmdarg_arg args[] = {
 	{ 'v',	"verbose",	FFCMDARG_TSWITCH, FF_OFF(struct args, verbose) },
-	{ 'D',	"debug",	FFCMDARG_TSWITCH, FF_OFF(struct args, debug) },
+	{ 'D',	"Debug",	FFCMDARG_TSWITCH, FF_OFF(struct args, debug) },
 	{}
 };
 

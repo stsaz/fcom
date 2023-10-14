@@ -2,7 +2,7 @@
 2022, Simon Zolin */
 
 #include <fcom.h>
-#include <args.h>
+#include <exe/args.h>
 #include <FFOS/dylib.h>
 #include <FFOS/std.h>
 #include <FFOS/path.h>
@@ -23,7 +23,7 @@ struct main {
 };
 static struct main *m;
 
-#include <log.h>
+#include <exe/log.h>
 
 static char* path(const char *fn)
 {

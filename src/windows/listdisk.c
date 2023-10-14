@@ -90,7 +90,7 @@ static int listdisk_print()
 		}
 
 		if (((wchar_t*)vi.paths.ptr)[0] != '\0') {
-			for (wchar_t *ws = (void*)vi.paths.ptr;  ws[0] != '\0';  ws += ffq_len(ws) + 1) {
+			for (wchar_t *ws = (void*)vi.paths.ptr;  ws[0] != '\0';  ws += ffwsz_len(ws) + 1) {
 				ffvec_addfmt(&out, "%q, ", ws);
 			}
 		}

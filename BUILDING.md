@@ -1,0 +1,40 @@
+# Building fcom
+
+1. Create a directory for the source code:
+
+		mkdir fcom-src && cd fcom-src
+
+2. Download the repositories:
+
+		git clone --depth=1 https://github.com/stsaz/ffbase
+		git clone --depth=1 https://github.com/stsaz/ffos
+		git clone --depth=1 https://github.com/stsaz/ffpack
+		git clone --depth=1 https://github.com/stsaz/avpack
+		git clone --depth=1 -b v1 https://github.com/stsaz/fcom
+
+3. Build third-party code:
+
+		cd fcom/3pt
+		make -j8
+		make md5check
+		make install
+		cd ../..
+
+		cd fcom/3pt-pic
+		make -j8
+		make md5check
+		make install
+		cd ../..
+
+		cd ffpack
+		make -j8
+		make md5check
+		make install
+		cd ..
+
+4. Build fcom:
+
+		cd fcom
+		make -j8
+
+`fcom-1` is the app directory.  Now you may move it anywhere you want (see section "Install on Linux").

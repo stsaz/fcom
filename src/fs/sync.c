@@ -132,10 +132,10 @@ struct sync {
 };
 
 static void sync_close(fcom_op *op);
-#include <ops/sync-cmp.h>
-#include <ops/sync-fsync.h>
-#include <ops/sync-rsnap.h>
-#include <ops/sync-wsnap.h>
+#include <fs/sync-cmp.h>
+#include <fs/sync-fsync.h>
+#include <fs/sync-rsnap.h>
+#include <fs/sync-wsnap.h>
 
 static int diff_flags_parse(const char *s);
 

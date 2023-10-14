@@ -44,7 +44,7 @@ static int args_parse(struct tar *t, fcom_cominfo *cmd)
 	if (r != 0)
 		return r;
 
-	if (cmd->output.len == 0) {
+	if (cmd->output.len == 0 && !cmd->stdout) {
 		fcom_fatlog("Use --out to set output file name");
 		return -1;
 	}

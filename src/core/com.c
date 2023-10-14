@@ -555,9 +555,9 @@ static int cmd_args_parse(fcom_cominfo *cmd, const ffcmdarg_arg *args, void *obj
 	static const ffcmdarg_arg args_general[] = {
 		// input
 		{ 0,	"",	FFCMDARG_TSTR | FFCMDARG_FMULTI,	(ffsize)args_input },
-		{ 'I',	"include",	FFCMDARG_TSTR | FFCMDARG_FMULTI,	(ffsize)args_include },
-		{ 'E',	"exclude",	FFCMDARG_TSTR | FFCMDARG_FMULTI,	(ffsize)args_exclude },
-		{ 'R',	"recursive",	FFCMDARG_TSWITCH,	FF_OFF(struct fcom_cominfo, recursive) },
+		{ 'I',	"Include",	FFCMDARG_TSTR | FFCMDARG_FMULTI,	(ffsize)args_include },
+		{ 'E',	"Exclude",	FFCMDARG_TSTR | FFCMDARG_FMULTI,	(ffsize)args_exclude },
+		{ 'R',	"Recursive",	FFCMDARG_TSWITCH,	FF_OFF(struct fcom_cominfo, recursive) },
 
 		// output
 		{ 'o',	"out",	FFCMDARG_TSTRZ,	FF_OFF(struct fcom_cominfo, outputz) },
