@@ -492,12 +492,12 @@ static int hlink_create(const char *oldpath, const char *newpath, uint flags)
 {
 	if (0 != fffile_hardlink(oldpath, newpath)) {
 		fcom_syserrlog("fffile_hardlink(): %s -> %s"
-			, oldpath, newpath);
+			, newpath, oldpath);
 		return FCOM_FILE_ERR;
 	}
 
 	fcom_verblog("created hard link: %s -> %s"
-		, oldpath, newpath);
+		, newpath, oldpath);
 	return 0;
 }
 

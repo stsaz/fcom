@@ -1,4 +1,4 @@
-include ../../ffbase/test/makeconf
+include ../../ffbase/conf.mk
 
 # Set utils
 CURL := curl -L

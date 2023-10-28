@@ -5,7 +5,7 @@ FCOM_DIR := $(ROOT)/fcom
 FFBASE_DIR := $(ROOT)/ffbase
 FFOS_DIR := $(ROOT)/ffos
 
-include $(FFBASE_DIR)/test/makeconf
+include $(FFBASE_DIR)/conf.mk
 
 SUBMAKE := $(MAKE) -f $(firstword $(MAKEFILE_LIST))
 BIN := fcom$(DOTEXE)
