@@ -1,7 +1,7 @@
 /** fcom: sync: compare directory trees
 2022, Simon Zolin */
 
-#include <FFOS/std.h>
+#include <ffsys/std.h>
 
 #define WIDTH_NAME  40L
 #define WIDTH_SIZE  "10"

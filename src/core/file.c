@@ -3,8 +3,8 @@
 
 #include <fcom.h>
 #include <core/fbuf.h>
-#include <FFOS/std.h>
-#include <FFOS/dir.h>
+#include <ffsys/std.h>
+#include <ffsys/dir.h>
 
 extern fcom_core *core;
 #define ALIGN (4*1024)

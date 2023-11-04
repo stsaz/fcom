@@ -10,7 +10,7 @@ ffui_glib_trash
 
 #ifdef FF_LINUX
 
-#include <FFOS/dylib.h>
+#include <ffsys/dylib.h>
 
 #define LIBGIO_PATH  "/lib64/libgio-2.0.so"
 #define LIBGOBJECT_PATH  "/lib64/libgobject-2.0.so"

@@ -2,8 +2,8 @@
 2023, Simon Zolin */
 
 #include <fcom.h>
-#include <FFOS/winreg.h>
-#include <FFOS/ffos-extern.h>
+#include <ffsys/winreg.h>
+#include <ffsys/globals.h>
 #include <ffbase/list.h>
 
 static const fcom_core *core;

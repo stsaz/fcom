@@ -3,8 +3,8 @@
 
 #include <fcom.h>
 #include <ffpack/7zread.h>
-#include <FFOS/path.h>
-#include <FFOS/ffos-extern.h>
+#include <ffsys/path.h>
+#include <ffsys/globals.h>
 #include <ffbase/map.h>
 
 const fcom_core *core;

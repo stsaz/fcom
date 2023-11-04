@@ -13,8 +13,8 @@ ffconf_parse_file
 #pragma once
 #include "conf.h"
 #include "conf-ltconf.h"
-#include <FFOS/file.h> // optional
-#include <FFOS/error.h>
+#include <ffsys/file.h> // optional
+#include <ffsys/error.h>
 #include <ffbase/stringz.h>
 
 enum FFCONF_SCHEME_T {
@@ -513,7 +513,7 @@ end:
 	return r;
 }
 
-#ifdef _FFOS_FILE_H
+#ifdef _FFSYS_FILE_H
 static inline int ffconf_parse_file(const ffconf_arg *args, void *obj, const char *fn, ffuint scheme_flags, ffstr *errmsg, ffuint file_max_size)
 {
 	ffvec data = {};

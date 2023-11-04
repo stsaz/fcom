@@ -3,13 +3,13 @@
 
 #include <fcom.h>
 #include <exe/args.h>
-#include <FFOS/dylib.h>
-#include <FFOS/std.h>
-#include <FFOS/path.h>
-#include <FFOS/process.h>
-#include <FFOS/signal.h>
-#include <FFOS/thread.h>
-#include <FFOS/ffos-extern.h>
+#include <ffsys/dylib.h>
+#include <ffsys/std.h>
+#include <ffsys/path.h>
+#include <ffsys/process.h>
+#include <ffsys/signal.h>
+#include <ffsys/thread.h>
+#include <ffsys/globals.h>
 
 struct main {
 	char *core_fn;

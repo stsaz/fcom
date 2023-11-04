@@ -2,8 +2,8 @@
 2023, Simon Zolin */
 
 #include <fcom.h>
-#include <FFOS/path.h>
-#include <FFOS/pipe.h>
+#include <ffsys/path.h>
+#include <ffsys/pipe.h>
 
 const fcom_core *core;
 

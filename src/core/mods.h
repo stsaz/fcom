@@ -1,7 +1,7 @@
 /** fcom: core: modules
 2022, Simon Zolin */
 
-#include <FFOS/dylib.h>
+#include <ffsys/dylib.h>
 
 struct mod {
 	char *name;

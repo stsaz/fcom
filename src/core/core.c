@@ -2,12 +2,12 @@
 2022, Simon Zolin */
 
 #include <fcom.h>
-#include <FFOS/queue.h>
-#include <FFOS/timer.h>
-#include <FFOS/path.h>
-#include <FFOS/perf.h>
-#include <FFOS/ffos-extern.h>
-#include <FFOS/random.h>
+#include <ffsys/queue.h>
+#include <ffsys/timer.h>
+#include <ffsys/path.h>
+#include <ffsys/perf.h>
+#include <ffsys/globals.h>
+#include <ffsys/random.h>
 
 #define syserrlog(fmt, ...)  core_log(FCOM_LOG_ERR | FCOM_LOG_SYSERR, "core: " fmt, ##__VA_ARGS__)
 #define errlog(fmt, ...)  core_log(FCOM_LOG_ERR, "core: " fmt, ##__VA_ARGS__)

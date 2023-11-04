@@ -7,7 +7,7 @@
 #include <avpack/bmp-write.h>
 #include <../3pt-pic/jpeg-turbo/jpeg-ff.h>
 #include <../3pt-pic/png/png-ff.h>
-#include <FFOS/path.h>
+#include <ffsys/path.h>
 
 static const fcom_core *core;
 

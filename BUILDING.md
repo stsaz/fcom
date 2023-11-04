@@ -7,7 +7,7 @@
 2. Download the repositories:
 
 		git clone --depth=1 https://github.com/stsaz/ffbase
-		git clone --depth=1 https://github.com/stsaz/ffos
+		git clone --depth=1 https://github.com/stsaz/ffsys
 		git clone --depth=1 https://github.com/stsaz/ffpack
 		git clone --depth=1 https://github.com/stsaz/avpack
 		git clone --depth=1 -b v1 https://github.com/stsaz/fcom

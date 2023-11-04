@@ -3,7 +3,7 @@
 
 #include <fcom.h>
 #include <ops/md5-hash.h>
-#include <FFOS/ffos-extern.h>
+#include <ffsys/globals.h>
 
 static const fcom_core *core;
 

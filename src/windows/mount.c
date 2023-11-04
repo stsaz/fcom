@@ -2,8 +2,8 @@
 2023, Simon Zolin */
 
 #include <fcom.h>
-#include <FFOS/std.h>
-#include <FFOS/volume.h>
+#include <ffsys/std.h>
+#include <ffsys/volume.h>
 
 static const fcom_core *core;
 

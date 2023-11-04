@@ -6,7 +6,7 @@
 #endif
 #include <fcom.h>
 #include <util/unix-shell.h>
-#include <FFOS/path.h>
+#include <ffsys/path.h>
 
 static const fcom_core *core;
 

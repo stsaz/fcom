@@ -3,7 +3,7 @@
 
 #include <fcom.h>
 #include <ffpack/zipread.h>
-#include <FFOS/path.h>
+#include <ffsys/path.h>
 #include <ffbase/map.h>
 
 extern const fcom_core *core;

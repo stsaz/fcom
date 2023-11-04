@@ -2,7 +2,7 @@
 2023, Simon Zolin */
 
 #include <fcom.h>
-#include <FFOS/path.h>
+#include <ffsys/path.h>
 #include <zstd/zstd-ff.h>
 
 extern const fcom_core *core;

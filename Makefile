@@ -3,7 +3,7 @@
 ROOT := ..
 FCOM_DIR := $(ROOT)/fcom
 FFBASE_DIR := $(ROOT)/ffbase
-FFOS_DIR := $(ROOT)/ffos
+FFSYS_DIR := $(ROOT)/ffsys
 
 include $(FFBASE_DIR)/conf.mk
 
@@ -11,7 +11,7 @@ SUBMAKE := $(MAKE) -f $(firstword $(MAKEFILE_LIST))
 BIN := fcom$(DOTEXE)
 
 CFLAGS := -MMD -MP \
-	-I$(FCOM_DIR)/src -I$(FFOS_DIR) -I$(FFBASE_DIR) \
+	-I$(FCOM_DIR)/src -I$(FFSYS_DIR) -I$(FFBASE_DIR) \
 	-DFFBASE_HAVE_FFERR_STR -DFFBASE_MEM_ASSERT \
 	-Wall -Wextra -Wno-unused-parameter -Wno-multichar \
 	-fPIC

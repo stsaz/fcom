@@ -2,7 +2,7 @@
 2023, Simon Zolin */
 
 #include <fcom.h>
-#include <FFOS/volume.h>
+#include <ffsys/volume.h>
 
 static const fcom_core *core;
 

@@ -3,7 +3,7 @@
 
 #include <fcom.h>
 #include <util/cmdarg-scheme.h>
-#include <FFOS/std.h>
+#include <ffsys/std.h>
 #include <ffbase/map.h>
 #include <util/fntree.h>
 

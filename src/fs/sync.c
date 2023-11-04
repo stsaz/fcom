@@ -18,8 +18,8 @@ b "/dir/dir1" {
 #include <fcom.h>
 #include <util/fntree.h>
 #include <util/ltconf.h>
-#include <FFOS/path.h>
-#include <FFOS/ffos-extern.h>
+#include <ffsys/path.h>
+#include <ffsys/globals.h>
 #include <ffbase/map.h>
 
 static const fcom_core *core;

@@ -6,7 +6,7 @@
 #include <util/pixel-conv.h>
 #include <util/stream.h>
 #include <avpack/bmp-write.h>
-#include <FFOS/path.h>
+#include <ffsys/path.h>
 
 static const fcom_core *core;
 

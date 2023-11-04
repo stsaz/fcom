@@ -2,12 +2,12 @@
 2022, Simon Zolin */
 
 #pragma once
-#include <FFOS/error.h>
+#include <ffsys/error.h>
 #include <util/taskqueue.h>
 #include <util/cmdarg-scheme.h>
-#include <FFOS/file.h>
-#include <FFOS/timerqueue.h>
-#include <FFOS/time.h>
+#include <ffsys/file.h>
+#include <ffsys/timerqueue.h>
+#include <ffsys/time.h>
 #include <ffbase/vector.h>
 #include <assert.h>
 

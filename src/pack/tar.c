@@ -3,7 +3,7 @@
 
 #include <fcom.h>
 #include <ffpack/tarwrite.h>
-#include <FFOS/ffos-extern.h>
+#include <ffsys/globals.h>
 
 const fcom_core *core;
 

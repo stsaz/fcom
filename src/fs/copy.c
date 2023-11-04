@@ -2,7 +2,7 @@
 2022, Simon Zolin */
 
 #include <fcom.h>
-#include <FFOS/path.h>
+#include <ffsys/path.h>
 
 static const fcom_core *core;
 

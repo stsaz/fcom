@@ -2,8 +2,8 @@
 2023, Simon Zolin */
 
 #include <fcom.h>
-#include <FFOS/ffos-extern.h>
-#include <FFOS/path.h>
+#include <ffsys/globals.h>
+#include <ffsys/path.h>
 #include <zstd/zstd-ff.h>
 
 const fcom_core *core;
