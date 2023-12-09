@@ -1,6 +1,15 @@
 /** fcom: List logical volumes (Windows)
 2023, Simon Zolin */
 
+static const char* listdisk_help()
+{
+	return "\
+List logical volumes.\n\
+Usage:\n\
+  fcom listdisk\n\
+";
+}
+
 #include <fcom.h>
 #include <ffsys/volume.h>
 
@@ -11,15 +20,6 @@ struct listdisk {
 	fcom_cominfo *cmd;
 	uint stop;
 };
-
-static const char* listdisk_help()
-{
-	return "\
-List logical volumes.\n\
-Usage:\n\
-  fcom listdisk\n\
-";
-}
 
 static int args_parse(struct listdisk *l, fcom_cominfo *cmd)
 {

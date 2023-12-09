@@ -1,6 +1,25 @@
 /** fcom: Convert images
 2023, Simon Zolin */
 
+static const char* pic_help()
+{
+	return "\
+Convert images (.bmp/.jpg/.png).\n\
+Usage:\n\
+  fcom pic INPUT... -o OUTPUT\n\
+  \n\
+    OUTPUT\n\
+      Output file name with extension (.bmp/.jpg/.png).\n\
+      If only an extension is given, use source file name automatically.\n\
+  \n\
+    OPTIONS:\n\
+    -q, --jpeg-quality=INT\n\
+                        Set JPEG quality: 1..100 (default: 85)\n\
+        --png-compression=INT\n\
+                        Set PNG compression level: 0..9 (default: 9)\n\
+";
+}
+
 #include <fcom.h>
 #include <util/pixel-conv.h>
 #include <avpack/bmp-read.h>
@@ -57,25 +76,6 @@ struct pic {
 #include <pic/bmp.h>
 #include <pic/jpg.h>
 #include <pic/png.h>
-
-static const char* pic_help()
-{
-	return "\
-Convert images (.bmp/.jpg/.png).\n\
-Usage:\n\
-  fcom pic INPUT... -o OUTPUT\n\
-  \n\
-    OUTPUT\n\
-      Output file name with extension (.bmp/.jpg/.png).\n\
-      If only an extension is given, use source file name automatically.\n\
-  \n\
-    OPTIONS:\n\
-    -q, --jpeg-quality=INT\n\
-                        Set JPEG quality: 1..100 (default: 85)\n\
-        --png-compression=INT\n\
-                        Set PNG compression level: 0..9 (default: 9)\n\
-";
-}
 
 #define O(member)  FF_OFF(struct pic, member)
 

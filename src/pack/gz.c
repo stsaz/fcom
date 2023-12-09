@@ -1,6 +1,17 @@
 /** fcom: pack file into .gz
 2023, Simon Zolin */
 
+static const char* gz_help()
+{
+	return "\
+Compress file into .gz.\n\
+Usage:\n\
+  fcom gz INPUT [OPTIONS] [-o OUTPUT.gz]\n\
+    OPTIONS:\n\
+    -l, --level=INT     Compression level: 1..9; default:6\n\
+";
+}
+
 #include <fcom.h>
 #include <ffsys/globals.h>
 #include <ffsys/path.h>
@@ -24,17 +35,6 @@ struct gz {
 
 	byte level;
 };
-
-static const char* gz_help()
-{
-	return "\
-Compress file into .gz.\n\
-Usage:\n\
-  fcom gz INPUT [OPTIONS] [-o OUTPUT.gz]\n\
-    OPTIONS:\n\
-    -l, --level=INT     Compression level: 1..9; default:6\n\
-";
-}
 
 #define O(member)  FF_OFF(struct gz, member)
 
@@ -61,7 +61,7 @@ static void gz_close(fcom_op *op)
 	ffgzwrite_destroy(&z->gz);
 	core->file->destroy(z->in);
 	if (z->del_on_close)
-		core->file->delete(z->oname, 0);
+		core->file->del(z->oname, 0);
 	core->file->destroy(z->out);
 	ffmem_free(z->oname);
 	ffvec_free(&z->buf);

@@ -5,6 +5,7 @@
 #include <core/fbuf.h>
 #include <ffsys/std.h>
 #include <ffsys/dir.h>
+#include <ffsys/perf.h>
 
 extern fcom_core *core;
 #define ALIGN (4*1024)
@@ -22,6 +23,11 @@ struct file {
 	uint64 size;
 	uint64 cur_off;
 	uint64 prealloc;
+
+	struct {
+		fftime t_read, t_write;
+		uint64 total_read, total_write;
+	} stats;
 };
 
 static int f_write(struct file *f, ffstr d, uint64 off);
@@ -74,13 +80,32 @@ static void mtime_set(struct file *f)
 
 static void prealloc_trunc(struct file *f)
 {
-	if (f->prealloc > f->size) {
-		fcom_dbglog("%s: truncate: %U/%U", f->name, f->size, f->prealloc);
-		if (0 != fffile_trunc(f->fd, f->size))
-			fcom_syserrlog("%s: fffile_trunc", f->name);
-		else
-			f->prealloc = f->size;
+	if (f->prealloc <= f->size) return;
+
+	fcom_dbglog("%s: truncate: %U/%U", f->name, f->size, f->prealloc);
+
+	fffd fd = f->fd;
+
+#ifdef FF_WIN
+	if ((f->open_flags & FCOM_FILE_DIRECTIO)
+		&& (f->size % ALIGN) != 0) {
+		if (FFFILE_NULL == (fd = fffile_open(f->name, FFFILE_WRITEONLY))) {
+			fcom_syserrlog("%s: fffile_open", f->name);
+			return;
+		}
+		fcom_dbglog("%s: opened without FFFILE_DIRECT", f->name);
 	}
+#endif
+
+	if (0 != fffile_trunc(fd, f->size)) {
+		fcom_syserrlog("%s: fffile_trunc", f->name);
+		goto end;
+	}
+	f->prealloc = f->size;
+
+end:
+	if (fd != f->fd)
+		fffile_close(fd);
 }
 
 static void file_close(fcom_file_obj *_f)
@@ -96,13 +121,22 @@ static void file_close(fcom_file_obj *_f)
 		}
 
 		if (!(f->open_flags & (FCOM_FILE_STDIN | FCOM_FILE_STDOUT))) {
-			if (0 != fffile_close(f->fd))
+			if (0 != fffile_close(f->fd)) {
 				fcom_syserrlog("%s: fffile_close", f->name);
-			else {
-				if (f->open_flags & (FCOM_FILE_WRITE | FCOM_FILE_READWRITE))
-					fcom_verblog("saved file: %s (%,U)", f->name, f->size);
-				else
-					fcom_dbglog("%s: closed", f->name);
+			} else {
+				if (f->open_flags & (FCOM_FILE_WRITE | FCOM_FILE_READWRITE)) {
+					fcom_verblog("saved file: %s (%,U)  %UMB/sec | %UMB/sec"
+						, f->name, f->size
+						, FFINT_DIVSAFE(f->stats.total_read, fftime_to_usec(&f->stats.t_read))
+						, FFINT_DIVSAFE(f->stats.total_write, fftime_to_usec(&f->stats.t_write))
+						);
+				} else {
+					fcom_verblog("read file: %s  %UMB/sec | %UMB/sec"
+						, f->name
+						, FFINT_DIVSAFE(f->stats.total_read, fftime_to_usec(&f->stats.t_read))
+						, FFINT_DIVSAFE(f->stats.total_write, fftime_to_usec(&f->stats.t_write))
+						);
+				}
 			}
 		}
 
@@ -168,6 +202,11 @@ static int file_open(fcom_file_obj *_f, const char *name, uint how)
 	if (how & FCOM_FILE_DIRECTIO)
 		flags |= FFFILE_DIRECT;
 
+#ifdef FF_WIN
+	if (how & FCOM_FILE_READAHEAD)
+		flags |= FILE_FLAG_SEQUENTIAL_SCAN;
+#endif
+
 	flags |= FFFILE_NOATIME;
 
 	for (uint i = 0;  ;  i++) {
@@ -202,10 +241,20 @@ static int file_open(fcom_file_obj *_f, const char *name, uint how)
 
 	if ((how & FCOM_FILE_DIRECTIO) && !(flags & FFFILE_DIRECT)) {
 		fcom_infolog("%s: opened without DIRECT_IO flag", f->name);
+		f->open_flags &= ~FCOM_FILE_DIRECTIO;
 	}
 
 	fcom_dbglog("%s: opened file", f->name);
 	return FCOM_FILE_OK;
+}
+
+static int f_benchmark(fftime *t)
+{
+	if (core->verbose) {
+		*t = fftime_monotonic();
+		return 1;
+	}
+	return 0;
 }
 
 static int file_read(fcom_file_obj *_f, ffstr *d, int64 off)
@@ -222,6 +271,9 @@ static int file_read(fcom_file_obj *_f, ffstr *d, int64 off)
 	}
 
 	b = fbufset_nextbuf(&f->fbuf);
+
+	fftime t1, t2 = {};
+	f_benchmark(&t1);
 
 	ffuint64 offset = off;
 	ffssize r;
@@ -245,6 +297,12 @@ static int file_read(fcom_file_obj *_f, ffstr *d, int64 off)
 		return FCOM_FILE_ERR;
 	}
 
+	if (f_benchmark(&t2)) {
+		fftime_sub(&t2, &t1);
+		fftime_add(&f->stats.t_read, &t2);
+		f->stats.total_read += b->len;
+	}
+
 	if (r < f->buffer_size)
 		f->size = offset + r;
 	b->off = offset;
@@ -265,6 +323,9 @@ static int f_write(struct file *f, ffstr d, uint64 off)
 {
 	ffsize len = d.len;
 	ffssize r;
+
+	fftime t1, t2 = {};
+	f_benchmark(&t1);
 
 	if (f->open_flags & FCOM_FILE_STDOUT) {
 		if (off != f->size) {
@@ -287,6 +348,12 @@ static int f_write(struct file *f, ffstr d, uint64 off)
 	if (r < 0) {
 		fcom_syserrlog("file write: %s %L @%U", f->name, len, off);
 		return FCOM_FILE_ERR;
+	}
+
+	if (f_benchmark(&t2)) {
+		fftime_sub(&t2, &t1);
+		fftime_add(&f->stats.t_write, &t2);
+		f->stats.total_write += len;
 	}
 
 	fcom_dbglog("%s: written %L @%U", f->name, len, off);

@@ -1,6 +1,46 @@
 /** fcom: synchronize directories
 2022, Simon Zolin */
 
+static const char* sync_help()
+{
+	return "\
+Compare/synchronize directories or create a file tree snapshot.\n\
+Implies '--recursive', ignores '--include'/'--exclude'.\n\
+Usage:\n\
+  fcom sync [INPUT_DIR -o OUT_DIR]|[SNAPSHOT --source-snap -o OUT_DIR]|[INPUT_DIR -s -o SNAPSHOT] [OPTIONS]\n\
+    OPTIONS:\n\
+    -s, --snapshot      Create an INPUT_DIR tree snapshot\n\
+        --source-snap   Use snapshot file for input file tree\n\
+        --target-snap   Use snapshot file for output file tree\n\
+        --source-path-strip1\n\
+                        Strip top-level path-component from source tree\n\
+        --target-path-strip1\n\
+                        Strip top-level path-component from target tree\n\
+\n\
+    -d, --diff=STR      Just show difference table between source and target\n\
+                        STR: empty (\"\") or a set of flags [ADUM]\n\
+        --diff-no-attr  diff: Don't check file attributes\n\
+        --diff-no-time  diff: Don't check file time\n\
+        --diff-fullname diff: Don't cut file names\n\
+    -p, --plain         Plain list of file names\n\
+\n\
+        --add           Copy new files\n\
+        --delete        Delete old files\n\
+        --update        Overwrite modified files\n\
+\n\
+Examples:\n\
+\n\
+Compare 2 directories:\n\
+  fcom sync /home --diff=\"\" -o /home2\n\
+\n\
+Create file tree snapshot of '/home' directory:\n\
+  fcom sync /home --snapshot -o home.snap\n\
+\n\
+Use snapshot file and compare it with '/home2' directory:\n\
+  fcom sync home.snap --source-snap --diff=\"\" -o /home2\n\
+";
+}
+
 /* Snapshot ver.1 format:
 # fcom file tree snapshot
 
@@ -138,46 +178,6 @@ static void sync_close(fcom_op *op);
 #include <fs/sync-wsnap.h>
 
 static int diff_flags_parse(const char *s);
-
-static const char* sync_help()
-{
-	return "\
-Compare/synchronize directories or create a file tree snapshot.\n\
-Implies '--recursive', ignores '--include'/'--exclude'.\n\
-Usage:\n\
-  fcom sync [INPUT_DIR -o OUT_DIR]|[SNAPSHOT --source-snap -o OUT_DIR]|[INPUT_DIR -s -o SNAPSHOT] [OPTIONS]\n\
-    OPTIONS:\n\
-    -s, --snapshot      Create an INPUT_DIR tree snapshot\n\
-        --source-snap   Use snapshot file for input file tree\n\
-        --target-snap   Use snapshot file for output file tree\n\
-        --source-path-strip1\n\
-                        Strip top-level path-component from source tree\n\
-        --target-path-strip1\n\
-                        Strip top-level path-component from target tree\n\
-\n\
-    -d, --diff=STR      Just show difference table between source and target\n\
-                        STR: empty (\"\") or a set of flags [ADUM]\n\
-        --diff-no-attr  diff: Don't check file attributes\n\
-        --diff-no-time  diff: Don't check file time\n\
-        --diff-fullname diff: Don't cut file names\n\
-    -p, --plain         Plain list of file names\n\
-\n\
-        --add           Copy new files\n\
-        --delete        Delete old files\n\
-        --update        Overwrite modified files\n\
-\n\
-Examples:\n\
-\n\
-Compare 2 directories:\n\
-  fcom sync /home --diff=\"\" -o /home2\n\
-\n\
-Create file tree snapshot of '/home' directory:\n\
-  fcom sync /home --snapshot -o home.snap\n\
-\n\
-Use snapshot file and compare it with '/home2' directory:\n\
-  fcom sync home.snap --source-snap --diff=\"\" -o /home2\n\
-";
-}
 
 #define O(member)  FF_OFF(struct sync, member)
 

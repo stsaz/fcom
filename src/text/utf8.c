@@ -1,6 +1,15 @@
 /** fcom: Convert files to UTF-8
 2023, Simon Zolin */
 
+static const char* utf8_help()
+{
+	return "\
+Convert UTF-8/16 (with BOM) files to UTF-8 (without BOM).\n\
+Usage:\n\
+  fcom utf8 INPUT... -o OUTPUT\n\
+";
+}
+
 #include <fcom.h>
 #include <ffbase/unicode.h>
 
@@ -29,15 +38,6 @@ static int args_parse(struct utf8 *u, fcom_cominfo *cmd)
 		u->cmd->stdout = 1;
 
 	return 0;
-}
-
-static const char* utf8_help()
-{
-	return "\
-Convert UTF-8/16 (with BOM) files to UTF-8 (without BOM).\n\
-Usage:\n\
-  fcom utf8 INPUT... -o OUTPUT\n\
-";
 }
 
 static void utf8_close(fcom_op *op)

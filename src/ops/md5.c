@@ -1,6 +1,15 @@
 /** fcom: Compute MD5 hash
 2023, Simon Zolin */
 
+static const char* md5_help()
+{
+	return "\
+Compute MD5 hash.\n\
+Usage:\n\
+  fcom md5 INPUT... [OPTIONS]\n\
+";
+}
+
 #include <fcom.h>
 #include <ops/md5-hash.h>
 #include <ffsys/globals.h>
@@ -31,15 +40,6 @@ static int args_parse(struct md5 *m, fcom_cominfo *cmd)
 }
 
 #undef O
-
-static const char* md5_help()
-{
-	return "\
-Compute MD5 hash.\n\
-Usage:\n\
-  fcom md5 INPUT... [OPTIONS]\n\
-";
-}
 
 static void md5_close(fcom_op *op)
 {

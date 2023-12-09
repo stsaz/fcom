@@ -1,6 +1,21 @@
 /** fcom: unpack files from .7z
 2023, Simon Zolin */
 
+static const char* un7z_help()
+{
+	return "\
+Unpack files from .7z.\n\
+Usage:\n\
+  fcom un7z INPUT... [-C OUTPUT_DIR]\n\
+    OPTIONS:\n\
+    -m, --members-from-file=FILE\n\
+                    Read archive member names from file\n\
+    -l, --list      Just show the file list\n\
+        --autodir   Add to OUTPUT_DIR a directory with name = input archive name.\n\
+                     Same as manual 'un7z arc.7z -C odir/arc'.\n\
+";
+}
+
 #include <fcom.h>
 #include <ffpack/7zread.h>
 #include <ffsys/path.h>
@@ -30,21 +45,6 @@ struct un7z {
 	ffvec members_data;
 	ffmap members; // char*[]
 };
-
-static const char* un7z_help()
-{
-	return "\
-Unpack files from .7z.\n\
-Usage:\n\
-  fcom un7z INPUT... [-C OUTPUT_DIR]\n\
-    OPTIONS:\n\
-    -m, --members-from-file=FILE\n\
-                    Read archive member names from file\n\
-    -l, --list      Just show the file list\n\
-        --autodir   Add to OUTPUT_DIR a directory with name = input archive name.\n\
-                     Same as manual 'un7z arc.7z -C odir/arc'.\n\
-";
-}
 
 static int members_keyeq(void *opaque, const void *key, ffsize keylen, void *val)
 {
@@ -133,7 +133,7 @@ static void un7z_close(fcom_op *op)
 	ff7zread_close(&z->z7);
 	core->file->destroy(z->in);
 	if (z->del_on_close)
-		core->file->delete(z->oname, 0);
+		core->file->del(z->oname, 0);
 	core->file->destroy(z->out);
 	ffvec_free(&z->buf);
 	ffmem_free(z->oname);
@@ -169,20 +169,23 @@ static void un7z_showinfo(struct un7z *z, const ff7zread_fileinfo *zf)
 {
 	ffvec *b = &z->buf;
 	b->len = 0;
-	if (zf->attr & FFFILE_WIN_DIR) {
-		ffvec_addsz(b, "       <DIR>                  ");
-	} else {
-		ffvec_addfmt(b, "%12U", zf->size);
+
+	if (core->verbose) {
+		if (zf->attr & FFFILE_WIN_DIR) {
+			ffvec_addsz(b, "       <DIR>                  ");
+		} else {
+			ffvec_addfmt(b, "%12U", zf->size);
+		}
+		ffvec_addchar(b, ' ');
+
+		ffdatetime dt;
+		fftime m = zf->mtime;
+		m.sec += FFTIME_1970_SECONDS + core->tz.real_offset;
+
+		fftime_split1(&dt, &m);
+		b->len += fftime_tostr1(&dt, ffslice_end(b, 1), ffvec_unused(b), FFTIME_DATE_YMD | FFTIME_HMS);
+		ffvec_addchar(b, ' ');
 	}
-	ffvec_addchar(b, ' ');
-
-	ffdatetime dt;
-	fftime m = zf->mtime;
-	m.sec += FFTIME_1970_SECONDS + core->tz.real_offset;
-
-	fftime_split1(&dt, &m);
-	b->len += fftime_tostr1(&dt, ffslice_end(b, 1), ffvec_unused(b), FFTIME_DATE_YMD | FFTIME_HMS);
-	ffvec_addchar(b, ' ');
 
 	if (ffutf8_valid(zf->name.ptr, zf->name.len)) {
 		ffvec_addstr(b, &zf->name);

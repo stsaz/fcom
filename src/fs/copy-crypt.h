@@ -10,11 +10,11 @@ static int crypt_init(struct copy *c)
 		return -1;
 	}
 
-	if (NULL == (c->cr.sha256 = core->com->provide("crypto.sha256", 0)))
+	if (NULL == (c->cr.sha256 = (fcom_hash*)core->com->provide("crypto.sha256", 0)))
 		return -1;
 
 	const char *opname = (c->encrypt.len != 0) ? "crypto.fcom_aes_encrypt" : "crypto.fcom_aes_decrypt";
-	if (NULL == (c->cr.aes = core->com->provide(opname, 0)))
+	if (NULL == (c->cr.aes = (fcom_aes*)core->com->provide(opname, 0)))
 		return -1;
 
 	ffvec_alloc(&c->cr.aes_buf, 64*1024, 1);

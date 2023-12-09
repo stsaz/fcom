@@ -22,49 +22,21 @@ fi
 set -x
 set -e
 
-test_copy() {
-
+test_copy_update() {
 	cd fcomtest
 	echo hello >file
 
-	# file -> file
-	chmod a+x file
-	../fcom copy "file" -o "file.out"
-	diff file file.out
-	ls -l file file.out
+	../fcom copy --update "file" -o "file-u" -v ; diff file file-u
+	../fcom -D copy --update "file" -o "file-u" -v 2>&1 | grep -E 'update.*skipping' ; diff file file-u
 
-	# file -> file (exists)
-	../fcom copy "file" -o "file.out" || true
+	cd ..
+}
 
-	# file -> file (overwrite)
-	../fcom copy "file" -o "file.out" --overwrite
-
-	# file -> dir/file
-	mkdir dir
-	../fcom copy "file" -C "dir"
-	diff file dir/file
-
-	# file -> dir/file
-	../fcom copy "file" -C "dir" -o "testfile2"
-	diff file dir/testfile2
-
-	# dir -> dir
-	mkdir dirempty
-	../fcom copy "dirempty" -o "dirempty2"
-	test -d dirempty2
-
-	# Update
-	../fcom copy --update "file" -o "testfile2" -v
-
-	# Verify
-	../fcom copy "file" -o "file.out.verify" --verify -f
-
-	# Crypt
-	../fcom copy "file" -o "file.out.encrypt" --encrypt="123"
-	../fcom copy "file.out.encrypt" -o "file.out.decrypt" --decrypt="123"
-	diff file file.out.decrypt
-	../fcom copy "file.out.encrypt" -o "file.out.decrypt" --decrypt="123" --verify -f
-	diff file file.out.decrypt
+test_copy_recursive() {
+	cd fcomtest
+	echo hello >file
+	mkdir -p dir
+	echo hello >dir/file
 
 	# Recursive: dir -> dir
 	mkdir -p dirempty dircopy
@@ -123,6 +95,54 @@ test_copy() {
 	cd ..
 }
 
+test_copy() {
+
+	cd fcomtest
+	echo hello >file
+
+	# file -> file
+	chmod a+x file
+	../fcom copy "file" -o "file.out"
+	diff file file.out
+	ls -l file file.out
+
+	# file -> file (exists)
+	../fcom copy "file" -o "file.out" || true
+
+	# file -> file (overwrite)
+	../fcom copy "file" -o "file.out" --overwrite
+
+	# file -> dir/file
+	mkdir dir
+	../fcom copy "file" -C "dir"
+	diff file dir/file
+
+	# file -> dir/file
+	../fcom copy "file" -C "dir" -o "testfile2"
+	diff file dir/testfile2
+
+	# dir -> dir
+	mkdir dirempty
+	../fcom copy "dirempty" -o "dirempty2"
+	test -d dirempty2
+
+	# Verify
+	../fcom copy "file" -o "file.out.md5" --md5
+	../fcom copy "file" -o "file.out.verify" --verify -f
+
+	# Crypt
+	../fcom copy "file" -o "file.out.encrypt" --encrypt="123"
+	../fcom copy "file.out.encrypt" -o "file.out.decrypt" --decrypt="123"
+	diff file file.out.decrypt
+	../fcom copy "file.out.encrypt" -o "file.out.decrypt" --decrypt="123" --verify -f
+	diff file file.out.decrypt
+
+	cd ..
+
+	test_copy_update
+	test_copy_recursive
+}
+
 test_hex() {
 
 	echo abc123 >fcomtest/hex
@@ -131,12 +151,10 @@ test_hex() {
 }
 
 test_list() {
-
-	./fcom list "fcomtest"
-	echo fcomtest >fcomtest/list
-
-	./fcom list "@fcomtest/list"
-	echo fcomtest | ./fcom list "@"
+	echo hello >fcomtest/list
+	./fcom list
+	./fcom list "fcomtest" "."
+	./fcom list -l "fcomtest" "."
 }
 
 test_md5() {
@@ -352,6 +370,7 @@ test_un7z() {
 	./fcom un7z "fcomtest/7z.7z" -C "fcomtest/un7z" -v
 	diff fcomtest/un7z/fcomtest/file fcomtest/file
 
+	./fcom un7z "fcomtest/7z.7z" -C "fcomtest/un7z" -l
 	./fcom un7z "fcomtest/7z.7z" -C "fcomtest/un7z" -l -v
 }
 

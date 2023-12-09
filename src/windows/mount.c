@@ -1,6 +1,16 @@
 /** fcom: Mount logical volumes (Windows)
 2023, Simon Zolin */
 
+static const char* mount_help()
+{
+	return "\
+Mount logical volumes.\n\
+Usage:\n\
+  fcom mount DISK -o PATH (Mount)\n\
+  fcom mount \"\" -o PATH (Unmount)\n\
+";
+}
+
 #include <fcom.h>
 #include <ffsys/std.h>
 #include <ffsys/volume.h>
@@ -11,16 +21,6 @@ struct mount {
 	fcom_cominfo *cmd;
 	uint stop;
 };
-
-static const char* mount_help()
-{
-	return "\
-Mount logical volumes.\n\
-Usage:\n\
-  fcom mount DISK -o PATH (Mount)\n\
-  fcom mount \"\" -o PATH (Unmount)\n\
-";
-}
 
 static int args_parse(struct mount *m, fcom_cominfo *cmd)
 {

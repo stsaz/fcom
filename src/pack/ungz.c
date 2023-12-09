@@ -1,6 +1,15 @@
 /** fcom: unpack file from .gz
 2023, Simon Zolin */
 
+static const char* ungz_help()
+{
+	return "\
+Decompress file from .gz.\n\
+Usage:\n\
+  fcom ungz INPUT [OPTIONS] [-o OUTPUT]\n\
+";
+}
+
 #include <fcom.h>
 #include <ffsys/path.h>
 #include <ffpack/gzread.h>
@@ -26,15 +35,6 @@ struct ungz {
 	uint64 in_total, out_total;
 };
 
-static const char* ungz_help()
-{
-	return "\
-Decompress file from .gz.\n\
-Usage:\n\
-  fcom ungz INPUT [OPTIONS] [-o OUTPUT]\n\
-";
-}
-
 static int args_parse(struct ungz *z, fcom_cominfo *cmd)
 {
 	static const ffcmdarg_arg args[] = {
@@ -55,7 +55,7 @@ static void ungz_close(fcom_op *op)
 	ffgzread_close(&z->ungz);
 	core->file->destroy(z->in);
 	if (z->del_on_close)
-		core->file->delete(z->oname, 0);
+		core->file->del(z->oname, 0);
 	core->file->destroy(z->out);
 	ffmem_free(z->oname);
 	ffmem_free(z);

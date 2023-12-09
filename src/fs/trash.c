@@ -1,6 +1,20 @@
 /** fcom: move files to user's trash directory
 2022, Simon Zolin */
 
+static const char* trash_help()
+{
+	return "\
+Move files to user's trash directory, plus obfuscation.\n\
+Usage:\n\
+  fcom trash INPUT...\n\
+    OPTIONS:\n\
+    -w, --wipe          Overwrite data to hide file content (files-only).\n\
+                        Additionally, set file modification time to 2000-01-01.\n\
+    -n, --rename        Rename to \"00000000.0000\" before deleting (files-only)\n\
+    -f                  Delete from disk if moving to Trash has failed (files-only)\n\
+";
+}
+
 #ifdef _WIN32
 #include <util/winapi-shell.h>
 #endif
@@ -21,20 +35,6 @@ struct trash {
 	byte wipe;
 	byte rename;
 };
-
-static const char* trash_help()
-{
-	return "\
-Move files to user's trash directory, plus obfuscation.\n\
-Usage:\n\
-  fcom trash INPUT...\n\
-    OPTIONS:\n\
-    -w, --wipe          Overwrite data to hide file content (files-only).\n\
-                        Additionally, set file modification time to 2000-01-01.\n\
-    -n, --rename        Rename to \"00000000.0000\" before deleting (files-only)\n\
-    -f                  Delete from disk if moving to Trash has failed (files-only)\n\
-";
-}
 
 static int args_parse(struct trash *t, fcom_cominfo *cmd)
 {
@@ -195,7 +195,7 @@ static int f_del(ffvec names)
 	uint n = 0;
 	const char **namez;
 	FFSLICE_WALK(&names, namez) {
-		if (0 != core->file->delete(*namez, 0))
+		if (0 != core->file->del(*namez, 0))
 			n++;
 	}
 
@@ -291,7 +291,7 @@ static void trash_run(fcom_op *op)
 					if (t->cmd->overwrite && !t->cmd->test) {
 						fcom_verblog("%s: can't move to trash.  Deleting."
 							, fn);
-						if (0 == core->file->delete(fn, 0)) {
+						if (0 == core->file->del(fn, 0)) {
 							n_deleted++;
 						}
 					}

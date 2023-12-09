@@ -26,6 +26,8 @@ ifeq "$(ASAN)" "1"
 	CFLAGS += -fsanitize=address
 	LINKFLAGS += -fsanitize=address
 endif
+CXXFLAGS := $(CFLAGS)
+LINKXXFLAGS := $(LINKFLAGS) -static-libstdc++ -static-libgcc
 
 # build, install
 default: build

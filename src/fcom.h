@@ -11,12 +11,13 @@
 #include <ffbase/vector.h>
 #include <assert.h>
 
-#define FCOM_VER "1.0beta8+"
+#define FCOM_VER "1.0-beta9"
 #define FCOM_CORE_VER 107
 
 #undef stdin
 #undef stdout
 typedef ffbyte byte;
+typedef ffushort ushort;
 typedef ffuint uint;
 typedef ffuint64 uint64;
 
@@ -302,6 +303,7 @@ enum FCOM_FILE_OPEN {
 	FCOM_FILE_FAKEWRITE = 0x80,
 	FCOM_FILE_NO_PREALLOC = 0x0100,
 	FCOM_FILE_INFO_NOFOLLOW = 0x0200, // info(): don't follow symlinks
+	FCOM_FILE_READAHEAD = 0x0400, // Windows: enable "read-ahead"
 };
 
 static inline uint fcom_file_cominfo_flags_i(fcom_cominfo *cmd)
@@ -420,7 +422,7 @@ struct fcom_file {
 	int (*move)(ffstr old, ffstr _new, uint flags);
 
 	/** Delete file */
-	int (*delete)(const char *name, uint flags);
+	int (*del)(const char *name, uint flags);
 };
 
 static inline fftime fffileinfo_mtime1(const fffileinfo *fi)

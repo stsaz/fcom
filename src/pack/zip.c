@@ -1,6 +1,23 @@
 /** fcom: pack files into .zip
 2022, Simon Zolin */
 
+static const char* zip_help()
+{
+	return "\
+Pack files into .zip.\n\
+Implies '--recursive'.\n\
+Usage:\n\
+  fcom zip INPUT... [OPTIONS] [-o OUTPUT.zip]\n\
+    OPTIONS:\n\
+    -m, --method=STR    Compression method:\n\
+                          deflate (default), zstd, store\n\
+    -l, --level=INT     Compression level:\n\
+                          deflate: 1..9; default:6\n\
+                          zstd:   -7..22; default:3\n\
+    -j, --workers=INT   N of threads for compression (zstd)\n\
+";
+}
+
 #include <fcom.h>
 #include <ffpack/zipwrite.h>
 #include <ffsys/path.h>
@@ -31,23 +48,6 @@ struct zip {
 };
 
 #define MIN_COMPRESS_SIZE 32
-
-static const char* zip_help()
-{
-	return "\
-Pack files into .zip.\n\
-Implies '--recursive'.\n\
-Usage:\n\
-  fcom zip INPUT... [OPTIONS] [-o OUTPUT.zip]\n\
-    OPTIONS:\n\
-    -m, --method=STR    Compression method:\n\
-                          deflate (default), zstd, store\n\
-    -l, --level=INT     Compression level:\n\
-                          deflate: 1..9; default:6\n\
-                          zstd:   -7..22; default:3\n\
-    -j, --workers=INT   N of threads for compression (zstd)\n\
-";
-}
 
 static int arg_method(ffcmdarg_scheme *as, void *obj, ffstr *val)
 {
@@ -106,7 +106,7 @@ static void zip_close(fcom_op *op)
 	ffzipwrite_destroy(&z->wzip);
 	core->file->destroy(z->in);
 	if (z->del_on_close)
-		core->file->delete(z->cmd->output.ptr, 0);
+		core->file->del(z->cmd->output.ptr, 0);
 	core->file->destroy(z->out);
 	if (z->crc32_obj != NULL)
 		z->crc32->close(z->crc32_obj);

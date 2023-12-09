@@ -6,7 +6,7 @@ static int output_init(struct copy *c)
 	struct fcom_file_conf fc = {};
 	fc.buffer_size = c->cmd->buffer_size;
 	fc.n_buffers = 1;
-	c->out = core->file->create(&fc);
+	c->output.create(&fc);
 	return 0;
 }
 
@@ -14,18 +14,17 @@ static void output_close(struct copy *c)
 {
 	if (c->del_on_close) {
 		if (!c->write_into) {
-			core->file->delete(c->oname_tmp, 0);
+			core->file->del(c->oname_tmp, 0);
 		}
-		core->file->delete(c->oname, 0);
+		core->file->del(c->oname, 0);
 	}
-	core->file->destroy(c->out);
 	ffmem_free0(c->oname);
 	ffmem_free0(c->oname_tmp);
 }
 
 static void output_trash_complete(void *param, int result)
 {
-	struct copy *c = param;
+	struct copy *c = (struct copy*)param;
 	copy_run(c);
 }
 
@@ -34,11 +33,11 @@ static int output_fin(struct copy *c)
 	switch (c->ostate) {
 	case 0:
 		if (1)
-			core->file->attr_set(c->out, fffileinfo_attr(&c->fi));
-		core->file->close(c->out);
+			c->output.attr(c->fi.attr());
+		c->output.close();
 		c->del_on_close = 0;
 
-		if (!c->cmd->stdout && !c->write_into && 0 != fffileinfo_size(&c->ofi)) {
+		if (!c->cmd->stdout && !c->write_into && 0 != c->ofi.size()) {
 
 			fcom_cominfo *ci = core->com->create();
 			ci->operation = ffsz_dup("trash");
@@ -117,44 +116,45 @@ static char* out_name(struct copy *c, ffstr in, ffstr base)
 
 static int output_open(struct copy *c)
 {
+	if (c->update
+		&& !fffile_info_path(c->oname, &c->ofi.info)) {
+
+		if (c->ofi.dir()) {
+			fcom_errlog("output file is an existing directory. Use '-C DIR' to copy files into this directory.");
+			return 0xbad;
+		}
+
+		if (fftime_cmp(&xxrval(c->fi.mtime1()), &xxrval(c->ofi.mtime1())) <= 0) {
+			fcom_dbglog("--update: target file is of the same date or newer; skipping");
+			return 'skip';
+		}
+	}
+
 	uint flags = FCOM_FILE_WRITE;
 	if (c->verify)
 		flags = FCOM_FILE_READWRITE | FCOM_FILE_DIRECTIO;
 	flags |= fcom_file_cominfo_flags_o(c->cmd);
 
-	int r = core->file->open(c->out, c->oname, flags);
+	int r = c->output.open(c->oname, flags);
 	if (r == FCOM_FILE_ERR)
 		return 0xbad;
 
 	if (!c->cmd->stdout) {
-		r = core->file->info(c->out, &c->ofi);
+		r = c->output.info(&c->ofi);
 		if (r == FCOM_FILE_ERR)
 			return 0xbad;
-		if (fffile_isdir(fffileinfo_attr(&c->ofi))) {
-			fcom_errlog("output file is an existing directory. Use '-C DIR' to copy files into this directory.");
-			return 0xbad;
-		}
-
-		if (c->update) {
-			fftime imt = fffileinfo_mtime(&c->fi);
-			fftime omt = fffileinfo_mtime(&c->ofi);
-			if (fftime_cmp(&imt, &omt) <= 0) {
-				fcom_dbglog("--update: skipping file");
-				return 'skip';
-			}
-		}
 
 		if (!c->write_into) {
-			core->file->close(c->out);
-			r = core->file->open(c->out, c->oname_tmp, flags);
+			c->output.close();
+			r = c->output.open(c->oname_tmp, flags);
 			if (r == FCOM_FILE_ERR)
 				return 0xbad;
 
-			fffileinfo fi;
-			r = core->file->info(c->out, &fi);
+			xxfileinfo fi;
+			r = c->output.info(&fi);
 			if (r == FCOM_FILE_ERR)
 				return 0xbad;
-			if (0 != fffileinfo_size(&fi)) {
+			if (0 != fi.size()) {
 				fcom_errlog("temp file %s already exists - check & delete it manually", c->oname_tmp);
 				return 0xbad;
 			}
@@ -167,7 +167,7 @@ static int output_open(struct copy *c)
 
 static int output_write(struct copy *c, ffstr input)
 {
-	int r = core->file->write(c->out, input, c->out_off);
+	int r = c->output.write(input, c->out_off);
 	if (r == FCOM_FILE_ERR) return 0xbad;
 	c->out_off += input.len;
 	c->total += input.len;

@@ -1,6 +1,15 @@
 /** fcom: extract files from .ico
 2023, Simon Zolin */
 
+static const char* icoex_help()
+{
+	return "\
+Extract files from .ico.\n\
+Usage:\n\
+  fcom ico-extract INPUT... [-C OUTPUT_DIR]\n\
+";
+}
+
 #include <fcom.h>
 #include <util/ico-read.h>
 #include <util/pixel-conv.h>
@@ -29,15 +38,6 @@ struct icoex {
 	uint conv :1;
 };
 
-static const char* icoex_help()
-{
-	return "\
-Extract files from .ico.\n\
-Usage:\n\
-  fcom ico-extract INPUT... [-C OUTPUT_DIR]\n\
-";
-}
-
 static int icoex_args_parse(struct icoex *c, fcom_cominfo *cmd)
 {
 	static const ffcmdarg_arg args[] = {
@@ -59,7 +59,7 @@ static void icoex_close(fcom_op *op)
 	icoread_close(&c->rico);
 	core->file->destroy(c->in);
 	if (c->del_on_close)
-		core->file->delete(c->oname, 0);
+		core->file->del(c->oname, 0);
 	core->file->destroy(c->out);
 	ffmem_free(c->oname);
 	ffvec_free(&c->buf);

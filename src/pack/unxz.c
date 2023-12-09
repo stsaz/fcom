@@ -1,6 +1,15 @@
 /** fcom: unpack file from .xz
 2023, Simon Zolin */
 
+static const char* unxz_help()
+{
+	return "\
+Decompress file from .xz.\n\
+Usage:\n\
+  fcom unxz INPUT [OPTIONS] [-o OUTPUT]\n\
+";
+}
+
 #include <fcom.h>
 #include <ffsys/path.h>
 #include <ffpack/xzread.h>
@@ -26,15 +35,6 @@ struct unxz {
 	uint64 in_total, out_total;
 };
 
-static const char* unxz_help()
-{
-	return "\
-Decompress file from .xz.\n\
-Usage:\n\
-  fcom unxz INPUT [OPTIONS] [-o OUTPUT]\n\
-";
-}
-
 static int args_parse(struct unxz *z, fcom_cominfo *cmd)
 {
 	static const ffcmdarg_arg args[] = {
@@ -55,7 +55,7 @@ static void unxz_close(fcom_op *op)
 	ffxzread_close(&z->unxz);
 	core->file->destroy(z->in);
 	if (z->del_on_close)
-		core->file->delete(z->oname, 0);
+		core->file->del(z->oname, 0);
 	core->file->destroy(z->out);
 	ffmem_free(z->oname);
 	ffmem_free(z);

@@ -1,6 +1,18 @@
 /** fcom: Windows Registry utils
 2023, Simon Zolin */
 
+static const char* reg_help()
+{
+	return "\
+Windows Registry utils: search.\n\
+Usage:\n\
+  fcom reg search [HKEY...] TEXT... [-o OUTPUT]\n\
+\n\
+HKEY: HKEY_CLASSES_ROOT | HKEY_CURRENT_USER | HKEY_LOCAL_MACHINE | HKEY_USERS\n\
+  Default: HKEY_CURRENT_USER and HKEY_LOCAL_MACHINE\n\
+";
+}
+
 #include <fcom.h>
 #include <ffsys/winreg.h>
 #include <ffsys/globals.h>
@@ -46,18 +58,6 @@ static int args_parse(struct reg *g, fcom_cominfo *cmd)
 		return -1;
 
 	return 0;
-}
-
-static const char* reg_help()
-{
-	return "\
-Windows Registry utils: search.\n\
-Usage:\n\
-  fcom reg search [HKEY...] TEXT... [-o OUTPUT]\n\
-\n\
-HKEY: HKEY_CLASSES_ROOT | HKEY_CURRENT_USER | HKEY_LOCAL_MACHINE | HKEY_USERS\n\
-  Default: HKEY_CURRENT_USER and HKEY_LOCAL_MACHINE\n\
-";
 }
 
 static void reg_close(fcom_op *op)

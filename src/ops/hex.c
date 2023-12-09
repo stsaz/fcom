@@ -1,6 +1,15 @@
 /** fcom: print file contents in hexadecimal format
 2022, Simon Zolin */
 
+static const char* hex_help()
+{
+	return "\
+Print file contents in hexadecimal format.\n\
+Usage:\n\
+  fcom hex INPUT... [OPTIONS]\n\
+";
+}
+
 #include <fcom.h>
 #include <ffbase/mem-print.h>
 
@@ -28,15 +37,6 @@ static int args_parse(struct hex *h, fcom_cominfo *cmd)
 		h->cmd->stdout = 1;
 
 	return 0;
-}
-
-static const char* hex_help()
-{
-	return "\
-Print file contents in hexadecimal format.\n\
-Usage:\n\
-  fcom hex INPUT... [OPTIONS]\n\
-";
 }
 
 static void hex_close(fcom_op *op)

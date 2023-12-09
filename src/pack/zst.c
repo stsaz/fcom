@@ -1,6 +1,18 @@
 /** fcom: pack file into .zst
 2023, Simon Zolin */
 
+static const char* zst_help()
+{
+	return "\
+Compress file into .zst.\n\
+Usage:\n\
+  fcom zst INPUT [OPTIONS] [-o OUTPUT.zst]\n\
+    OPTIONS:\n\
+    -l, --level=INT     Compression level: -7..22; default:3\n\
+    -w, --workers=INT   N of threads for compression; default:1\n\
+";
+}
+
 #include <fcom.h>
 #include <ffsys/globals.h>
 #include <ffsys/path.h>
@@ -26,18 +38,6 @@ struct zst {
 	byte level;
 	byte workers;
 };
-
-static const char* zst_help()
-{
-	return "\
-Compress file into .zst.\n\
-Usage:\n\
-  fcom zst INPUT [OPTIONS] [-o OUTPUT.zst]\n\
-    OPTIONS:\n\
-    -l, --level=INT     Compression level: -7..22; default:3\n\
-    -w, --workers=INT   N of threads for compression; default:1\n\
-";
-}
 
 #define O(member)  FF_OFF(struct zst, member)
 
@@ -69,7 +69,7 @@ static void zst_close(fcom_op *op)
 	zstd_encode_free(z->zst);
 	core->file->destroy(z->in);
 	if (z->del_on_close)
-		core->file->delete(z->oname, 0);
+		core->file->del(z->oname, 0);
 	core->file->destroy(z->out);
 	ffmem_free(z->oname);
 	ffvec_free(&z->buf);

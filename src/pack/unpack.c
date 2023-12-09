@@ -1,6 +1,18 @@
 /** fcom: Unpack files from all supported archive types
 2023, Simon Zolin */
 
+static const char* unpack_help()
+{
+	return "\
+Unpack files from all supported archive types.\n\
+Usage:\n\
+  fcom unpack INPUT... [-C OUTPUT_DIR]\n\
+    OPTIONS:\n\
+        --autodir   Add to OUTPUT_DIR a directory with name = input archive name.\n\
+                     Same as manual 'unpack arc.xxx -C odir/arc'.\n\
+";
+}
+
 #include <fcom.h>
 #include <ffsys/path.h>
 #include <ffsys/pipe.h>
@@ -18,18 +30,6 @@ struct unpack {
 	// conf:
 	byte autodir;
 };
-
-static const char* unpack_help()
-{
-	return "\
-Unpack files from all supported archive types.\n\
-Usage:\n\
-  fcom unpack INPUT... [-C OUTPUT_DIR]\n\
-    OPTIONS:\n\
-        --autodir   Add to OUTPUT_DIR a directory with name = input archive name.\n\
-                     Same as manual 'unpack arc.xxx -C odir/arc'.\n\
-";
-}
 
 #define O(member)  FF_OFF(struct unpack, member)
 

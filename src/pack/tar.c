@@ -1,6 +1,16 @@
 /** fcom: pack files into .tar
 2023, Simon Zolin */
 
+static const char* tar_help()
+{
+	return "\
+Pack files into .tar.\n\
+Implies '--recursive'.\n\
+Usage:\n\
+  fcom tar INPUT... [OPTIONS] -o OUTPUT.tar\n\
+";
+}
+
 #include <fcom.h>
 #include <ffpack/tarwrite.h>
 #include <ffsys/globals.h>
@@ -20,16 +30,6 @@ struct tar {
 	uint del_on_close :1;
 	uint link :1;
 };
-
-static const char* tar_help()
-{
-	return "\
-Pack files into .tar.\n\
-Implies '--recursive'.\n\
-Usage:\n\
-  fcom tar INPUT... [OPTIONS] -o OUTPUT.tar\n\
-";
-}
 
 #define O(member)  FF_OFF(struct tar, member)
 
@@ -60,7 +60,7 @@ static void tar_close(fcom_op *op)
 	fftarwrite_destroy(&t->wtar);
 	core->file->destroy(t->in);
 	if (t->del_on_close)
-		core->file->delete(t->cmd->output.ptr, 0);
+		core->file->del(t->cmd->output.ptr, 0);
 	core->file->destroy(t->out);
 	ffvec_free(&t->buf);
 	ffmem_free(t);

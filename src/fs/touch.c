@@ -1,6 +1,20 @@
 /** fcom: change file date/time
 2022, Simon Zolin */
 
+static const char* touch_help()
+{
+	return "\
+Change file date/time.\n\
+By default uses the current date/time.\n\
+Usage:\n\
+  fcom touch INPUT... [OPTIONS]\n\
+    OPTIONS:\n\
+    -d, --date=STR      Set local date/time\n\
+    -r, --reference=FILE\n\
+                        Set date/time from this file\n\
+";
+}
+
 #include <fcom.h>
 
 static const fcom_core *core;
@@ -38,20 +52,6 @@ static int args_parse(struct touch *t, fcom_cominfo *cmd)
 		{}
 	};
 	return core->com->args_parse(cmd, args, t);
-}
-
-static const char* touch_help()
-{
-	return "\
-Change file date/time.\n\
-By default uses the current date/time.\n\
-Usage:\n\
-  fcom touch INPUT... [OPTIONS]\n\
-    OPTIONS:\n\
-    -d, --date=STR      Set local date/time\n\
-    -r, --reference=FILE\n\
-                        Set date/time from this file\n\
-";
 }
 
 static void touch_close(fcom_op *op)

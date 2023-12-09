@@ -1,6 +1,22 @@
 /** fcom: unpack files from .tar
 2023, Simon Zolin */
 
+static const char* untar_help()
+{
+	return "\
+Unpack files from .tar.\n\
+Usage:\n\
+  fcom untar INPUT... [-C OUTPUT_DIR]\n\
+    OPTIONS:\n\
+    -m, --members-from-file=FILE\n\
+                    Read archive member names from file\n\
+    -l, --list      Just show the file list\n\
+        --plain     Plain file names\n\
+        --autodir   Add to OUTPUT_DIR a directory with name = input archive name.\n\
+                     Same as manual 'untar arc.tar -C odir/arc'.\n\
+";
+}
+
 #include <fcom.h>
 #include <ffpack/tarread.h>
 #include <ffsys/path.h>
@@ -26,22 +42,6 @@ struct untar {
 	ffvec members_data;
 	ffmap members; // char*[]
 };
-
-static const char* untar_help()
-{
-	return "\
-Unpack files from .tar.\n\
-Usage:\n\
-  fcom untar INPUT... [-C OUTPUT_DIR]\n\
-    OPTIONS:\n\
-    -m, --members-from-file=FILE\n\
-                    Read archive member names from file\n\
-    -l, --list      Just show the file list\n\
-        --plain     Plain file names\n\
-        --autodir   Add to OUTPUT_DIR a directory with name = input archive name.\n\
-                     Same as manual 'untar arc.tar -C odir/arc'.\n\
-";
-}
 
 static int members_keyeq(void *opaque, const void *key, ffsize keylen, void *val)
 {
@@ -126,7 +126,7 @@ static void untar_close(fcom_op *op)
 	fftarread_close(&t->rtar);
 	core->file->destroy(t->in);
 	if (t->del_on_close)
-		core->file->delete(t->oname, 0);
+		core->file->del(t->oname, 0);
 	core->file->destroy(t->out);
 	ffvec_free(&t->buf);
 	ffmem_free(t->oname);

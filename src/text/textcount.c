@@ -1,6 +1,15 @@
 /** fcom: analyze text files
 2022, Simon Zolin */
 
+static const char* txcnt_help()
+{
+	return "\
+Analyze text files (e.g. print number of lines).\n\
+Usage:\n\
+  fcom textcount INPUT... [OPTIONS]\n\
+";
+}
+
 #include <fcom.h>
 
 static const fcom_core *core;
@@ -38,15 +47,6 @@ static int args_parse(struct txcnt *c, fcom_cominfo *cmd)
 		c->cmd->stdout = 1;
 
 	return 0;
-}
-
-static const char* txcnt_help()
-{
-	return "\
-Analyze text files (e.g. print number of lines).\n\
-Usage:\n\
-  fcom textcount INPUT... [OPTIONS]\n\
-";
 }
 
 static void txcnt_close(fcom_op *op)

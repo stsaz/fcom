@@ -1,6 +1,16 @@
 /** fcom: pack files into .iso
 2023, Simon Zolin */
 
+static const char* iso_help()
+{
+	return "\
+Pack files into .iso.\n\
+Implies '--recursive'.\n\
+Usage:\n\
+  fcom iso INPUT... [OPTIONS] -o OUTPUT.iso\n\
+";
+}
+
 #include <fcom.h>
 #include <ffpack/isowrite.h>
 #include <ffpack/isoread.h>
@@ -29,16 +39,6 @@ struct iso {
 };
 
 #define MIN_COMPRESS_SIZE 32
-
-static const char* iso_help()
-{
-	return "\
-Pack files into .iso.\n\
-Implies '--recursive'.\n\
-Usage:\n\
-  fcom iso INPUT... [OPTIONS] -o OUTPUT.iso\n\
-";
-}
 
 #define O(member)  FF_OFF(struct iso, member)
 
@@ -69,7 +69,7 @@ static void iso_close(fcom_op *op)
 	ffisowrite_close(&c->iso);
 	core->file->destroy(c->in);
 	if (c->del_on_close)
-		core->file->delete(c->cmd->output.ptr, 0);
+		core->file->del(c->cmd->output.ptr, 0);
 	core->file->destroy(c->out);
 
 	char **it;

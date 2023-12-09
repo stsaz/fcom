@@ -1,6 +1,15 @@
 /** fcom: unpack file from .zst
 2023, Simon Zolin */
 
+static const char* unzst_help()
+{
+	return "\
+Decompress file from .zst.\n\
+Usage:\n\
+  fcom unzst INPUT [OPTIONS] [-o OUTPUT]\n\
+";
+}
+
 #include <fcom.h>
 #include <ffsys/path.h>
 #include <zstd/zstd-ff.h>
@@ -23,15 +32,6 @@ struct unzst {
 	uint64 in_total, out_total;
 };
 
-static const char* unzst_help()
-{
-	return "\
-Decompress file from .zst.\n\
-Usage:\n\
-  fcom unzst INPUT [OPTIONS] [-o OUTPUT]\n\
-";
-}
-
 static int args_parse(struct unzst *z, fcom_cominfo *cmd)
 {
 	static const ffcmdarg_arg args[] = {
@@ -52,7 +52,7 @@ static void unzst_close(fcom_op *op)
 	zstd_decode_free(z->zst);
 	core->file->destroy(z->in);
 	if (z->del_on_close)
-		core->file->delete(z->oname, 0);
+		core->file->del(z->oname, 0);
 	core->file->destroy(z->out);
 	ffmem_free(z->oname);
 	ffvec_free(&z->buf);

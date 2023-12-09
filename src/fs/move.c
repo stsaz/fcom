@@ -1,6 +1,29 @@
 /** fcom: move files
 2022, Simon Zolin */
 
+static const char* move_help()
+{
+	return "\
+Move and/or rename files.\n\
+Usage:\n\
+  fcom move INPUT... [OPTIONS]\n\
+    OPTIONS:\n\
+    -u, --unbranch      Move and rename a file out of its directory structure, e.g.\n\
+                            fcom move --unbranch ./a\n\
+                          moves/renames \"./a/b/file\" -> \"./a - b - file\"\n\
+        --unbranch-flat Move a file out of its directory structure, e.g.\n\
+                            fcom move --unbranch-flat ./a\n\
+                          moves \"./a/b/file\" -> \"./file\"\n\
+    -r, --replace='SEARCH/REPLACE'\n\
+                        Replace SEARCH text in file name with REPLACE\n\
+        --replace-once  Replace only the first occurrence\n\
+    -t, --tree          Preserve directory tree, e.g.\n\
+                            fcom move --tree a/b/c -C out\n\
+                          moves \"a/b/c\" to \"out/a/b/c\"\n\
+    -k, --skip-errors   Don't fail on error\n\
+";
+}
+
 #include <fcom.h>
 #include <ffsys/path.h>
 #include <ffsys/globals.h>
@@ -65,29 +88,6 @@ static int args_parse(struct move *m, fcom_cominfo *cmd)
 }
 
 #undef O
-
-static const char* move_help()
-{
-	return "\
-Move and/or rename files.\n\
-Usage:\n\
-  fcom move INPUT... [OPTIONS]\n\
-    OPTIONS:\n\
-    -u, --unbranch      Move and rename a file out of its directory structure, e.g.\n\
-                            fcom move --unbranch ./a\n\
-                          moves/renames \"./a/b/file\" -> \"./a - b - file\"\n\
-        --unbranch-flat Move a file out of its directory structure, e.g.\n\
-                            fcom move --unbranch-flat ./a\n\
-                          moves \"./a/b/file\" -> \"./file\"\n\
-    -r, --replace='SEARCH/REPLACE'\n\
-                        Replace SEARCH text in file name with REPLACE\n\
-        --replace-once  Replace only the first occurrence\n\
-    -t, --tree          Preserve directory tree, e.g.\n\
-                            fcom move --tree a/b/c -C out\n\
-                          moves \"a/b/c\" to \"out/a/b/c\"\n\
-    -k, --skip-errors   Don't fail on error\n\
-";
-}
 
 static void move_close(fcom_op *op)
 {

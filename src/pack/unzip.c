@@ -1,6 +1,24 @@
 /** fcom: unpack files from .zip
 2022, Simon Zolin */
 
+static const char* unzip_help()
+{
+	return "\
+Unpack files from .zip.\n\
+Usage:\n\
+  fcom unzip INPUT... [-C OUTPUT_DIR]\n\
+    OPTIONS:\n\
+    -m, --members-from-file=FILE\n\
+                    Read archive member names from file:\n\
+                    . full name (e.g. 'zipdir/file.ext');\n\
+                    . wildcard (e.g. '*/file.ext').\n\
+    -l, --list      Just show the file list\n\
+        --plain     Plain file names\n\
+        --autodir   Add to OUTPUT_DIR a directory with name = input archive name.\n\
+                     Same as manual 'unzip arc.zip -C odir/arc'.\n\
+";
+}
+
 #include <fcom.h>
 #include <ffpack/zipread.h>
 #include <ffsys/path.h>
@@ -42,24 +60,6 @@ struct unzip {
 	ffvec members_wildcard; // ffstr[]
 	ffmap members; // char*[]
 };
-
-static const char* unzip_help()
-{
-	return "\
-Unpack files from .zip.\n\
-Usage:\n\
-  fcom unzip INPUT... [-C OUTPUT_DIR]\n\
-    OPTIONS:\n\
-    -m, --members-from-file=FILE\n\
-                    Read archive member names from file:\n\
-                    . full name (e.g. 'zipdir/file.ext');\n\
-                    . wildcard (e.g. '*/file.ext').\n\
-    -l, --list      Just show the file list\n\
-        --plain     Plain file names\n\
-        --autodir   Add to OUTPUT_DIR a directory with name = input archive name.\n\
-                     Same as manual 'unzip arc.zip -C odir/arc'.\n\
-";
-}
 
 static int members_keyeq(void *opaque, const void *key, ffsize keylen, void *val)
 {
@@ -159,7 +159,7 @@ static void unzip_close(fcom_op *op)
 	ffzipread_close(&z->rzip);
 	core->file->destroy(z->in);
 	if (z->del_on_close)
-		core->file->delete(z->oname, 0);
+		core->file->del(z->oname, 0);
 	core->file->destroy(z->out);
 	ffvec_free(&z->files);
 	ffvec_free(&z->buf);
