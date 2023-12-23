@@ -57,7 +57,7 @@ b "/dir/dir1" {
 
 #include <fcom.h>
 #include <util/fntree.h>
-#include <util/ltconf.h>
+#include <util/util.hpp>
 #include <ffsys/path.h>
 #include <ffsys/globals.h>
 #include <ffbase/map.h>
@@ -105,15 +105,19 @@ struct srcdst {
 	ffstr root_dir;
 	fntree_block *root, *parent_blk;
 	fntree_cursor cur;
-	ffvec name;
+	ffvecxx name;
 	uint64 total;
+
+	~srcdst() {
+		fntree_free_all(root);
+	}
 };
 
 struct sync {
 	uint st;
 	fcom_cominfo *cmd;
-	struct srcdst src, dst;
-	fcom_file_obj *in;
+	struct srcdst	src, dst;
+	fcom_filexx		input;
 	ffstr name, dir;
 	struct ent ent;
 	uint stop;
@@ -122,9 +126,8 @@ struct sync {
 
 	struct {
 		uint state;
-		ffvec ibuf;
+		ffvecxx		ibuf;
 		ffstr data;
-		struct ltconf conf;
 		struct ent ent;
 		fntree_block *curblock;
 		fntree_entry *cur_ent;
@@ -133,18 +136,19 @@ struct sync {
 		const char *fn;
 	} sr;
 
-	struct {
-		fcom_file_obj *snap;
-		ffvec buf;
+	struct sw_s {
+		fcom_filexx	snap;
+		ffvecxx		buf;
 		uint bhdr :1;
 		uint bftr :1;
+		sw_s() : snap(core) {}
 	} sw;
 
 	struct {
 		fntree_cmp fcmp;
-		ffvec ents; // fntree_cmp_ent[]
+		ffvecxx		ents; // fntree_cmp_ent[]
 		ffmap moved; // hash(name, struct entdata) -> fntree_cmp_ent*
-		ffvec lname, rname;
+		ffvecxx		lname, rname;
 		uint cmp_idx;
 		struct {
 			uint eq, left, right, neq, moved;
@@ -153,7 +157,7 @@ struct sync {
 
 	struct {
 		uint cmp_idx;
-		ffvec lname, rname;
+		ffvecxx		lname, rname;
 		struct {
 			uint add, del, overwritten, moved;
 		} stats;
@@ -169,6 +173,8 @@ struct sync {
 	byte left_path_strip, right_path_strip;
 	byte diff_no_attr, diff_no_time;
 	byte diff_full_name;
+
+	sync() : input(core) {}
 };
 
 static void sync_close(fcom_op *op);
@@ -261,7 +267,7 @@ static int diff_flags_parse(const char *s)
 
 static fcom_op* sync_create(fcom_cominfo *cmd)
 {
-	struct sync *s = ffmem_new(struct sync);
+	struct sync *s = new(ffmem_new(struct sync)) struct sync;
 	s->cmd = cmd;
 
 	if (0 != args_parse(s, cmd))
@@ -276,19 +282,10 @@ end:
 
 static void sync_close(fcom_op *op)
 {
-	struct sync *s = op;
-	core->file->destroy(s->in);
-
-	ffvec_free(&s->src.name);
-	fntree_free_all(s->src.root);
-
-	ffvec_free(&s->dst.name);
-	fntree_free_all(s->dst.root);
-
+	struct sync *s = (struct sync*)op;
 	cmp_destroy(s);
-	fsync_destroy(s);
 	rsnap_destroy(s);
-	wsnap_destroy(s);
+	s->~sync();
 	ffmem_free(s);
 }
 
@@ -333,11 +330,11 @@ static int srcdst_add_dir(struct srcdst *sd, fffd fd)
 	flags = FFDIRSCAN_USEFD;
 #endif
 
-	if (0 != ffdirscan_open(&ds, sd->name.ptr, flags)) {
+	if (0 != ffdirscan_open(&ds, (char*)sd->name.ptr, flags)) {
 		fcom_syserrlog("ffdirscan_open");
 		return -1;
 	}
-	ffstr path = FFSTR_INITZ(sd->name.ptr);
+	ffstr path = FFSTR_INITZ((char*)sd->name.ptr);
 	fntree_block *b = fntree_from_dirscan(path, &ds, sizeof(struct entdata));
 	sd->total += b->entries;
 	fntree_attach((fntree_entry*)sd->cur.cur, b);
@@ -352,36 +349,36 @@ static int f_info(struct sync *s, ffstr name, struct ent *e, struct entdata *d, 
 {
 	uint flags = fcom_file_cominfo_flags_i(s->cmd);
 	flags |= FCOM_FILE_READ;
-	int r = core->file->open(s->in, name.ptr, flags);
+	int r = s->input.open(name.ptr, flags);
 	if (r == FCOM_FILE_ERR) return -1;
 
-	fffileinfo fi;
-	r = core->file->info(s->in, &fi);
+	xxfileinfo fi;
+	r = s->input.info(&fi);
 	if (r == FCOM_FILE_ERR) return -1;
 
 	ffmem_zero_obj(e);
 	e->type = 'f';
 
-	if (fffile_isdir(fffileinfo_attr(&fi))) {
+	if (fi.dir()) {
 		e->type = 'd';
-		*fd = core->file->fd(s->in, FCOM_FILE_ACQUIRE);
+		*fd = s->input.acquire_fd();
 	}
 
-	core->file->close(s->in);
+	s->input.close();
 
-	d->size = fffileinfo_size(&fi);
-	d->mtime = fffileinfo_mtime1(&fi);
+	d->size = fi.size();
+	d->mtime = fi.mtime1();
 	d->mtime.nsec = (d->mtime.nsec / 1000000) * 1000000;
 
 #ifdef FF_UNIX
-	d->unixattr = fffileinfo_attr(&fi);
-	d->uid = fi.st_uid;
-	d->gid = fi.st_gid;
+	d->unixattr = fi.attr();
+	d->uid = fi.info.st_uid;
+	d->gid = fi.info.st_gid;
 	d->winattr = 0;
 	if (e->type == 'd')
 		d->winattr |= FFFILE_WIN_DIR;
 #else
-	d->winattr = fffileinfo_attr(&fi);
+	d->winattr = fi.attr();
 	d->unixattr = 0;
 	if (e->type == 'd')
 		d->unixattr |= FFFILE_UNIX_DIR;
@@ -394,7 +391,7 @@ static int f_info(struct sync *s, ffstr name, struct ent *e, struct entdata *d, 
 
 static void sync_run(fcom_op *op)
 {
-	struct sync *s = op;
+	struct sync *s = (struct sync*)op;
 	int r, rc = 1;
 	enum {
 		I_INIT,
@@ -428,7 +425,7 @@ static void sync_run(fcom_op *op)
 
 			struct fcom_file_conf fc = {};
 			fc.buffer_size = s->cmd->buffer_size;
-			s->in = core->file->create(&fc);
+			s->input.create(&fc);
 			fcom_infolog("Scanning source...");
 			s->st = I_IN;
 		}
@@ -449,7 +446,7 @@ static void sync_run(fcom_op *op)
 				goto end;
 			}
 
-			struct entdata *d = fntree_data(e);
+			struct entdata *d = (entdata*)fntree_data(e);
 
 			if (r == RINPUT_NEW_DIR) {
 				if (s->hdr)
@@ -482,7 +479,7 @@ static void sync_run(fcom_op *op)
 				goto end;
 			}
 
-			ffstr *in = s->cmd->input.ptr;
+			ffstr *in = (ffstr*)s->cmd->input.ptr;
 			const char *fn = in[0].ptr;
 
 			r = rsnap_read(s, fn, &s->sr.data);
@@ -509,10 +506,10 @@ static void sync_run(fcom_op *op)
 			if (NULL == fntree_add(&s->dst.root, s->cmd->output, sizeof(struct entdata)))
 				goto end;
 
-			if (s->in == NULL) {
+			if (!s->input.f) {
 				struct fcom_file_conf fc = {};
 				fc.buffer_size = s->cmd->buffer_size;
-				s->in = core->file->create(&fc);
+				s->input.create(&fc);
 			}
 
 			fcom_infolog("Scanning target...");
@@ -531,7 +528,7 @@ static void sync_run(fcom_op *op)
 				goto end;
 			}
 
-			struct entdata *d = fntree_data(e);
+			struct entdata *d = (entdata*)fntree_data(e);
 			struct ent ent;
 			fffd fd = FFFILE_NULL;
 			if (0 != f_info(s, name, &ent, d, &fd))
@@ -593,7 +590,7 @@ end:
 
 static void sync_signal(fcom_op *op, uint signal)
 {
-	struct sync *s = op;
+	struct sync *s = (struct sync*)op;
 	FFINT_WRITEONCE(s->stop, 1);
 }
 
@@ -612,7 +609,7 @@ static const fcom_operation* sync_provide_op(const char *name)
 		return &fcom_op_sync;
 	return NULL;
 }
-FF_EXP const struct fcom_module fcom_module = {
+FCOM_EXPORT const struct fcom_module fcom_module = {
 	FCOM_VER, FCOM_CORE_VER,
 	sync_init, sync_destroy, sync_provide_op,
 };

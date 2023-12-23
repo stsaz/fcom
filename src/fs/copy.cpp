@@ -365,7 +365,7 @@ static const fcom_operation* copy_provide_op(const char *name)
 		return &fcom_op_copy;
 	return NULL;
 }
-extern "C" FF_EXP const struct fcom_module fcom_module = {
+FCOM_EXPORT const struct fcom_module fcom_module = {
 	FCOM_VER, FCOM_CORE_VER,
 	copy_init, copy_destroy, copy_provide_op,
 };

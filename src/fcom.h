@@ -21,6 +21,12 @@ typedef ffushort ushort;
 typedef ffuint uint;
 typedef ffuint64 uint64;
 
+#ifdef __cplusplus
+#define FCOM_EXPORT extern "C" FF_EXPORT
+#else
+#define FCOM_EXPORT FF_EXPORT
+#endif
+
 // CORE
 
 #define FCOM_ASSERT  assert

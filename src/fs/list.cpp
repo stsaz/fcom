@@ -183,7 +183,7 @@ static const fcom_operation* list_provide_op(const char *name)
 		return &fcom_op_list;
 	return NULL;
 }
-extern "C" FF_EXP const struct fcom_module fcom_module = {
+FCOM_EXPORT const struct fcom_module fcom_module = {
 	FCOM_VER, FCOM_CORE_VER,
 	list_init, list_destroy, list_provide_op,
 };

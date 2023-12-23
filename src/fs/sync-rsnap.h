@@ -6,7 +6,6 @@
 static void rsnap_destroy(struct sync *s)
 {
 	ffstr_free(&s->sr.ent.name);
-	ffvec_free(&s->sr.ibuf);
 }
 
 static int rsnap_read(struct sync *s, const char *fn, ffstr *output)
@@ -72,7 +71,7 @@ static int rsnap_file(ffconf_scheme *cs, struct sync *s, ffstr *val)
 
 		s->sr.state = 0;
 		fntree_entry *e = fntree_add(&s->sr.curblock, ent->name, sizeof(struct entdata));
-		struct entdata *d = fntree_data(e);
+		struct entdata *d = (entdata*)fntree_data(e);
 		*d = ent->d;
 		ffstr path = fntree_path(s->sr.curblock);
 		fcom_dbglog("added entry '%S/%S'", &path, &ent->name);
@@ -134,7 +133,7 @@ static int rsnap_branch(ffconf_scheme *cs, struct sync *s)
 				return 0xbad;
 			}
 
-			const struct entdata *d = fntree_data(e);
+			const struct entdata *d = (entdata*)fntree_data(e);
 			if (!(d->unixattr & FFFILE_UNIX_DIR))
 				continue;
 

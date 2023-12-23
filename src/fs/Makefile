@@ -19,3 +19,6 @@ list.$(SO): list.o
 
 copy.$(SO): copy.o
 	$(LINKXX) -shared $+ $(LINKXXFLAGS) -o $@
+
+sync.$(SO): sync.o
+	$(LINKXX) -shared $+ $(LINKXXFLAGS) -o $@

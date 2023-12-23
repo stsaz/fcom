@@ -91,7 +91,7 @@ static inline fntree_block* fntree_create(ffstr path)
 	fntree_block *b;
 	ffuint cap = ffmax(path.len + 1, 512);
 	cap = ffint_align_ceil2(cap, 512);
-	if (NULL == (b = ffmem_alloc(cap)))
+	if (NULL == (b = (fntree_block*)ffmem_alloc(cap)))
 		return NULL;
 	b->cap = cap;
 
@@ -121,7 +121,7 @@ static inline fntree_entry* fntree_add(fntree_block **pb, ffstr name, ffuint dat
 	ffuint newsize = b->size + _fntr_ent_size(name.len, data_len);
 	if (newsize > b->cap) {
 		ffuint cap = b->cap * 2;
-		if (NULL == (b = ffmem_realloc(b, cap)))
+		if (NULL == (b = (fntree_block*)ffmem_realloc(b, cap)))
 			return NULL;
 		*pb = b;
 		b->cap = cap;
@@ -339,7 +339,7 @@ static inline fntree_block* _fntr_blk_next_r_post(fntree_cursor *c, fntree_block
 		}
 
 		b = c->curblock;
-		c->curblock = (void*)-1;
+		c->curblock = (fntree_block*)-1;
 		return (fntree_block*)b; // 2. No more entries in this directory - return directory entry
 	}
 }

@@ -5,7 +5,7 @@ static void sync_run(fcom_op *op);
 
 static void sync_on_op_complete(void *param, int result)
 {
-	struct sync *s = param;
+	struct sync *s = (struct sync*)param;
 
 	if (result != 0) {
 		fcom_cominfo *cmd = s->cmd;
@@ -49,7 +49,7 @@ static void sync_copy(struct sync *s, fntree_cmp_ent *ce)
 	ffvec a = {};
 	*ffvec_pushT(&a, char*) = ffsz_dup("--verify");
 	ffvec_zpushT(&a, char*);
-	c->argv = a.ptr;
+	c->argv = (char**)a.ptr;
 	c->argc = a.len - 1;
 
 	ffstr *p = ffvec_pushT(&c->input, ffstr);
@@ -94,12 +94,6 @@ static void sync_trash(struct sync *s)
 	fcom_dbglog("sync: trash: %S", &s->sc.rname);
 }
 
-static void fsync_destroy(struct sync *s)
-{
-	ffvec_free(&s->sc.lname);
-	ffvec_free(&s->sc.rname);
-}
-
 /** Perform a single sync operation */
 static int sync1(struct sync *s)
 {
@@ -110,6 +104,7 @@ static int sync1(struct sync *s)
 	}
 
 	fntree_cmp_ent *ce = ffslice_itemT(&s->cmp.ents, s->sc.cmp_idx, fntree_cmp_ent);
+	uint st = ce->status & 0x0f;
 
 	if (ce->status & FNTREE_CMP_SKIP)
 		goto next;
@@ -120,8 +115,6 @@ static int sync1(struct sync *s)
 
 	full_name(&s->sc.lname, ce->l, ce->lb);
 	full_name(&s->sc.rname, ce->r, ce->rb);
-
-	uint st = ce->status & 0x0f;
 
 	switch (st) {
 	case FNTREE_CMP_EQ:
