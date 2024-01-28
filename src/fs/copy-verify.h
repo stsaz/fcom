@@ -39,11 +39,11 @@ static int verify_result(struct copy *c)
 	if (ffmem_cmp(c->vf.md5_result_r, result_w, 16)) {
 		fcom_errlog("MD5 verification failed.  '%s': %*xb  '%s': %*xb"
 			, c->iname, (ffsize)16, c->vf.md5_result_r
-			, c->oname, (ffsize)16, result_w);
+			, c->o.name, (ffsize)16, result_w);
 		return 1;
 	}
 
-	fcom_infolog("%*xb *%s", (ffsize)16, result_w, c->oname);
+	fcom_infolog("%*xb *%s", (ffsize)16, result_w, c->o.name);
 	return 0;
 }
 
@@ -67,6 +67,6 @@ static int verify_read_fin(struct copy *c)
 	}
 
 	c->vf.md5_obj = c->vf.md5->create();
-	c->out_off = 0;
+	c->o.off = 0;
 	return 1;
 }

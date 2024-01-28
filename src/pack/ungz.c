@@ -6,7 +6,7 @@ static const char* ungz_help()
 	return "\
 Decompress file from .gz.\n\
 Usage:\n\
-  fcom ungz INPUT [OPTIONS] [-o OUTPUT]\n\
+  `fcom ungz` INPUT [OPTIONS] [-o OUTPUT]\n\
 ";
 }
 
@@ -17,6 +17,8 @@ Usage:\n\
 extern const fcom_core *core;
 
 struct ungz {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	ffstr iname, basename;
@@ -37,10 +39,10 @@ struct ungz {
 
 static int args_parse(struct ungz *z, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
+	static const struct ffarg args[] = {
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, z);
+	int r = core->com->args_parse(cmd, args, z, FCOM_COM_AP_INOUT);
 	if (r != 0)
 		return r;
 

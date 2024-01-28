@@ -6,7 +6,7 @@ static const char* icoex_help()
 	return "\
 Extract files from .ico.\n\
 Usage:\n\
-  fcom ico-extract INPUT... [-C OUTPUT_DIR]\n\
+  `fcom ico-extract` INPUT... [-C OUTPUT_DIR]\n\
 ";
 }
 
@@ -20,6 +20,8 @@ Usage:\n\
 static const fcom_core *core;
 
 struct icoex {
+	fcom_cominfo cominfo;
+
 	uint state;
 	fcom_cominfo *cmd;
 	icoread rico;
@@ -40,10 +42,10 @@ struct icoex {
 
 static int icoex_args_parse(struct icoex *c, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
+	static const struct ffarg args[] = {
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, c);
+	int r = core->com->args_parse(cmd, args, c, FCOM_COM_AP_INOUT);
 	if (r != 0)
 		return r;
 
@@ -234,13 +236,14 @@ static void icoex_run(fcom_op *op)
 			r = core->file->info(c->in, &fi);
 			if (r == FCOM_FILE_ERR) goto end;
 
+			if (0 != core->com->input_allowed(c->cmd, c->iname, fffile_isdir(fffileinfo_attr(&fi)))) {
+				c->state = I_IN;
+				continue;
+			}
+
 			if (fffile_isdir(fffileinfo_attr(&fi))) {
 				fffd fd = core->file->fd(c->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(c->cmd, fd);
-			}
-
-			if (0 != core->com->input_allowed(c->cmd, c->iname)) {
-				c->state = I_IN;
 				continue;
 			}
 

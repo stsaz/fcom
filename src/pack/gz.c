@@ -6,9 +6,10 @@ static const char* gz_help()
 	return "\
 Compress file into .gz.\n\
 Usage:\n\
-  fcom gz INPUT [OPTIONS] [-o OUTPUT.gz]\n\
-    OPTIONS:\n\
-    -l, --level=INT     Compression level: 1..9; default:6\n\
+  `fcom gz` INPUT [OPTIONS] [-o OUTPUT.gz]\n\
+\n\
+OPTIONS:\n\
+    `-l`, `--level` INT     Compression level: 1..9; default:6\n\
 ";
 }
 
@@ -20,6 +21,8 @@ Usage:\n\
 const fcom_core *core;
 
 struct gz {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	ffstr iname, basename;
@@ -33,20 +36,21 @@ struct gz {
 
 	uint64 in_total, out_total;
 
-	byte level;
+	uint level;
 };
 
-#define O(member)  FF_OFF(struct gz, member)
+#define O(member)  (void*)FF_OFF(struct gz, member)
 
 static int args_parse(struct gz *z, fcom_cominfo *cmd)
 {
 	z->level = 6;
 
-	static const ffcmdarg_arg args[] = {
-		{ 'l', "level",	FFCMDARG_TINT8,	O(level) },
+	static const struct ffarg args[] = {
+		{ "--level",	'u',	O(level) },
+		{ "-l",			'u',	O(level) },
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, z);
+	int r = core->com->args_parse(cmd, args, z, FCOM_COM_AP_INOUT);
 	if (r != 0)
 		return r;
 
@@ -154,6 +158,8 @@ static void gz_run(fcom_op *op)
 
 		case I_IN:
 			if (0 > (r = core->com->input_next(z->cmd, &z->iname, &z->basename, 0))) {
+				if (r == FCOM_COM_RINPUT_NOMORE)
+					rc = 0;
 				goto end;
 			}
 
@@ -223,8 +229,8 @@ static void gz_run(fcom_op *op)
 				continue;
 			case 'done':
 				z->del_on_close = 0;
-				rc = 0;
-				goto end;
+				z->st = I_IN;
+				continue;
 			}
 
 			z->st = I_WRITE;

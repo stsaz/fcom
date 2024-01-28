@@ -21,6 +21,8 @@ HKEY: HKEY_CLASSES_ROOT | HKEY_CURRENT_USER | HKEY_LOCAL_MACHINE | HKEY_USERS\n\
 static const fcom_core *core;
 
 struct reg {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	fcom_file_obj *out;
@@ -48,10 +50,10 @@ struct reg {
 
 static int args_parse(struct reg *g, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
+	static const struct ffarg args[] = {
 		{}
 	};
-	if (0 != core->com->args_parse(cmd, args, g))
+	if (0 != core->com->args_parse(cmd, args, g, FCOM_COM_AP_INOUT))
 		return -1;
 
 	if (0 != reg_search_args(g))

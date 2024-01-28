@@ -6,9 +6,10 @@ static const char* list_help()
 	return "\
 List directory contents.\n\
 Usage:\n\
-  fcom list INPUT... [OPTIONS]\n\
-    OPTIONS:\n\
-    -l, --long          Use long format\n\
+  `fcom list` INPUT... [OPTIONS]\n\
+\n\
+OPTIONS:\n\
+    `-l`, `--long`          Use long format\n\
 ";
 }
 
@@ -20,6 +21,8 @@ Usage:\n\
 static const fcom_core *core;
 
 struct list {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	ffstr name, base;
@@ -34,13 +37,16 @@ struct list {
 	list() : input(core) {}
 };
 
+#define O(member)  (void*)FF_OFF(struct list, member)
+
 static int args_parse(struct list *l, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
-		{ 'l',	"long",	FFCMDARG_TSWITCH, FF_OFF(struct list, long_fmt) },
+	static const struct ffarg args[] = {
+		{ "--long",	'1',	O(long_fmt) },
+		{ "-l",		'1',	O(long_fmt) },
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, l);
+	int r = core->com->args_parse(cmd, args, l, FCOM_COM_AP_INOUT);
 	if (r) return r;
 
 	if (!cmd->input.len) {
@@ -55,7 +61,8 @@ static int args_parse(struct list *l, fcom_cominfo *cmd)
 static void list_close(fcom_op *op)
 {
 	struct list *l = (struct list*)op;
-	delete l;
+	l->~list();
+	ffmem_free(l);
 }
 
 static fcom_op* list_create(fcom_cominfo *cmd)
@@ -79,6 +86,12 @@ end:
 	list_close(l);
 	return NULL;
 }
+
+#ifdef FF_WIN
+	#define NEWLINE  "\r\n"
+#else
+	#define NEWLINE  "\n"
+#endif
 
 static void list_run(fcom_op *op)
 {
@@ -108,6 +121,9 @@ static void list_run(fcom_op *op)
 			r = l->input.info(&l->fi);
 			if (r == FCOM_FILE_ERR) goto next;
 
+			if (0 != core->com->input_allowed(l->cmd, l->name, l->fi.dir()))
+				goto next;
+
 			if ((l->base.len == 0 || l->cmd->recursive)
 				&& l->fi.dir()) {
 				core->com->input_dir(l->cmd, l->input.acquire_fd());
@@ -115,9 +131,6 @@ static void list_run(fcom_op *op)
 				if (!l->base.len)
 					goto next; // skip directory itself (e.g. skip "." for "fcom list .")
 			}
-
-			if (0 != core->com->input_allowed(l->cmd, l->name))
-				goto next;
 
 			l->input.close();
 			l->st = I_PRINT;
@@ -131,7 +144,7 @@ next:
 				ffstr_shift(&l->name, 2);
 
 			if (!l->long_fmt) {
-				l->buf.addf("%S\r\n", &l->name);
+				l->buf.addf("%S" NEWLINE, &l->name);
 			} else {
 				ffdatetime dt;
 				fftime_split1(&dt, &xxrval(l->fi.mtime1()));
@@ -139,7 +152,7 @@ next:
 				r = fftime_tostr1(&dt, date, sizeof(date), FFTIME_DATE_YMD | FFTIME_HMS_USEC);
 				date[r] = '\0';
 
-				l->buf.addf("%12U %s %S\r\n"
+				l->buf.addf("%12U %s %S" NEWLINE
 					, l->fi.size(), date, &l->name);
 			}
 

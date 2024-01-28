@@ -125,13 +125,13 @@ static void file_close(fcom_file_obj *_f)
 				fcom_syserrlog("%s: fffile_close", f->name);
 			} else {
 				if (f->open_flags & (FCOM_FILE_WRITE | FCOM_FILE_READWRITE)) {
-					fcom_verblog("saved file: %s (%,U)  %UMB/sec | %UMB/sec"
+					fcom_dbglog("saved file: %s (%,U)  %UMB/sec | %UMB/sec"
 						, f->name, f->size
 						, FFINT_DIVSAFE(f->stats.total_read, fftime_to_usec(&f->stats.t_read))
 						, FFINT_DIVSAFE(f->stats.total_write, fftime_to_usec(&f->stats.t_write))
 						);
 				} else {
-					fcom_verblog("read file: %s  %UMB/sec | %UMB/sec"
+					fcom_dbglog("read file: %s  %UMB/sec | %UMB/sec"
 						, f->name
 						, FFINT_DIVSAFE(f->stats.total_read, fftime_to_usec(&f->stats.t_read))
 						, FFINT_DIVSAFE(f->stats.total_write, fftime_to_usec(&f->stats.t_write))
@@ -534,7 +534,7 @@ static int file_attr_set(fcom_file_obj *_f, uint attr)
 static int dir_create(const char *name, uint flags)
 {
 	int r = ffdir_make(name);
-	if (r < 0) {
+	if (r) {
 		if (fferr_exist(fferr_last())) {
 			fcom_dbglog("%s: directory already exists", name);
 			return 0;
@@ -546,7 +546,7 @@ static int dir_create(const char *name, uint flags)
 			ffmem_free(sz);
 		}
 
-		if (r < 0) {
+		if (r) {
 			fcom_syserrlog("directory create: %s", name);
 			return FCOM_FILE_ERR;
 		}

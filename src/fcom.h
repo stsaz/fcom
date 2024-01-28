@@ -4,19 +4,20 @@
 #pragma once
 #include <ffsys/error.h>
 #include <util/taskqueue.h>
-#include <util/cmdarg-scheme.h>
 #include <ffsys/file.h>
 #include <ffsys/timerqueue.h>
 #include <ffsys/time.h>
 #include <ffbase/vector.h>
+#include <ffbase/args.h>
 #include <assert.h>
 
-#define FCOM_VER "1.0-beta9"
-#define FCOM_CORE_VER 107
+#define FCOM_VER "1.0-beta11"
+#define FCOM_CORE_VER 111
 
 #undef stdin
 #undef stdout
 typedef ffbyte byte;
+typedef ffbyte u_char;
 typedef ffushort ushort;
 typedef ffuint uint;
 typedef ffuint64 uint64;
@@ -202,6 +203,16 @@ enum FCOM_COM_RINPUT {
 	FCOM_COM_RINPUT_OK,
 };
 
+enum FCOM_COM_IA {
+	FCOM_COM_IA_FILE,
+	FCOM_COM_IA_DIR,
+	FCOM_COM_IA_AUTO, // detect from file name
+};
+
+enum FCOM_COM_AP {
+	FCOM_COM_AP_INOUT = 1,
+};
+
 /** This submodule executes new operations and manages all running operations. */
 struct fcom_command {
 	/** Find interface for primary/secondary operation in a module, loading it if necessary.
@@ -239,11 +250,13 @@ struct fcom_command {
 	void (*input_dir)(fcom_cominfo *c, fffd dir);
 
 	/** Check if the name is included or/and not excluded.
+	flags: enum FCOM_COM_IA
 	Return 0 if allowed */
-	int (*input_allowed)(fcom_cominfo *c, ffstr name);
+	int (*input_allowed)(fcom_cominfo *c, ffstr name, uint flags);
 
-	/** Parse command-line arguments */
-	int (*args_parse)(fcom_cominfo *cmd, const ffcmdarg_arg *args, void *obj);
+	/** Parse command-line arguments
+	flags: enum FCOM_COM_AP */
+	int (*args_parse)(fcom_cominfo *cmd, const struct ffarg *args, void *obj, uint flags);
 };
 
 

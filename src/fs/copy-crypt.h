@@ -28,8 +28,6 @@ static void crypt_close(struct copy *c)
 	crypt_reset(c);
 	ffmem_zero(c->encrypt.ptr, c->encrypt.len);
 	ffmem_zero(c->decrypt.ptr, c->decrypt.len);
-	ffstr_free(&c->encrypt);
-	ffstr_free(&c->decrypt);
 	ffvec_free(&c->cr.aes_buf);
 }
 

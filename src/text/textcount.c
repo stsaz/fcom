@@ -21,6 +21,8 @@ struct txcnt_stat {
 };
 
 struct txcnt {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	uint stop;
@@ -37,10 +39,10 @@ struct txcnt {
 
 static int args_parse(struct txcnt *c, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
+	static const struct ffarg args[] = {
 		{}
 	};
-	if (0 != core->com->args_parse(cmd, args, c))
+	if (0 != core->com->args_parse(cmd, args, c, FCOM_COM_AP_INOUT))
 		return -1;
 
 	if (c->cmd->output.len == 0)
@@ -183,14 +185,15 @@ static void txcnt_run(fcom_op *op)
 			fffileinfo fi;
 			r = core->file->info(c->in, &fi);
 			if (r == FCOM_FILE_ERR) goto end;
+
+			if (0 != core->com->input_allowed(c->cmd, c->iname, fffile_isdir(fffileinfo_attr(&fi))))
+				continue;
+
 			if (fffile_isdir(fffileinfo_attr(&fi))) {
 				fffd fd = core->file->fd(c->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(c->cmd, fd);
 				continue;
 			}
-
-			if (0 != core->com->input_allowed(c->cmd, c->iname))
-				continue;
 
 			txcnt_f_clear(&c->cur);
 			c->st = I_READ;

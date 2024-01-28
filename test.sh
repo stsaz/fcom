@@ -1,7 +1,8 @@
 #!/bin/bash
 # fcom/v1 tester
 
-CMDS_OPS=(copy hex list md5 move pic sync textcount touch trash utf8)
+CMDS_FS=(copy list move sync touch trash)
+CMDS_OPS=(help hex md5 pic textcount utf8 html)
 CMDS_WIN=(reg-search)
 CMDS_PACK=(gz iso tar un7z unxz zip zst unpack)
 # listdisk mount unico
@@ -9,25 +10,33 @@ CMDS_PACK=(gz iso tar un7z unxz zip zst unpack)
 if test "$#" -lt 1 ; then
 	echo Usage: bash test.sh all
 	echo Usage: bash test.sh CMD...
-	echo "CMD: ${CMDS_OPS[@]} ${CMDS_PACK[@]}"
+	echo "CMD: ${CMDS_FS[@]} ${CMDS_OPS[@]} ${CMDS_PACK[@]}"
 	exit 1
 fi
 
 CMDS=("$@")
 if test "$1" == "all" ; then
-	CMDS=("${CMDS_OPS[@]}")
+	CMDS=("${CMDS_FS[@]}")
+	CMDS+=("${CMDS_OPS[@]}")
 	CMDS+=("${CMDS_PACK[@]}")
 fi
 
 set -x
 set -e
 
+test_help() {
+	./fcom -h
+}
+
 test_copy_update() {
 	cd fcomtest
 	echo hello >file
 
-	../fcom copy --update "file" -o "file-u" -v ; diff file file-u
-	../fcom -D copy --update "file" -o "file-u" -v 2>&1 | grep -E 'update.*skipping' ; diff file file-u
+	# Unknown option
+	../fcom copy "file" -o "file-u" --update2 || true
+
+	../fcom -V copy --update "file" -o "file-u" ; diff file file-u
+	../fcom -D copy --update "file" -o "file-u" 2>&1 | grep -E 'update.*skipping' ; diff file file-u
 
 	cd ..
 }
@@ -38,58 +47,54 @@ test_copy_recursive() {
 	mkdir -p dir
 	echo hello >dir/file
 
-	# Recursive: dir -> dir
+	# dir -> dir
 	mkdir -p dirempty dircopy
-	../fcom copy -R "dir" "dirempty" -C "dircopy" -v
-	test -d dircopy/dir
+	../fcom -V copy "dir" "dirempty" -C "dircopy"
 	diff dir/file dircopy/dir/file
 	test -d dircopy/dirempty
 	rm -rf dircopy
 
-	# Recursive: dir/dir -> dir/dir
+	# dir/dir -> dir/dir
 	mkdir dir/d2 dircopy
 	echo hello >dir/d2/file
-	../fcom copy -R `realpath .`"/dir" -C "dircopy" -v
+	../fcom -V copy `realpath .`"/dir" -C "dircopy"
 	diff dir/d2/file dircopy/dir/d2/file
 	rm -rf dircopy dir
 
-	# Recursive Exclude: dir -> dir
+	# Exclude: dir -> dir
 	mkdir dir dir/d2 dircopy
 	echo hello >dir/file
 	echo hello >dir/file.doc
 	echo hello >dir/file.docx
 	echo hello >dir/file.txt
-	../fcom copy -R "dir" -C "dircopy" -E "*.txt" -E "*.doc" -v
+	echo hello >dir/d2/file.docx
+	../fcom -V -D copy "dir" -C "dircopy" -E "*/d2" -E "*.txt" -E "*.doc"
 	diff dir/file dircopy/dir/file
 	diff dir/file.docx dircopy/dir/file.docx
-	! test -f dircopy/dir/file.doc
-	! test -f dircopy/dir/file.txt
+	test -f dircopy/dir/file.doc && false
+	test -f dircopy/dir/file.txt && false
+	test -d dircopy/dir/d2 && false
 	rm -rf dircopy/*
 
-	# Recursive Include: dir -> dir
-	../fcom copy -R "dir" -C "dircopy" -I "*.txt" -I "*.doc" -v
+	# Include: dir -> dir
+	../fcom -V copy "dir" -C "dircopy" -I "*.txt" -I "*.doc"
 	diff dir/file.doc dircopy/dir/file.doc
 	diff dir/file.txt dircopy/dir/file.txt
-	! test -f dircopy/dir/file.docx
-	! test -f dircopy/dir/file
+	test -f dircopy/dir/file.docx && false
+	test -f dircopy/dir/file && false
 	rm -rf dircopy/*
 
-	# Recursive Include-Exclude: dir -> dir
-	../fcom copy -R "dir" -C "dircopy" -I "*.d*" -E "*.doc" -v
+	# Include-Exclude: dir -> dir
+	../fcom -V copy "dir" -C "dircopy" -I "*.d*" -E "*.doc"
 	diff dir/file.docx dircopy/dir/file.docx
-	! test -f dircopy/dir/file.doc
-	! test -f dircopy/dir/file.txt
-	! test -f dircopy/dir/file
+	test -f dircopy/dir/file.doc && false
+	test -f dircopy/dir/file.txt && false
+	test -f dircopy/dir/file && false
 	rm -rf dircopy/*
 
-	# Recursive Include: --Include rejects directory
-	../fcom copy -R "dir" -C "dircopy" -I "*.d*" -v
-	! test -d dircopy/dir/d2
-	rm -rf dircopy/*
-
-	# Recursive Include: --Include accepts directory
+	# Include: --Include accepts directory
 	echo hello >dir/d2/file.doc
-	../fcom copy -R "dir" -C "dircopy" -I "*.d*" -v
+	../fcom -V copy "dir" -C "dircopy" -I "*.doc"
 	diff dir/d2/file.doc dircopy/dir/d2/file.doc
 
 	cd ..
@@ -131,10 +136,10 @@ test_copy() {
 	../fcom copy "file" -o "file.out.verify" --verify -f
 
 	# Crypt
-	../fcom copy "file" -o "file.out.encrypt" --encrypt="123"
-	../fcom copy "file.out.encrypt" -o "file.out.decrypt" --decrypt="123"
+	../fcom copy "file" -o "file.out.encrypt" --encrypt "123"
+	../fcom copy "file.out.encrypt" -o "file.out.decrypt" --decrypt "123"
 	diff file file.out.decrypt
-	../fcom copy "file.out.encrypt" -o "file.out.decrypt" --decrypt="123" --verify -f
+	../fcom copy "file.out.encrypt" -o "file.out.decrypt" --decrypt "123" --verify -f
 	diff file file.out.decrypt
 
 	cd ..
@@ -171,23 +176,23 @@ test_move() {
 
 	# unbranch
 	echo hi >>fcomtest/unbranch/a/hi
-	./fcom move --unbranch "fcomtest/unbranch" -v
+	./fcom -V move --unbranch "fcomtest/unbranch"
 	test -f "fcomtest/unbranch - a - hi"
 
 	# unbranch + replace
 	echo hi >>fcomtest/unbranch/a/hi
-	./fcom move --unbranch "fcomtest/unbranch" --replace="a - /new - " -v
+	./fcom -V move --unbranch "fcomtest/unbranch" --replace "a - /new - "
 	test -f "fcomtest/unbranch - new - hi"
 
 	# replace
 	echo hi >>fcomtest/unbranch/a/test
-	./fcom move "fcomtest/unbranch/a/test" --replace="test/new" -v
+	./fcom -V move "fcomtest/unbranch/a/test" --replace "test/new"
 	test -f fcomtest/unbranch/a/new
 
 	# unbranch-flat
 	cd fcomtest
 	echo hi >>unbranch/a/hi
-	../fcom move --unbranch-flat "./unbranch" -v
+	../fcom -V move --unbranch-flat "./unbranch"
 	test -f hi
 	cd ..
 
@@ -234,21 +239,21 @@ test_pic() {
 	# autoname
 	mkdir fcomtest/multi
 	cd fcomtest/multi
-	../../fcom pic "../file.bmp" "../filepng.bmp" -o ".jpg" -v
+	../../fcom -V pic "../file.bmp" "../filepng.bmp" -o ".jpg"
 	cd ../..
 	diff fcomtest/multi/file.jpg fcomtest/multi/filepng.jpg
 
 	# autoname + -C
 	mkdir -p fcomtest/dir1 fcomtest/dir1/dir2
 	mv fcomtest/file.bmp fcomtest/filepng.bmp fcomtest/dir1/dir2/
-	./fcom pic fcomtest/dir1 -C "fcomtest/multi" -o ".jpg" -v
+	./fcom -V pic fcomtest/dir1 -C "fcomtest/multi" -o ".jpg"
 	diff fcomtest/multi/dir1/dir2/file.jpg fcomtest/multi/dir1/dir2/filepng.jpg
 }
 
 test_unico() {
 
 	./fcom unico "fmedia.ico"
-	./fcom pic "fmedia-1.png" -o ".bmp" -v
+	./fcom -V pic "fmedia-1.png" -o ".bmp"
 }
 
 test_reg-search() {
@@ -263,7 +268,7 @@ test_sync() {
 	echo hello >fcomtest/file
 
 	# write snapshot
-	./fcom sync "fcomtest" --snapshot -o "fcomtest/fcomtest.snap" -v
+	./fcom -V sync "fcomtest" --snapshot -o "fcomtest/fcomtest.snap"
 	cat fcomtest/fcomtest.snap
 
 	# diff 2 dirs
@@ -275,27 +280,27 @@ test_sync() {
 	echo rightmod >right/d/mod
 	echo l >left/l
 	echo r >right/r
-	../fcom sync --diff="" --source-path-strip1 --target-path-strip1 "left" -o "right" -v
-	../fcom sync --diff="" --source-path-strip1 --target-path-strip1 --plain --add "left" -o "right" -v
-	../fcom sync --diff="" --source-path-strip1 --target-path-strip1 --plain --update "left" -o "right" -v
+	../fcom -V sync --diff "" --src-path-strip1 --dst-path-strip1 "left" -o "right"
+	../fcom -V sync --diff "" --src-path-strip1 --dst-path-strip1 --plain --add "left" -o "right"
+	../fcom -V sync --diff "" --src-path-strip1 --dst-path-strip1 --plain --update "left" -o "right"
 
 	# write snapshot, diff snapshot and dir
-	../fcom sync --snapshot "left" -o "fcomtest.snap" -v -f
-	../fcom sync --source-path-strip1 --target-path-strip1 --diff="" --source-snap "fcomtest.snap" -o "right" -v >LOG
+	../fcom -V sync --snapshot "left" -o "fcomtest.snap" -f
+	../fcom -V sync --src-path-strip1 --dst-path-strip1 --diff "" --source-snap "fcomtest.snap" -o "right" >LOG
 	grep 'moved:1  add:1  del:1  upd:1  eq:1  total:5/5' LOG
 
 	# diff 2 snapshots
-	../fcom sync --snapshot "right" -o "fcomtest-right.snap" -v -f
-	../fcom sync --source-path-strip1 --target-path-strip1 --diff="" --source-snap "fcomtest.snap" --target-snap -o "fcomtest-right.snap" -v >LOG
+	../fcom -V sync --snapshot "right" -o "fcomtest-right.snap" -f
+	../fcom -V sync --src-path-strip1 --dst-path-strip1 --diff "" --source-snap "fcomtest.snap" --target-snap -o "fcomtest-right.snap" >LOG
 	grep 'moved:1  add:1  del:1  upd:1  eq:1  total:5/5' LOG
 
 	# snapshot 2 dirs
-	../fcom sync --snapshot "left" "right" -o "fcomtest2.snap" -v -f
+	../fcom -V sync --snapshot "left" "right" -o "fcomtest2.snap" -f
 	cat fcomtest2.snap
 
 	# sync 2 dirs
-	../fcom sync --source-path-strip1 --target-path-strip1 "left" -o "right" -v --add
-	../fcom sync --source-path-strip1 --target-path-strip1 "left" -o "right" -v --delete -f
+	../fcom -V sync --src-path-strip1 --dst-path-strip1 "left" -o "right" --add
+	../fcom -V sync --src-path-strip1 --dst-path-strip1 "left" -o "right" --delete -f
 
 	cd ..
 }
@@ -305,41 +310,41 @@ test_textcount() {
 	echo 123 >>fcomtest/textcount
 	echo 3456 >>fcomtest/textcount
 	echo 7890 >>fcomtest/textcount
-	./fcom textcount -R "fcomtest" -v
+	./fcom -V textcount -R "fcomtest"
 }
 
 test_touch() {
 
 	echo 123 >fcomtest/touch
 	echo 123 >fcomtest/touch2
-	./fcom touch "fcomtest/touch" --date="2022-09-01 01:02:03" -v
+	./fcom -V touch "fcomtest/touch" --date "2022-09-01 01:02:03"
 	ls -l fcomtest/touch
-	./fcom touch "fcomtest/touch" --date="2022-09-01" -v
+	./fcom -V touch "fcomtest/touch" --date "2022-09-01"
 	ls -l fcomtest/touch
-	./fcom touch "fcomtest/touch2" --reference="fcomtest/touch" -v
+	./fcom -V touch "fcomtest/touch2" --reference "fcomtest/touch"
 	ls -l fcomtest/touch2
-	./fcom touch "fcomtest/touch" -v
+	./fcom -V touch "fcomtest/touch"
 	ls -l fcomtest/touch
 
 	mkdir fcomtest/dirtouch fcomtest/dirtouch/d2
 	echo 123 >fcomtest/dirtouch/touch
 	echo 123 >fcomtest/dirtouch/d2/touch2
-	./fcom touch -R "fcomtest/dirtouch" --date="2022-09-01 01:02:03" -v
+	./fcom -V touch -R "fcomtest/dirtouch" --date "2022-09-01 01:02:03"
 	ls -Rl fcomtest/dirtouch
 }
 
 test_trash() {
 	echo 123 >fcomtest/trash
 	echo 123 >fcomtest/trash2
-	./fcom trash "fcomtest/trash" "fcomtest/trash2" -v -f
+	./fcom -V trash "fcomtest/trash" "fcomtest/trash2" -f
 
 	echo 123 >fcomtest/trash
 	echo 123 >fcomtest/trash2
-	./fcom trash "fcomtest/trash" "fcomtest/trash2" --rename -v -f
+	./fcom -V trash "fcomtest/trash" "fcomtest/trash2" --rename -f
 
 	echo 123 >fcomtest/trash
 	echo 123 >fcomtest/trash2
-	./fcom trash "fcomtest/trash" "fcomtest/trash2" --wipe --rename -v -f
+	./fcom -V trash "fcomtest/trash" "fcomtest/trash2" --wipe --rename -f
 }
 
 test_utf8() {
@@ -347,6 +352,15 @@ test_utf8() {
 	# ./fcom utf8 "fcomtest/file-utf16" -o "fcomtest/file-utf8"
 	# diff fcomtest/file fcomtest/file-utf8
 	echo
+}
+
+test_html() {
+	cat <<EOF >fcomtest/html
+<tag attr="123"></tag>
+<tag attr="234"/>
+EOF
+	./fcom html "fcomtest/html" --filter "tag.attr" | grep 123
+	./fcom html "fcomtest/html" --filter "tag.attr" | grep 234
 }
 
 # PACK
@@ -357,21 +371,21 @@ test_tar() {
 	echo 1234567890123456789012345678901234567890 >fcomtest/tardir/file
 
 	./fcom tar "fcomtest/tardir" -o "fcomtest/tar.tar"
-	./fcom untar "fcomtest/tar.tar" -C "fcomtest/untardir" -v
+	./fcom -V untar "fcomtest/tar.tar" -C "fcomtest/untardir"
 	diff fcomtest/tardir/file fcomtest/untardir/fcomtest/tardir/file
 
-	./fcom untar "fcomtest/tar.tar" -C "fcomtest/untardir" -l -v
+	./fcom -V untar "fcomtest/tar.tar" -C "fcomtest/untardir" -l
 }
 
 test_un7z() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
 	7z a fcomtest/7z.7z fcomtest/file
-	./fcom un7z "fcomtest/7z.7z" -C "fcomtest/un7z" -v
+	./fcom -V un7z "fcomtest/7z.7z" -C "fcomtest/un7z"
 	diff fcomtest/un7z/fcomtest/file fcomtest/file
 
 	./fcom un7z "fcomtest/7z.7z" -C "fcomtest/un7z" -l
-	./fcom un7z "fcomtest/7z.7z" -C "fcomtest/un7z" -l -v
+	./fcom -V un7z "fcomtest/7z.7z" -C "fcomtest/un7z" -l
 }
 
 test_zip() {
@@ -379,18 +393,22 @@ test_zip() {
 	mkdir fcomtest/zipdir fcomtest/unzipdir
 	echo 1234567890123456789012345678901234567890 >fcomtest/zipdir/file
 
+	cd fcomtest ; ../fcom zip "zipdir"; cd .. ; test -f fcomtest/zipdir.zip ; rm fcomtest/zipdir.zip
+	./fcom zip "fcomtest/zipdir" -C "fcomtest" ; test -f fcomtest/zipdir.zip
+	./fcom zip "fcomtest/zipdir" -C "fcomtest" -o "z.zip" ; test -f fcomtest/z.zip
+
 	./fcom zip "fcomtest/notfound" "fcomtest/zipdir" -o "fcomtest/zip.zip" || true
 	# unzip -t "fcomtest/zip.zip"
-	./fcom unzip "fcomtest/zip.zip" -C "fcomtest/unzipdir" -f -v
+	./fcom -V unzip "fcomtest/zip.zip" -C "fcomtest/unzipdir" -f
 	diff fcomtest/zipdir/file fcomtest/unzipdir/fcomtest/zipdir/file
 
 	./fcom zip "fcomtest/zipdir" -o "fcomtest/zip.zip" --method "zstd" -f
-	./fcom unzip "fcomtest/zip.zip" -C "fcomtest/unzipdir" -f -v
+	./fcom -V unzip "fcomtest/zip.zip" -C "fcomtest/unzipdir" -f
 	diff fcomtest/zipdir/file fcomtest/unzipdir/fcomtest/zipdir/file
 
 	./fcom zip "fcomtest/zipdir" -o "fcomtest/zip.zip" --method "store" -f
 	# unzip -t "fcomtest/zip.zip"
-	./fcom unzip "fcomtest/zip.zip" -C "fcomtest/unzipdir" -f -v
+	./fcom -V unzip "fcomtest/zip.zip" -C "fcomtest/unzipdir" -f
 	diff fcomtest/zipdir/file fcomtest/unzipdir/fcomtest/zipdir/file
 
 	# --members-from-file
@@ -400,7 +418,7 @@ test_zip() {
 	echo fcomtest/zipdir/file1 >fcomtest/LIST
 	echo '*/file3' >>fcomtest/LIST
 	./fcom zip "fcomtest/zipdir" -o "fcomtest/zip.zip" -f
-	./fcom unzip "fcomtest/zip.zip" -l --members-from-file="fcomtest/LIST"
+	./fcom unzip "fcomtest/zip.zip" -l --members-from-file "fcomtest/LIST"
 
 	# --autodir
 	./fcom unzip "fcomtest/zip.zip" -C "fcomtest" --autodir
@@ -410,20 +428,30 @@ test_zip() {
 test_gz() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
-	./fcom gz "fcomtest/file" -C "fcomtest"
+	echo 1234567890123456789012345678901234567890 >fcomtest/file2
+
+	./fcom -V gz "fcomtest/file" "fcomtest/file2" -C "fcomtest"
+	test -f fcomtest/file.gz
+	test -f fcomtest/file2.gz
+
 	./fcom gz "fcomtest/file" -o "STDOUT" >>fcomtest/file.gz
 	echo 1234567890123456789012345678901234567890 >>fcomtest/file
-	./fcom ungz "fcomtest/file.gz" -o "fcomtest/file-d" -v
+	./fcom -V ungz "fcomtest/file.gz" -o "fcomtest/file-d"
 	diff fcomtest/file-d fcomtest/file
 }
 
 test_zst() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
-	./fcom zst "fcomtest/file" -C "fcomtest"
+	echo 1234567890123456789012345678901234567890 >fcomtest/file2
+
+	./fcom -V zst "fcomtest/file" "fcomtest/file2" -C "fcomtest"
+	test -f fcomtest/file.zst
+	test -f fcomtest/file2.zst
+
 	./fcom zst "fcomtest/file" -o "STDOUT" >>fcomtest/file.zst
 	echo 1234567890123456789012345678901234567890 >>fcomtest/file
-	./fcom unzst "fcomtest/file.zst" -o "fcomtest/file-d" -v
+	./fcom -V unzst "fcomtest/file.zst" -o "fcomtest/file-d"
 	diff fcomtest/file-d fcomtest/file
 }
 
@@ -431,7 +459,7 @@ test_unxz() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
 	xz "fcomtest/file" -c >>fcomtest/file.xz
-	./fcom unxz "fcomtest/file.xz" -o "fcomtest/file-d" -v
+	./fcom -V unxz "fcomtest/file.xz" -o "fcomtest/file-d"
 	diff fcomtest/file-d fcomtest/file
 }
 
@@ -442,10 +470,10 @@ test_iso() {
 
 	cd fcomtest
 	../fcom iso "isodir" -o "iso.iso"
-	../fcom uniso "iso.iso" -C "unisodir" -v
+	../fcom -V uniso "iso.iso" -C "unisodir"
 	diff isodir/file unisodir/isodir/file
 
-	../fcom uniso "iso.iso" -C "unisodir" -l -v
+	../fcom -V uniso "iso.iso" -C "unisodir" -l
 	cd ..
 }
 
@@ -457,23 +485,25 @@ test_unpack() {
 	./fcom zip "fcomtest/file" -o "fcomtest/zip.zip"
 	./fcom zst "fcomtest/file" -o "fcomtest/zst.zst"
 
-	./fcom unpack "fcomtest/tar.tar" "fcomtest/zip.zip" -C "fcomtest" --autodir -v
+	./fcom -V unpack "fcomtest/tar.tar" "fcomtest/zip.zip" -C "fcomtest" --autodir
 	diff fcomtest/file fcomtest/tar/fcomtest/file
 	diff fcomtest/file fcomtest/zip/fcomtest/file
 
-	./fcom unpack "fcomtest/gz.gz" -C "fcomtest/gz" -v
+	./fcom -V unpack "fcomtest/gz.gz" -C "fcomtest/gz"
 	diff fcomtest/file fcomtest/gz/file
 
-	./fcom unpack "fcomtest/zst.zst" -C "fcomtest/zst" -v
+	./fcom -V unpack "fcomtest/zst.zst" -C "fcomtest/zst"
 	diff fcomtest/file fcomtest/zst/zst
 
 	./fcom zst "fcomtest/tar.tar" -o "fcomtest/tarzst.tar.zst"
-	./fcom unpack "fcomtest/tarzst.tar.zst" -C "fcomtest/tarzst" -v
+	./fcom -V unpack "fcomtest/tarzst.tar.zst" -C "fcomtest/tarzst"
 	diff fcomtest/file fcomtest/tarzst/fcomtest/file
 
 	./fcom gz "fcomtest/tar.tar" -o "fcomtest/targz.tar.gz"
-	./fcom unpack "fcomtest/targz.tar.gz" -C "fcomtest/targz" -v
+	./fcom -V unpack "fcomtest/targz.tar.gz" -C "fcomtest/targz"
 	diff fcomtest/file fcomtest/targz/fcomtest/file
+
+	./fcom unpack "fcomtest/targz.tar.gz" -C "fcomtest/targz" -l | grep fcomtest/file
 
 	# xz "fcomtest/tar.tar" -o "fcomtest/tarxz.tar.xz"
 	# ./fcom unpack "fcomtest/tarxz.tar.xz" -C "fcomtest/tarxz"

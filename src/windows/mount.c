@@ -18,16 +18,18 @@ Usage:\n\
 static const fcom_core *core;
 
 struct mount {
+	fcom_cominfo cominfo;
+
 	fcom_cominfo *cmd;
 	uint stop;
 };
 
 static int args_parse(struct mount *m, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
+	static const struct ffarg args[] = {
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, m);
+	int r = core->com->args_parse(cmd, args, m, FCOM_COM_AP_INOUT);
 	if (r != 0)
 		return r;
 

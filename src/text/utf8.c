@@ -16,9 +16,12 @@ Usage:\n\
 static const fcom_core *core;
 
 struct utf8 {
+	fcom_cominfo cominfo;
+
 	uint st;
-	fcom_cominfo *cmd;
 	uint stop;
+	fcom_cominfo *cmd;
+
 	fcom_file_obj *out;
 	ffstr iname;
 	ffstr data;
@@ -28,10 +31,10 @@ struct utf8 {
 
 static int args_parse(struct utf8 *u, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
+	static const struct ffarg args[] = {
 		{}
 	};
-	if (0 != core->com->args_parse(cmd, args, u))
+	if (0 != core->com->args_parse(cmd, args, u, FCOM_COM_AP_INOUT))
 		return -1;
 
 	if (u->cmd->output.len == 0)
@@ -135,7 +138,7 @@ static void utf8_run(fcom_op *op)
 				goto end;
 			}
 
-			if (0 != core->com->input_allowed(u->cmd, u->iname))
+			if (0 != core->com->input_allowed(u->cmd, u->iname, FCOM_COM_IA_AUTO))
 				continue;
 
 			u->st = I_READ;
@@ -201,7 +204,7 @@ static void utf8_signal(fcom_op *op, uint signal)
 	FFINT_WRITEONCE(u->stop, 1);
 }
 
-static const fcom_operation fcom_op_hex = {
+static const fcom_operation fcom_op_utf8 = {
 	utf8_create, utf8_close,
 	utf8_run, utf8_signal,
 	utf8_help,
@@ -213,7 +216,7 @@ static void utf8_destroy() {}
 static const fcom_operation* utf8_provide_op(const char *name)
 {
 	if (ffsz_eq(name, "utf8"))
-		return &fcom_op_hex;
+		return &fcom_op_utf8;
 	return NULL;
 }
 FF_EXP const struct fcom_module fcom_module = {

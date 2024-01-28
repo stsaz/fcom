@@ -16,6 +16,8 @@ Usage:\n\
 static const fcom_core *core;
 
 struct listdisk {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	uint stop;
@@ -23,10 +25,10 @@ struct listdisk {
 
 static int args_parse(struct listdisk *l, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
+	static const struct ffarg args[] = {
 		{}
 	};
-	return core->com->args_parse(cmd, args, l);
+	return core->com->args_parse(cmd, args, l, FCOM_COM_AP_INOUT);
 }
 
 static void listdisk_close(fcom_op *op)

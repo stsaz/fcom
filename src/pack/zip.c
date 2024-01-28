@@ -5,16 +5,16 @@ static const char* zip_help()
 {
 	return "\
 Pack files into .zip.\n\
-Implies '--recursive'.\n\
 Usage:\n\
-  fcom zip INPUT... [OPTIONS] [-o OUTPUT.zip]\n\
-    OPTIONS:\n\
-    -m, --method=STR    Compression method:\n\
-                          deflate (default), zstd, store\n\
-    -l, --level=INT     Compression level:\n\
+  `fcom zip` INPUT... [OPTIONS] [-C OUT_DIR] [-o OUTPUT.zip]\n\
+\n\
+OPTIONS:\n\
+    `-m`, `--method` STR    Compression method:\n\
+                          `deflate` (default), `zstd`, `store`\n\
+    `-l`, `--level` INT     Compression level:\n\
                           deflate: 1..9; default:6\n\
                           zstd:   -7..22; default:3\n\
-    -j, --workers=INT   N of threads for compression (zstd)\n\
+    `-j`, `--workers` INT   N of threads for compression (zstd)\n\
 ";
 }
 
@@ -26,30 +26,36 @@ Usage:\n\
 const fcom_core *core;
 
 struct zip {
-	uint st;
-	fcom_cominfo *cmd;
-	ffzipwrite wzip;
-	ffstr iname, base;
-	ffstr plain, zipdata;
-	fcom_file_obj *in, *out;
-	fffileinfo fi;
-	ffvec buf;
-	uint stop;
-	uint in_file_notfound :1;
-	uint del_on_close :1;
-	int64 woff;
+	fcom_cominfo cominfo;
+
+	uint			st;
+	uint			stop;
+	fcom_cominfo*	cmd;
+
+	ffstr			iname, base;
+	ffstr			plain;
+	fcom_file_obj*	in;
+	fffileinfo		fi;
+	uint			in_file_notfound :1;
+
+	ffzipwrite		wzip;
+	ffstr			zipdata;
+	char*			oname;
+	fcom_file_obj*	out;
+	int64			woff;
+	uint			del_on_close :1;
 
 	const fcom_hash *crc32;
 	fcom_hash_obj *crc32_obj;
 
-	uint method;
-	byte comp_level;
-	byte comp_workers;
+	uint	method;
+	uint	comp_level;
+	uint	comp_workers;
 };
 
 #define MIN_COMPRESS_SIZE 32
 
-static int arg_method(ffcmdarg_scheme *as, void *obj, ffstr *val)
+static int arg_method(void *obj, ffstr val)
 {
 	struct zip *z = obj;
 	static const ffstr methods_str[] = {
@@ -60,14 +66,39 @@ static int arg_method(ffcmdarg_scheme *as, void *obj, ffstr *val)
 	};
 	ffslice s;
 	ffslice_set(&s, methods_str, FF_COUNT(methods_str));
-	int i = ffslicestr_find(&s, val);
+	int i = ffslicestr_find(&s, &val);
 	if (i < 0)
 		return 0xbad;
 	z->method = methods[i];
 	return 0;
 }
 
-#define O(member)  FF_OFF(struct zip, member)
+/**
+*                        -> INPUT[0].zip
+* -C OUT_DIR             -> OUT_DIR/INPUT[0].zip
+* -C OUT_DIR -o FILE.zip -> OUT_DIR/FILE.zip
+*            -o FILE.zip -> FILE.zip
+*/
+static char* out_name(struct zip *z, ffstr output, ffstr chdir)
+{
+	ffvec v = {};
+	if (!output.len) {
+		ffstr path = ((ffstr*)z->cmd->input.ptr)[0], name;
+		ffpath_splitpath_str(path, NULL, &name);
+		if (chdir.len)
+			ffvec_addfmt(&v, "%S%c", &chdir, FFPATH_SLASH);
+		ffvec_addfmt(&v, "%S.zip%Z", &name);
+	} else {
+		if (chdir.len)
+			ffvec_addfmt(&v, "%S%c", &chdir, FFPATH_SLASH);
+		ffvec_addfmt(&v, "%S%Z", &output);
+	}
+
+	fcom_dbglog("output file: '%s'", v.ptr);
+	return v.ptr;
+}
+
+#define O(member)  (void*)FF_OFF(struct zip, member)
 
 static int args_parse(struct zip *z, fcom_cominfo *cmd)
 {
@@ -75,26 +106,20 @@ static int args_parse(struct zip *z, fcom_cominfo *cmd)
 	z->method = ZIP_DEFLATED;
 	z->comp_level = 0xff;
 
-	static const ffcmdarg_arg args[] = {
-		{ 'm', "method",	FFCMDARG_TSTR,	(ffsize)arg_method },
-		{ 'l', "level",	FFCMDARG_TINT8,	O(comp_level) },
-		{ 'j', "workers",	FFCMDARG_TINT8,	O(comp_workers) },
+	static const struct ffarg args[] = {
+		{ "--level",	'u',	O(comp_level) },
+		{ "--method",	'S',	arg_method },
+		{ "--workers",	'u',	O(comp_workers) },
+		{ "-j", 		'u',	O(comp_workers) },
+		{ "-l", 		'u',	O(comp_level) },
+		{ "-m", 		'S',	arg_method },
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, z);
-	if (r != 0)
+	int r = core->com->args_parse(cmd, args, z, FCOM_COM_AP_INOUT);
+	if (r)
 		return r;
 
-	// set default output file
-	if (cmd->output.len == 0) {
-		ffstr path = ((ffstr*)cmd->input.ptr)[0];
-		ffstr name;
-		ffpath_splitpath_str(path, NULL, &name);
-		ffstr_free(&cmd->output);
-		ffsize cap = 0;
-		ffstr_growfmt(&cmd->output, &cap, "%S.zip%Z", &name);
-	}
-
+	z->oname = out_name(z, cmd->output, cmd->chdir);
 	return 0;
 }
 
@@ -103,14 +128,17 @@ static int args_parse(struct zip *z, fcom_cominfo *cmd)
 static void zip_close(fcom_op *op)
 {
 	struct zip *z = op;
+
 	ffzipwrite_destroy(&z->wzip);
-	core->file->destroy(z->in);
 	if (z->del_on_close)
-		core->file->del(z->cmd->output.ptr, 0);
+		core->file->del(z->oname, 0);
 	core->file->destroy(z->out);
-	if (z->crc32_obj != NULL)
+	ffmem_free(z->oname);
+
+	core->file->destroy(z->in);
+
+	if (z->crc32_obj)
 		z->crc32->close(z->crc32_obj);
-	ffvec_free(&z->buf);
 	ffmem_free(z);
 }
 
@@ -131,9 +159,6 @@ static fcom_op* zip_create(fcom_cominfo *cmd)
 	z->out = core->file->create(&fc);
 
 	z->wzip.timezone_offset = core->tz.real_offset;
-
-	ffsize cap = (cmd->buffer_size != 0) ? cmd->buffer_size : 64*1024;
-	ffvec_alloc(&z->buf, cap, 1);
 	return z;
 
 end:
@@ -237,7 +262,7 @@ static void zip_run(fcom_op *op)
 		case I_OUT_OPEN: {
 			uint flags = FCOM_FILE_WRITE;
 			flags |= fcom_file_cominfo_flags_o(z->cmd);
-			r = core->file->open(z->out, z->cmd->output.ptr, flags);
+			r = core->file->open(z->out, z->oname, flags);
 			if (r == FCOM_FILE_ERR) goto end;
 			z->del_on_close = !z->cmd->stdout && !z->cmd->test;
 			z->woff = -1;
@@ -274,15 +299,15 @@ static void zip_run(fcom_op *op)
 			r = core->file->info(z->in, &z->fi);
 			if (r == FCOM_FILE_ERR) goto end;
 
+			if (0 != core->com->input_allowed(z->cmd, z->iname, fffile_isdir(fffileinfo_attr(&z->fi)))) {
+				z->st = I_IN;
+				continue;
+			}
+
 			if ((z->base.len == 0 || z->cmd->recursive)
 				&& fffile_isdir(fffileinfo_attr(&z->fi))) {
 				fffd fd = core->file->fd(z->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(z->cmd, fd);
-			}
-
-			if (0 != core->com->input_allowed(z->cmd, z->iname)) {
-				z->st = I_IN;
-				continue;
 			}
 
 			z->st = I_ADD;

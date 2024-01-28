@@ -6,16 +6,16 @@ static const char* pic_help()
 	return "\
 Convert images (.bmp/.jpg/.png).\n\
 Usage:\n\
-  fcom pic INPUT... -o OUTPUT\n\
-  \n\
-    OUTPUT\n\
+  `fcom pic` INPUT... -o OUTPUT\n\
+\n\
+OUTPUT\n\
       Output file name with extension (.bmp/.jpg/.png).\n\
       If only an extension is given, use source file name automatically.\n\
-  \n\
-    OPTIONS:\n\
-    -q, --jpeg-quality=INT\n\
+\n\
+OPTIONS:\n\
+    `-q`, `--jpeg-quality` INT\n\
                         Set JPEG quality: 1..100 (default: 85)\n\
-        --png-compression=INT\n\
+        `--png-compression` INT\n\
                         Set PNG compression level: 0..9 (default: 9)\n\
 ";
 }
@@ -34,6 +34,8 @@ struct pic;
 typedef int (*pic_io)(struct pic *p, ffstr *input, ffstr *output);
 
 struct pic {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	ffstr name, basepath, inameonly;
@@ -69,15 +71,13 @@ struct pic {
 	uint reader_opened :1;
 	uint conv :1;
 
-	byte jpeg_quality;
-	byte png_comp;
+	uint jpeg_quality;
+	uint png_comp;
 };
 
 #include <pic/bmp.h>
 #include <pic/jpg.h>
 #include <pic/png.h>
-
-#define O(member)  FF_OFF(struct pic, member)
 
 static pic_io get_format_w(ffstr oext)
 {
@@ -89,12 +89,12 @@ static pic_io get_format_w(ffstr oext)
 	return io;
 }
 
-static pic_io get_format_r(ffstr oext)
+static pic_io get_format_r(ffstr iext)
 {
 	pic_io io = bmp_read;
-	if (ffstr_eqz(&oext, "jpg"))
+	if (ffstr_eqz(&iext, "jpg"))
 		io = pic_jpg_read;
-	else if (ffstr_eqz(&oext, "png"))
+	else if (ffstr_eqz(&iext, "png"))
 		io = pic_png_read;
 	return io;
 }
@@ -109,17 +109,20 @@ static inline ffstr ffstr_sub(ffstr s, ffsize from, ffssize len)
 	return r;
 }
 
+#define O(member)  (void*)FF_OFF(struct pic, member)
+
 static int args_parse(struct pic *p, fcom_cominfo *cmd)
 {
 	p->jpeg_quality = 85;
 	p->png_comp = 9;
 
-	static const ffcmdarg_arg args[] = {
-		{ 'q', "jpeg-quality",	FFCMDARG_TINT8,	O(jpeg_quality) },
-		{ 0, "png-compression",	FFCMDARG_TINT8,	O(png_comp) },
+	static const struct ffarg args[] = {
+		{ "--jpeg-quality",		'u',	O(jpeg_quality) },
+		{ "--png-compression",	'u',	O(png_comp) },
+		{ "-q",					'u',	O(jpeg_quality) },
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, p);
+	int r = core->com->args_parse(cmd, args, p, FCOM_COM_AP_INOUT);
 	if (r != 0)
 		return r;
 
@@ -164,8 +167,10 @@ static void pic_reset(struct pic *p)
 	ffmem_zero_obj(&p->in_info);
 	ffmem_zero_obj(&p->out_info);
 
-	if (p->out != NULL)
+	if (p->out != NULL) {
 		core->file->close(p->out);
+		fcom_verblog("%s", p->oname);
+	}
 	p->out_opened = 0;
 	p->in_off = 0;
 	p->out_off = 0;
@@ -278,14 +283,14 @@ static void pic_run(fcom_op *op)
 			r = core->file->info(p->in, &p->ifi);
 			if (r == FCOM_FILE_ERR) goto end;
 
+			if (0 != core->com->input_allowed(p->cmd, p->name, fffile_isdir(fffileinfo_attr(&p->ifi))))
+				continue;
+
 			if (fffile_isdir(fffileinfo_attr(&p->ifi))) {
 				fffd fd = core->file->fd(p->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(p->cmd, fd);
 				continue;
 			}
-
-			if (0 != core->com->input_allowed(p->cmd, p->name))
-				continue;
 
 			ffstr iext;
 			ffpath_splitpath_str(p->name, NULL, &iext);

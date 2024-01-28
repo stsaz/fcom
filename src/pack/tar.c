@@ -5,9 +5,8 @@ static const char* tar_help()
 {
 	return "\
 Pack files into .tar.\n\
-Implies '--recursive'.\n\
 Usage:\n\
-  fcom tar INPUT... [OPTIONS] -o OUTPUT.tar\n\
+  `fcom tar` INPUT... [OPTIONS] -o OUTPUT.tar\n\
 ";
 }
 
@@ -18,17 +17,22 @@ Usage:\n\
 const fcom_core *core;
 
 struct tar {
+	fcom_cominfo cominfo;
+
 	uint st;
-	fcom_cominfo *cmd;
-	fftarwrite wtar;
-	ffstr iname, base;
-	ffstr plain, tardata;
-	fcom_file_obj *in, *out;
-	fffileinfo fi;
-	ffvec buf;
 	uint stop;
-	uint del_on_close :1;
-	uint link :1;
+	fcom_cominfo *cmd;
+
+	ffstr			iname, base;
+	fcom_file_obj*	in;
+	fffileinfo		fi;
+	ffstr			plain;
+	uint			link :1;
+
+	fftarwrite		wtar;
+	ffstr			tardata;
+	fcom_file_obj*	out;
+	uint			del_on_close :1;
 };
 
 #define O(member)  FF_OFF(struct tar, member)
@@ -37,10 +41,10 @@ static int args_parse(struct tar *t, fcom_cominfo *cmd)
 {
 	cmd->recursive = 1;
 
-	static const ffcmdarg_arg args[] = {
+	static const struct ffarg args[] = {
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, t);
+	int r = core->com->args_parse(cmd, args, t, FCOM_COM_AP_INOUT);
 	if (r != 0)
 		return r;
 
@@ -62,7 +66,6 @@ static void tar_close(fcom_op *op)
 	if (t->del_on_close)
 		core->file->del(t->cmd->output.ptr, 0);
 	core->file->destroy(t->out);
-	ffvec_free(&t->buf);
 	ffmem_free(t);
 }
 
@@ -78,9 +81,6 @@ static fcom_op* tar_create(fcom_cominfo *cmd)
 	fcom_cmd_file_conf(&fc, cmd);
 	t->in = core->file->create(&fc);
 	t->out = core->file->create(&fc);
-
-	ffsize cap = (cmd->buffer_size != 0) ? cmd->buffer_size : 64*1024;
-	ffvec_alloc(&t->buf, cap, 1);
 	return t;
 
 end:
@@ -193,15 +193,15 @@ static void tar_run(fcom_op *op)
 			r = core->file->info(t->in, &t->fi);
 			if (r == FCOM_FILE_ERR) goto end;
 
+			if (0 != core->com->input_allowed(t->cmd, t->iname, fffile_isdir(fffileinfo_attr(&t->fi)))) {
+				t->st = I_IN;
+				continue;
+			}
+
 			if ((t->base.len == 0 || t->cmd->recursive)
 				&& fffile_isdir(fffileinfo_attr(&t->fi))) {
 				fffd fd = core->file->fd(t->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(t->cmd, fd);
-			}
-
-			if (0 != core->com->input_allowed(t->cmd, t->iname)) {
-				t->st = I_IN;
-				continue;
 			}
 
 			t->link = 0;

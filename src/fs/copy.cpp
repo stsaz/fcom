@@ -4,26 +4,26 @@
 static const char* copy_help()
 {
 	return "\
-Copy files, plus encryption & verification.\n\
-Implies '--recursive'.\n\
-Uses large '--buffer' by default.\n\
+Copy files and directories, plus encryption & verification.\n\
+Uses large `--buffer` by default.\n\
 File properties are preserved.\n\
 Usage:\n\
-  fcom copy INPUT... [-o OUTPUT_FILE] [-C OUTPUT_DIR] [OPTIONS]\n\
-    OPTIONS:\n\
+  `fcom copy` INPUT... [-o OUTPUT_FILE] [-C OUTPUT_DIR] [OPTIONS]\n\
 \n\
-    -e, --encrypt=PASSWORD\n\
+OPTIONS:\n\
+\n\
+    `-e`, `--encrypt` PASSWORD\n\
                         Encrypt data (AES-256-CFB key=SHA256(password))\n\
-    -d, --decrypt=PASSWORD\n\
+    `-d`, `--decrypt` PASSWORD\n\
                         Decrypt data\n\
 \n\
-    -5, --md5           Print MD5 checksum of input file\n\
-    -y, --verify        Verify data consistency with MD5.\n\
-                        Implies '--directio' on output file.\n\
+    `-5`, `--md5`           Print MD5 checksum of input file\n\
+    `-y`, `--verify`        Verify data consistency with MD5.\n\
+                        Implies `--directio` on output file.\n\
 \n\
-        --rename-source Rename source file to *.deleted after successful operation\n\
-    -u, --update        Overwrite only older files\n\
-        --write-into\n\
+        `--rename-source` Rename source file to *.deleted after successful operation\n\
+    `-u`, `--update`        Overwrite only older files\n\
+        `--write-into`\n\
                         Overwrite file data instead of deleting the old target\n\
 ";
 }
@@ -39,18 +39,20 @@ static const fcom_core *core;
 #define BUF_LARGE  (8*1024*1024)
 
 struct copy {
+	fcom_cominfo cominfo;
+
 	uint st;
 	ffstr data;
 	fcom_cominfo *cmd;
 	uint stop;
 
-	fcom_filexx		input;
-	ffstr name;
-	char *iname;
-	xxfileinfo		fi;
-	uint64 in_off;
-	uint nfiles;
-	ffstr basename;
+	fcom_filexx	input;
+	ffstr		name;
+	char*		iname;
+	xxfileinfo	fi;
+	uint64		in_off;
+	uint		nfiles;
+	ffstr		basename;
 
 	struct {
 		fcom_aes_obj *aes_obj;
@@ -63,12 +65,16 @@ struct copy {
 		uint aes_iv_in :1;
 	} cr;
 
-	uint ostate;
-	fcom_filexx		output;
-	uint64 total, out_off;
-	char *oname, *oname_tmp;
-	xxfileinfo		ofi;
-	uint del_on_close :1;
+	struct o_s {
+		o_s() : f(core) {}
+		uint		state;
+		fcom_filexx	f;
+		uint64		total, off;
+		char*		name;
+		char*		name_tmp;
+		xxfileinfo	fi;
+		uint		del_on_close :1;
+	} o;
 
 	struct {
 		const fcom_hash *md5;
@@ -84,10 +90,10 @@ struct copy {
 	byte update;
 	byte write_into;
 
-	copy() : input(core), output(core) {}
+	copy() : input(core) {}
 };
 
-#define O(member)  FF_OFF(struct copy, member)
+#define O(member)  (void*)FF_OFF(struct copy, member)
 
 static int args_parse(struct copy *c, fcom_cominfo *cmd)
 {
@@ -95,17 +101,22 @@ static int args_parse(struct copy *c, fcom_cominfo *cmd)
 	if (cmd->buffer_size == 0)
 		cmd->buffer_size = BUF_LARGE;
 
-	static const ffcmdarg_arg args[] = {
-		{ 'e',	"encrypt",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, O(encrypt) },
-		{ 'd',	"decrypt",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, O(decrypt) },
-		{ 'y',	"verify",	FFCMDARG_TSWITCH, O(verify) },
-		{ '5',	"md5",		FFCMDARG_TSWITCH, O(print_md5) },
-		{ 0,	"rename-source",	FFCMDARG_TSWITCH, O(rename_source) },
-		{ 'u',	"update",	FFCMDARG_TSWITCH, O(update) },
-		{ 0,	"write-into",	FFCMDARG_TSWITCH, O(write_into) },
+	static const struct ffarg args[] = {
+		{ "--decrypt",		'S',	O(decrypt) },
+		{ "--encrypt",		'S',	O(encrypt) },
+		{ "--md5",			'1',	O(print_md5) },
+		{ "--rename-source",'1',	O(rename_source) },
+		{ "--update",		'1',	O(update) },
+		{ "--verify",		'1',	O(verify) },
+		{ "--write-into",	'1',	O(write_into) },
+		{ "-5",				'1',	O(print_md5) },
+		{ "-d",				'S',	O(decrypt) },
+		{ "-e",				'S',	O(encrypt) },
+		{ "-u",				'1',	O(update) },
+		{ "-y",				'1',	O(verify) },
 		{}
 	};
-	if (0 != core->com->args_parse(cmd, args, c))
+	if (0 != core->com->args_parse(cmd, args, c, FCOM_COM_AP_INOUT))
 		return -1;
 
 	if (cmd->stdout)
@@ -114,9 +125,7 @@ static int args_parse(struct copy *c, fcom_cominfo *cmd)
 	if (c->update)
 		cmd->overwrite = 1;
 
-	if (cmd->recursive != 0xff)
-		cmd->recursive = 1;
-
+	cmd->recursive = 1;
 	return 0;
 }
 
@@ -133,21 +142,24 @@ static void copy_close(fcom_op *op)
 	crypt_close(c);
 	verify_reset(c);
 	output_close(c);
-	delete c;
+	c->~copy();
+	ffmem_free(c);
 }
 
 static fcom_op* copy_create(fcom_cominfo *cmd)
 {
 	struct copy *c = new(ffmem_new(struct copy)) struct copy;
-	struct fcom_file_conf fc = {};
 
 	if (0 != args_parse(c, cmd))
 		goto end;
 	c->cmd = cmd;
 
+	{
+	struct fcom_file_conf fc = {};
 	fc.buffer_size = cmd->buffer_size;
 	fc.n_buffers = 1;
 	c->input.create(&fc);
+	}
 
 	if (0 != output_init(c)) goto end;
 	if (0 != crypt_init(c)) goto end;
@@ -208,22 +220,23 @@ static void copy_run(fcom_op *op)
 			if (r == FCOM_FILE_ERR) goto end;
 
 			if (!c->cmd->stdout) {
-				ffmem_free0(c->oname);
-				ffmem_free0(c->oname_tmp);
-				if (NULL == (c->oname = out_name(c, c->name, c->basename)))
+				ffmem_free0(c->o.name);
+				ffmem_free0(c->o.name_tmp);
+				if (NULL == (c->o.name = out_name(c, c->name, c->basename)))
 					goto end;
-				c->oname_tmp = ffsz_allocfmt("%s.fcomtmp", c->oname);
+				c->o.name_tmp = ffsz_allocfmt("%s.fcomtmp", c->o.name);
 			}
 
 			r = c->input.info(&c->fi);
 			if (r == FCOM_FILE_ERR) goto end;
-			if (c->fi.dir()) {
-				c->st = I_MKDIR;
+
+			if (0 != core->com->input_allowed(c->cmd, c->name, c->fi.dir())) {
+				c->st = I_SRC;
 				continue;
 			}
 
-			if (0 != core->com->input_allowed(c->cmd, c->name)) {
-				c->st = I_SRC;
+			if (c->fi.dir()) {
+				c->st = I_MKDIR;
 				continue;
 			}
 
@@ -232,7 +245,7 @@ static void copy_run(fcom_op *op)
 		}
 
 		case I_MKDIR:
-			r = core->file->dir_create(c->oname, 0);
+			r = core->file->dir_create(c->o.name, FCOM_FILE_DIR_RECURSIVE);
 			if (r == FCOM_FILE_ERR) goto end;
 			if (c->cmd->recursive == 1)
 				core->com->input_dir(c->cmd, c->input.acquire_fd());
@@ -295,9 +308,9 @@ static void copy_run(fcom_op *op)
 			continue;
 
 		case I_RD_DONE:
-			c->output.behaviour(FCOM_FBEH_TRUNC_PREALLOC);
+			c->o.f.behaviour(FCOM_FBEH_TRUNC_PREALLOC);
 			if (c->preserve_date) {
-				c->output.mtime(c->fi.mtime1());
+				c->o.f.mtime(c->fi.mtime1());
 			}
 
 			if (verify_read_fin(c)) {
@@ -309,7 +322,7 @@ static void copy_run(fcom_op *op)
 			continue;
 
 		case I_VERIFY:
-			r = c->output.read(&c->data, c->out_off);
+			r = c->o.f.read(&c->data, c->o.off);
 			if (r == FCOM_FILE_ERR) goto end;
 			if (r == FCOM_FILE_EOF) {
 				if (0 != verify_result(c))
@@ -319,12 +332,12 @@ static void copy_run(fcom_op *op)
 			}
 
 			verify_process(c, c->data);
-			c->out_off += c->data.len;
+			c->o.off += c->data.len;
 			continue;
 
 		case I_DONE:
 			r = output_fin(c);
-			if (r == 123) return;
+			if (r == 'asyn') return;
 			if (r != 0) goto end;
 
 			if (c->rename_source) {
@@ -334,8 +347,8 @@ static void copy_run(fcom_op *op)
 				}
 			}
 
-			fcom_verblog("'%s' -> '%s', %,U"
-				, c->iname, c->oname, c->total);
+			fcom_verblog("'%s' -> '%s'  [%,U]"
+				, c->iname, c->o.name, c->o.total);
 
 			c->st = I_SRC;
 			continue;

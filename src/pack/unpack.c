@@ -6,9 +6,12 @@ static const char* unpack_help()
 	return "\
 Unpack files from all supported archive types.\n\
 Usage:\n\
-  fcom unpack INPUT... [-C OUTPUT_DIR]\n\
-    OPTIONS:\n\
-        --autodir   Add to OUTPUT_DIR a directory with name = input archive name.\n\
+  `fcom unpack` INPUT... [-C OUTPUT_DIR]\n\
+\n\
+OPTIONS:\n\
+    `-l, `--list`      Just show the file list\n\
+        `--plain`     Plain file names\n\
+        `--autodir`   Add to OUTPUT_DIR a directory with name = input archive name.\n\
                      Same as manual 'unpack arc.xxx -C odir/arc'.\n\
 ";
 }
@@ -20,6 +23,8 @@ Usage:\n\
 const fcom_core *core;
 
 struct unpack {
+	fcom_cominfo cominfo;
+
 	uint state;
 	fcom_cominfo *cmd;
 	ffstr iname, base;
@@ -28,18 +33,22 @@ struct unpack {
 	fffd pr, pw;
 
 	// conf:
+	byte list, list_plain;
 	byte autodir;
 };
 
-#define O(member)  FF_OFF(struct unpack, member)
+#define O(member)  (void*)FF_OFF(struct unpack, member)
 
 static int unpack_args_parse(struct unpack *u, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
-		{ 0, "autodir",	FFCMDARG_TSWITCH,	O(autodir) },
+	static const struct ffarg args[] = {
+		{ "--autodir",				'1',	O(autodir) },
+		{ "--list",					'1',	O(list) },
+		{ "--plain",				'1',	O(list_plain) },
+		{ "-l",						'1',	O(list) },
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, u);
+	int r = core->com->args_parse(cmd, args, u, FCOM_COM_AP_INOUT);
 	if (r != 0)
 		return r;
 
@@ -176,9 +185,18 @@ static int unpack_child(struct unpack *u, const char *opname, uint level)
 		if (u->cmd->chdir.len != 0)
 			ffstr_dupstr(&c->chdir, &u->cmd->chdir);
 
-		if (u->autodir) {
-			ffvec a = {};
+		ffvec a = {};
+
+		if (u->autodir)
 			*ffvec_pushT(&a, char*) = ffsz_dup("--autodir");
+
+		if (u->list)
+			*ffvec_pushT(&a, char*) = ffsz_dup("--list");
+
+		if (u->list_plain)
+			*ffvec_pushT(&a, char*) = ffsz_dup("--plain");
+
+		if (a.len) {
 			ffvec_zpushT(&a, char*);
 			c->argv = a.ptr;
 			c->argc = a.len - 1;

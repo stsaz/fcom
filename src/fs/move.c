@@ -6,21 +6,22 @@ static const char* move_help()
 	return "\
 Move and/or rename files.\n\
 Usage:\n\
-  fcom move INPUT... [OPTIONS]\n\
-    OPTIONS:\n\
-    -u, --unbranch      Move and rename a file out of its directory structure, e.g.\n\
+  `fcom move` INPUT... [OPTIONS]\n\
+\n\
+OPTIONS:\n\
+    `-u`, `--unbranch`      Move and rename a file out of its directory structure, e.g.\n\
                             fcom move --unbranch ./a\n\
                           moves/renames \"./a/b/file\" -> \"./a - b - file\"\n\
-        --unbranch-flat Move a file out of its directory structure, e.g.\n\
+        `--unbranch-flat` Move a file out of its directory structure, e.g.\n\
                             fcom move --unbranch-flat ./a\n\
                           moves \"./a/b/file\" -> \"./file\"\n\
-    -r, --replace='SEARCH/REPLACE'\n\
+    `-r`, `--replace` 'SEARCH/REPLACE'\n\
                         Replace SEARCH text in file name with REPLACE\n\
-        --replace-once  Replace only the first occurrence\n\
-    -t, --tree          Preserve directory tree, e.g.\n\
+        `--replace-once`  Replace only the first occurrence\n\
+    `-t`, `--tree`          Preserve directory tree, e.g.\n\
                             fcom move --tree a/b/c -C out\n\
                           moves \"a/b/c\" to \"out/a/b/c\"\n\
-    -k, --skip-errors   Don't fail on error\n\
+    `-k`, `--skip-errors`   Don't fail on error\n\
 ";
 }
 
@@ -31,6 +32,8 @@ Usage:\n\
 static const fcom_core *core;
 
 struct move {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	uint stop;
@@ -44,9 +47,9 @@ struct move {
 	ffstr replace_pair, search, replace;
 };
 
-static int args_replace(ffcmdarg_scheme *as, struct move *m, ffstr *val)
+static int args_replace(struct move *m, ffstr val)
 {
-	ffstr_dupstr(&m->replace_pair, val);
+	ffstr_dupstr(&m->replace_pair, &val);
 	int r = ffstr_splitby(&m->replace_pair, '/', &m->search, &m->replace);
 	if (r < 0 || m->search.len == 0) {
 		fcom_fatlog("Invalid search-replace pattern. Expecting 'SEARCH/REPLACE'.");
@@ -55,20 +58,24 @@ static int args_replace(ffcmdarg_scheme *as, struct move *m, ffstr *val)
 	return 0;
 }
 
-#define O(member)  FF_OFF(struct move, member)
+#define O(member)  (void*)FF_OFF(struct move, member)
 
 static int args_parse(struct move *m, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
-		{ 'u',	"unbranch",			FFCMDARG_TSWITCH,		O(unbranch) },
-		{ 0,	"unbranch-flat",	FFCMDARG_TSWITCH,		O(unbranch_flat) },
-		{ 'r',	"replace",			FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY,		(ffsize)args_replace },
-		{ 0,	"replace-once",		FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY,		O(replace_once) },
-		{ 't',	"tree",				FFCMDARG_TSWITCH,		O(tree) },
-		{ 'k',	"skip-errors",		FFCMDARG_TSWITCH,		O(skip_errors) },
+	static const struct ffarg args[] = {
+		{ "--replace",			'S',	args_replace },
+		{ "--replace-once",		'1',	O(replace_once) },
+		{ "--skip-errors",		'1',	O(skip_errors) },
+		{ "--tree",				'1',	O(tree) },
+		{ "--unbranch",			'1',	O(unbranch) },
+		{ "--unbranch-flat",	'1',	O(unbranch_flat) },
+		{ "-k",					'1',	O(skip_errors) },
+		{ "-r",					'S',	args_replace },
+		{ "-t",					'1',	O(tree) },
+		{ "-u",					'1',	O(unbranch) },
 		{}
 	};
-	if (0 != core->com->args_parse(cmd, args, m))
+	if (0 != core->com->args_parse(cmd, args, m, FCOM_COM_AP_INOUT))
 		return -1;
 
 	if (m->unbranch && m->unbranch_flat) {
@@ -227,13 +234,14 @@ static void move_run(fcom_op *op)
 			fffileinfo fi;
 			r = core->file->info(m->in, &fi);
 			if (r == FCOM_FILE_ERR) goto end;
+
+			if (0 != core->com->input_allowed(m->cmd, in, fffile_isdir(fffileinfo_attr(&fi))))
+				continue;
+
 			if (fffile_isdir(fffileinfo_attr(&fi))) {
 				fffd fd = core->file->fd(m->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(m->cmd, fd);
 			}
-
-			if (0 != core->com->input_allowed(m->cmd, in))
-				continue;
 
 			core->file->close(m->in);
 

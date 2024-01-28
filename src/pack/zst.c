@@ -6,10 +6,11 @@ static const char* zst_help()
 	return "\
 Compress file into .zst.\n\
 Usage:\n\
-  fcom zst INPUT [OPTIONS] [-o OUTPUT.zst]\n\
-    OPTIONS:\n\
-    -l, --level=INT     Compression level: -7..22; default:3\n\
-    -w, --workers=INT   N of threads for compression; default:1\n\
+  `fcom zst` INPUT [OPTIONS] [-o OUTPUT.zst]\n\
+\n\
+OPTIONS:\n\
+    `-l`, `--level` INT     Compression level: -7..22; default:3\n\
+    `-w`, `--workers` INT   N of threads for compression; default:1\n\
 ";
 }
 
@@ -21,6 +22,8 @@ Usage:\n\
 const fcom_core *core;
 
 struct zst {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	ffstr iname, basename;
@@ -35,23 +38,25 @@ struct zst {
 
 	uint64 in_total, out_total;
 
-	byte level;
-	byte workers;
+	uint level;
+	uint workers;
 };
 
-#define O(member)  FF_OFF(struct zst, member)
+#define O(member)  (void*)FF_OFF(struct zst, member)
 
 static int args_parse(struct zst *z, fcom_cominfo *cmd)
 {
 	z->level = 3;
 	z->workers = 1;
 
-	static const ffcmdarg_arg args[] = {
-		{ 'l', "level",	FFCMDARG_TINT8,	O(level) },
-		{ 'w', "workers",	FFCMDARG_TINT8,	O(workers) },
+	static const struct ffarg args[] = {
+		{ "--level",	'u',	O(level) },
+		{ "--workers",	'u',	O(workers) },
+		{ "-l",			'u',	O(level) },
+		{ "-w",			'u',	O(workers) },
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, z);
+	int r = core->com->args_parse(cmd, args, z, FCOM_COM_AP_INOUT);
 	if (r != 0)
 		return r;
 
@@ -132,6 +137,8 @@ static void zst_run(fcom_op *op)
 
 		case I_IN:
 			if (0 > (r = core->com->input_next(z->cmd, &z->iname, &z->basename, 0))) {
+				if (r == FCOM_COM_RINPUT_NOMORE)
+					rc = 0;
 				goto end;
 			}
 			z->st = I_IN_OPEN;
@@ -200,8 +207,8 @@ static void zst_run(fcom_op *op)
 						, z->in_total, z->out_total, (uint)FFINT_DIVSAFE(z->out_total * 100, z->in_total));
 
 					z->del_on_close = 0;
-					rc = 0;
-					goto end;
+					z->st = I_IN;
+					continue;
 				}
 				z->st = I_READ;
 				continue;

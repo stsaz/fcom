@@ -6,12 +6,13 @@ static const char* trash_help()
 	return "\
 Move files to user's trash directory, plus obfuscation.\n\
 Usage:\n\
-  fcom trash INPUT...\n\
-    OPTIONS:\n\
-    -w, --wipe          Overwrite data to hide file content (files-only).\n\
+  `fcom trash` INPUT...\n\
+\n\
+OPTIONS:\n\
+    `-w`, `--wipe`          Overwrite data to hide file content (files-only).\n\
                         Additionally, set file modification time to 2000-01-01.\n\
-    -n, --rename        Rename to \"00000000.0000\" before deleting (files-only)\n\
-    -f                  Delete from disk if moving to Trash has failed (files-only)\n\
+    `-n`, `--rename`        Rename to \"00000000.0000\" before deleting (files-only)\n\
+    `-f`                  Delete from disk if moving to Trash has failed (files-only)\n\
 ";
 }
 
@@ -25,6 +26,8 @@ Usage:\n\
 static const fcom_core *core;
 
 struct trash {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	fcom_file_obj *in;
@@ -36,14 +39,17 @@ struct trash {
 	byte rename;
 };
 
+#define O(member)  (void*)FF_OFF(struct trash, member)
 static int args_parse(struct trash *t, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
-		{ 'w',	"wipe",	FFCMDARG_TSWITCH, FF_OFF(struct trash, wipe) },
-		{ 'n',	"rename",	FFCMDARG_TSWITCH, FF_OFF(struct trash, rename) },
+	static const struct ffarg args[] = {
+		{ "--rename",	'1',	O(rename) },
+		{ "--wipe",		'1',	O(wipe) },
+		{ "-n",			'1',	O(rename) },
+		{ "-w",			'1',	O(wipe) },
 		{}
 	};
-	return core->com->args_parse(cmd, args, t);
+	return core->com->args_parse(cmd, args, t, FCOM_COM_AP_INOUT);
 }
 
 static void trash_close(fcom_op *op);

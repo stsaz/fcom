@@ -14,10 +14,11 @@ Contents:
 ## Features
 
 ```
-  General:
+  FS:
     copy                Copy files from one place to another, plus encryption & verification
     list                List directory contents
     move                Move and/or rename files
+    sync                Compare/synchronize directories or create a file tree snapshot
     touch               Change file date/time
     trash               Move files to user's trash directory, plus obfuscation
 
@@ -42,17 +43,21 @@ Contents:
     untar               Unpack files from .tar
     unzip               Unpack files from .zip
 
+  Text:
+    html                Parse HTML data
+    textcount           Analyze text files (e.g. print number of lines)
+    utf8                Convert files to UTF-8
+
   Other:
     hex                 Print file contents in hexadecimal format
     ico-extract         Extract images from .ico
-    listdisk            List logical volumes (Windows)
     md5                 Compute MD5 hash
-    mount               Mount logical volumes (Windows)
     pic                 Convert images (.bmp/.jpg/.png)
+
+  Windows-only:
+    listdisk            List logical volumes (Windows)
+    mount               Mount logical volumes (Windows)
     reg                 Windows Registry utils: search
-    sync                Compare/synchronize directories or create a file tree snapshot
-    textcount           Analyze text files (e.g. print number of lines)
-    utf8                Convert files to UTF-8
 ```
 
 

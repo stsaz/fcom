@@ -7,26 +7,27 @@ static const char* sync_help()
 Compare/synchronize directories or create a file tree snapshot.\n\
 Implies '--recursive', ignores '--include'/'--exclude'.\n\
 Usage:\n\
-  fcom sync [INPUT_DIR -o OUT_DIR]|[SNAPSHOT --source-snap -o OUT_DIR]|[INPUT_DIR -s -o SNAPSHOT] [OPTIONS]\n\
-    OPTIONS:\n\
-    -s, --snapshot      Create an INPUT_DIR tree snapshot\n\
-        --source-snap   Use snapshot file for input file tree\n\
-        --target-snap   Use snapshot file for output file tree\n\
-        --source-path-strip1\n\
+  `fcom sync` [INPUT_DIR -o OUT_DIR]|[SNAPSHOT --source-snap -o OUT_DIR]|[INPUT_DIR -s -o SNAPSHOT] [OPTIONS]\n\
+\n\
+OPTIONS:\n\
+    `-s`, `--snapshot`      Create an INPUT_DIR tree snapshot\n\
+        `--source-snap`   Use snapshot file for input file tree\n\
+        `--target-snap`   Use snapshot file for output file tree\n\
+        `--src-path-strip1`\n\
                         Strip top-level path-component from source tree\n\
-        --target-path-strip1\n\
+        `--dst-path-strip1`\n\
                         Strip top-level path-component from target tree\n\
 \n\
-    -d, --diff=STR      Just show difference table between source and target\n\
+    `-d`, `--diff` STR      Just show difference table between source and target\n\
                         STR: empty (\"\") or a set of flags [ADUM]\n\
-        --diff-no-attr  diff: Don't check file attributes\n\
-        --diff-no-time  diff: Don't check file time\n\
-        --diff-fullname diff: Don't cut file names\n\
-    -p, --plain         Plain list of file names\n\
+        `--diff-no-attr`  diff: Don't check file attributes\n\
+        `--diff-no-time`  diff: Don't check file time\n\
+        `--diff-fullname` diff: Don't cut file names\n\
+    `-p`, `--plain`         Plain list of file names\n\
 \n\
-        --add           Copy new files\n\
-        --delete        Delete old files\n\
-        --update        Overwrite modified files\n\
+        `--add`           Copy new files\n\
+        `--delete`        Delete old files\n\
+        `--update`        Overwrite modified files\n\
 \n\
 Examples:\n\
 \n\
@@ -114,6 +115,8 @@ struct srcdst {
 };
 
 struct sync {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	struct srcdst	src, dst;
@@ -185,29 +188,30 @@ static void sync_close(fcom_op *op);
 
 static int diff_flags_parse(const char *s);
 
-#define O(member)  FF_OFF(struct sync, member)
+#define O(member)  (void*)FF_OFF(struct sync, member)
 
 static int args_parse(struct sync *s, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
-		{ 's',	"snapshot",	FFCMDARG_TSWITCH, O(write_snapshot) },
-		{ 0,	"source-snap",	FFCMDARG_TSWITCH, O(left_snapshot) },
-		{ 0,	"target-snap",	FFCMDARG_TSWITCH, O(right_snapshot) },
-		{ 0,	"source-path-strip1",	FFCMDARG_TSWITCH, O(left_path_strip) },
-		{ 0,	"target-path-strip1",	FFCMDARG_TSWITCH, O(right_path_strip) },
-
-		{ 'd',	"diff",	FFCMDARG_TSTRZ, O(diff_flags_str) },
-		{ 0,	"diff-no-attr",	FFCMDARG_TSWITCH, O(diff_no_attr) },
-		{ 0,	"diff-no-time",	FFCMDARG_TSWITCH, O(diff_no_time) },
-		{ 0,	"diff-fullname",	FFCMDARG_TSWITCH, O(diff_full_name) },
-		{ 'p',	"plain",	FFCMDARG_TSWITCH, O(plain_list) },
-
-		{ 0,	"add",	FFCMDARG_TSWITCH, O(sync_add) },
-		{ 0,	"delete",	FFCMDARG_TSWITCH, O(sync_del) },
-		{ 0,	"update",	FFCMDARG_TSWITCH, O(sync_update) },
+	static const struct ffarg args[] = {
+		{ "--add",				'1',	O(sync_add) },
+		{ "--delete",			'1',	O(sync_del) },
+		{ "--diff",				's',	O(diff_flags_str) },
+		{ "--diff-fullname",	'1',	O(diff_full_name) },
+		{ "--diff-no-attr",		'1',	O(diff_no_attr) },
+		{ "--diff-no-time",		'1',	O(diff_no_time) },
+		{ "--dst-path-strip1",	'1',	O(right_path_strip) },
+		{ "--plain",			'1',	O(plain_list) },
+		{ "--snapshot",			'1',	O(write_snapshot) },
+		{ "--source-snap",		'1',	O(left_snapshot) },
+		{ "--src-path-strip1",	'1',	O(left_path_strip) },
+		{ "--target-snap",		'1',	O(right_snapshot) },
+		{ "--update",			'1',	O(sync_update) },
+		{ "-d",					's',	O(diff_flags_str) },
+		{ "-p",					'1',	O(plain_list) },
+		{ "-s",					'1',	O(write_snapshot) },
 		{}
 	};
-	if (0 != core->com->args_parse(cmd, args, s))
+	if (0 != core->com->args_parse(cmd, args, s, FCOM_COM_AP_INOUT))
 		return -1;
 
 	cmd->recursive = 1;

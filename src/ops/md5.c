@@ -6,7 +6,7 @@ static const char* md5_help()
 	return "\
 Compute MD5 hash.\n\
 Usage:\n\
-  fcom md5 INPUT... [OPTIONS]\n\
+  `fcom md5` INPUT... [OPTIONS]\n\
 ";
 }
 
@@ -17,6 +17,8 @@ Usage:\n\
 static const fcom_core *core;
 
 struct md5 {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	uint stop;
@@ -30,10 +32,10 @@ struct md5 {
 
 static int args_parse(struct md5 *m, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
+	static const struct ffarg args[] = {
 		{}
 	};
-	if (0 != core->com->args_parse(cmd, args, m))
+	if (0 != core->com->args_parse(cmd, args, m, FCOM_COM_AP_INOUT))
 		return -1;
 
 	return 0;
@@ -93,16 +95,15 @@ static void md5_run(fcom_op *op)
 			fffileinfo fi;
 			r = core->file->info(m->in, &fi);
 			if (r == FCOM_FILE_ERR) goto end;
+
+			if (0 != core->com->input_allowed(m->cmd, m->iname, fffile_isdir(fffileinfo_attr(&fi))))
+				continue;
+
 			if (fffile_isdir(fffileinfo_attr(&fi))) {
 				fffd fd = core->file->fd(m->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(m->cmd, fd);
+				continue;
 			}
-
-			if (0 != core->com->input_allowed(m->cmd, m->iname))
-				continue;
-
-			if (fffile_isdir(fffileinfo_attr(&fi)))
-				continue;
 
 			m->hash = fcom_md5.create();
 			m->st = I_READ;

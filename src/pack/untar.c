@@ -6,13 +6,14 @@ static const char* untar_help()
 	return "\
 Unpack files from .tar.\n\
 Usage:\n\
-  fcom untar INPUT... [-C OUTPUT_DIR]\n\
-    OPTIONS:\n\
-    -m, --members-from-file=FILE\n\
+  `fcom untar` INPUT... [-C OUTPUT_DIR]\n\
+\n\
+OPTIONS:\n\
+    `-m, `--members-from-file` FILE\n\
                     Read archive member names from file\n\
-    -l, --list      Just show the file list\n\
-        --plain     Plain file names\n\
-        --autodir   Add to OUTPUT_DIR a directory with name = input archive name.\n\
+    `-l, `--list`      Just show the file list\n\
+        `--plain`     Plain file names\n\
+        `--autodir`   Add to OUTPUT_DIR a directory with name = input archive name.\n\
                      Same as manual 'untar arc.tar -C odir/arc'.\n\
 ";
 }
@@ -25,6 +26,8 @@ Usage:\n\
 extern const fcom_core *core;
 
 struct untar {
+	fcom_cominfo cominfo;
+
 	uint state;
 	fcom_cominfo *cmd;
 	fftarread rtar;
@@ -58,7 +61,7 @@ static int members_find(ffmap *members, ffstr name)
 	return (v == NULL) ? 0 : 1;
 }
 
-static int untar_args_members_from_file(ffcmdarg_scheme *as, void *obj, char *fn)
+static int untar_args_members_from_file(void *obj, char *fn)
 {
 	struct untar *t = obj;
 
@@ -92,18 +95,20 @@ static int untar_args_members_from_file(ffcmdarg_scheme *as, void *obj, char *fn
 	return 0;
 }
 
-#define O(member)  FF_OFF(struct untar, member)
+#define O(member)  (void*)FF_OFF(struct untar, member)
 
 static int untar_args_parse(struct untar *t, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
-		{ 'm', "members-from-file",	FFCMDARG_TSTRZ,	(ffsize)untar_args_members_from_file },
-		{ 'l', "list",	FFCMDARG_TSWITCH,	O(list) },
-		{ 0, "plain",	FFCMDARG_TSWITCH,	O(list_plain) },
-		{ 0, "autodir",	FFCMDARG_TSWITCH,	O(autodir) },
+	static const struct ffarg args[] = {
+		{ "--autodir",				'1',	O(autodir) },
+		{ "--list",					'1',	O(list) },
+		{ "--members-from-file",	's',	untar_args_members_from_file },
+		{ "--plain",				'1',	O(list_plain) },
+		{ "-l",						'1',	O(list) },
+		{ "-m",						's',	untar_args_members_from_file },
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, t);
+	int r = core->com->args_parse(cmd, args, t, FCOM_COM_AP_INOUT);
 	if (r != 0)
 		return r;
 
@@ -299,15 +304,15 @@ static void untar_run(fcom_op *op)
 			r = core->file->info(t->in, &fi);
 			if (r == FCOM_FILE_ERR) goto end;
 
+			if (0 != core->com->input_allowed(t->cmd, t->iname, fffile_isdir(fffileinfo_attr(&fi)))) {
+				t->state = I_IN;
+				continue;
+			}
+
 			if ((t->base.len == 0 || t->cmd->recursive)
 					&& fffile_isdir(fffileinfo_attr(&fi))) {
 				fffd fd = core->file->fd(t->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(t->cmd, fd);
-			}
-
-			if (0 != core->com->input_allowed(t->cmd, t->iname)) {
-				t->state = I_IN;
-				continue;
 			}
 
 			untar_reset(t);

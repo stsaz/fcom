@@ -6,7 +6,7 @@ static const char* hex_help()
 	return "\
 Print file contents in hexadecimal format.\n\
 Usage:\n\
-  fcom hex INPUT... [OPTIONS]\n\
+  `fcom hex` INPUT... [OPTIONS]\n\
 ";
 }
 
@@ -16,6 +16,8 @@ Usage:\n\
 static const fcom_core *core;
 
 struct hex {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	uint stop;
@@ -27,10 +29,10 @@ struct hex {
 
 static int args_parse(struct hex *h, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
+	static const struct ffarg args[] = {
 		{}
 	};
-	if (0 != core->com->args_parse(cmd, args, h))
+	if (0 != core->com->args_parse(cmd, args, h, FCOM_COM_AP_INOUT))
 		return -1;
 
 	if (h->cmd->output.len == 0)
@@ -95,7 +97,7 @@ static void hex_run(fcom_op *op)
 				goto end;
 			}
 
-			if (0 != core->com->input_allowed(h->cmd, in))
+			if (0 != core->com->input_allowed(h->cmd, in, FCOM_COM_IA_AUTO))
 				continue;
 
 			uint iflags = fcom_file_cominfo_flags_i(h->cmd);

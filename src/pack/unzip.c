@@ -6,15 +6,16 @@ static const char* unzip_help()
 	return "\
 Unpack files from .zip.\n\
 Usage:\n\
-  fcom unzip INPUT... [-C OUTPUT_DIR]\n\
-    OPTIONS:\n\
-    -m, --members-from-file=FILE\n\
+  `fcom unzip` INPUT... [-C OUTPUT_DIR]\n\
+\n\
+OPTIONS:\n\
+    `-m`, `--members-from-file` FILE\n\
                     Read archive member names from file:\n\
                     . full name (e.g. 'zipdir/file.ext');\n\
                     . wildcard (e.g. '*/file.ext').\n\
-    -l, --list      Just show the file list\n\
-        --plain     Plain file names\n\
-        --autodir   Add to OUTPUT_DIR a directory with name = input archive name.\n\
+    `-l`, `--list`      Just show the file list\n\
+        `--plain`     Plain file names\n\
+        `--autodir`   Add to OUTPUT_DIR a directory with name = input archive name.\n\
                      Same as manual 'unzip arc.zip -C odir/arc'.\n\
 ";
 }
@@ -37,6 +38,8 @@ struct file {
 	(((f)->attr_unix & FFFILE_UNIX_DIR) || ((f)->attr_win & FFFILE_WIN_DIR))
 
 struct unzip {
+	fcom_cominfo cominfo;
+
 	uint state;
 	fcom_cominfo *cmd;
 	ffzipread rzip;
@@ -92,7 +95,7 @@ static int members_find(struct unzip *z, ffstr name)
 	return 0;
 }
 
-static int unzip_args_members_from_file(ffcmdarg_scheme *as, void *obj, char *fn)
+static int unzip_args_members_from_file(void *obj, char *fn)
 {
 	struct unzip *z = obj;
 
@@ -120,18 +123,20 @@ static int unzip_args_members_from_file(ffcmdarg_scheme *as, void *obj, char *fn
 	return 0;
 }
 
-#define O(member)  FF_OFF(struct unzip, member)
+#define O(member)  (void*)FF_OFF(struct unzip, member)
 
 static int unzip_args_parse(struct unzip *z, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
-		{ 'm', "members-from-file",	FFCMDARG_TSTRZ,	(ffsize)unzip_args_members_from_file },
-		{ 'l', "list",	FFCMDARG_TSWITCH,	O(list) },
-		{ 0, "plain",	FFCMDARG_TSWITCH,	O(list_plain) },
-		{ 0, "autodir",	FFCMDARG_TSWITCH,	O(autodir) },
+	static const struct ffarg args[] = {
+		{ "--autodir",				'1',	O(autodir) },
+		{ "--list",					'1',	O(list) },
+		{ "--members-from-file",	's',	unzip_args_members_from_file },
+		{ "--plain",				'1',	O(list_plain) },
+		{ "-l",						'1',	O(list) },
+		{ "-m",						's',	unzip_args_members_from_file },
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, z);
+	int r = core->com->args_parse(cmd, args, z, FCOM_COM_AP_INOUT);
 	if (r != 0)
 		return r;
 
@@ -356,15 +361,15 @@ static void unzip_run(fcom_op *op)
 			r = core->file->info(z->in, &fi);
 			if (r == FCOM_FILE_ERR) goto end;
 
+			if (0 != core->com->input_allowed(z->cmd, z->iname, fffile_isdir(fffileinfo_attr(&fi)))) {
+				z->state = I_IN;
+				continue;
+			}
+
 			if ((z->base.len == 0 || z->cmd->recursive)
 					&& fffile_isdir(fffileinfo_attr(&fi))) {
 				fffd fd = core->file->fd(z->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(z->cmd, fd);
-			}
-
-			if (0 != core->com->input_allowed(z->cmd, z->iname)) {
-				z->state = I_IN;
-				continue;
 			}
 
 			unzip_reset(z);

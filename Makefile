@@ -27,7 +27,13 @@ ifeq "$(ASAN)" "1"
 	LINKFLAGS += -fsanitize=address
 endif
 CXXFLAGS := $(CFLAGS)
-LINKXXFLAGS := $(LINKFLAGS) -static-libstdc++ -static-libgcc
+LINKXXFLAGS := $(LINKFLAGS) -static-libgcc
+ifeq "$(OS)" "windows"
+	# remove runtime dependency on both libstdc++-6.dll and libwinpthread-1.dll
+	LINKXXFLAGS += -Wl,-Bstatic
+else
+	LINKXXFLAGS += -static-libstdc++
+endif
 
 # build, install
 default: build

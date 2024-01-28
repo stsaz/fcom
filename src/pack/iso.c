@@ -5,9 +5,8 @@ static const char* iso_help()
 {
 	return "\
 Pack files into .iso.\n\
-Implies '--recursive'.\n\
 Usage:\n\
-  fcom iso INPUT... [OPTIONS] -o OUTPUT.iso\n\
+  `fcom iso` INPUT... [OPTIONS] -o OUTPUT.iso\n\
 ";
 }
 
@@ -20,17 +19,25 @@ Usage:\n\
 const fcom_core *core;
 
 struct iso {
+	fcom_cominfo cominfo;
+
 	uint st;
-	fcom_cominfo *cmd;
-	ffisowrite iso;
-	ffstr iname, base;
-	ffstr plain, isodata;
-	fcom_file_obj *in, *out;
-	fffileinfo fi;
 	uint stop;
-	uint in_file_notfound :1;
-	uint del_on_close :1;
-	int64 woff;
+	fcom_cominfo *cmd;
+
+	//input:
+	ffstr			iname, base;
+	ffstr			plain;
+	fcom_file_obj*	in;
+	fffileinfo		fi;
+	uint			in_file_notfound :1;
+
+	//output:
+	ffisowrite		iso;
+	ffstr			isodata;
+	fcom_file_obj*	out;
+	int64			woff;
+	uint			del_on_close :1;
 
 	ffvec fnames; // char*[]
 	ffsize fnames_i;
@@ -46,10 +53,10 @@ static int args_parse(struct iso *c, fcom_cominfo *cmd)
 {
 	cmd->recursive = 1;
 
-	static const ffcmdarg_arg args[] = {
+	static const struct ffarg args[] = {
 		{}
 	};
-	int r = core->com->args_parse(cmd, args, c);
+	int r = core->com->args_parse(cmd, args, c, FCOM_COM_AP_INOUT);
 	if (r != 0)
 		return r;
 
@@ -190,15 +197,15 @@ static void iso_run(fcom_op *op)
 			r = core->file->info(c->in, &c->fi);
 			if (r == FCOM_FILE_ERR) goto end;
 
+			if (0 != core->com->input_allowed(c->cmd, c->iname, fffile_isdir(fffileinfo_attr(&c->fi)))) {
+				c->st = I_IN;
+				continue;
+			}
+
 			if ((c->base.len == 0 || c->cmd->recursive)
 				&& fffile_isdir(fffileinfo_attr(&c->fi))) {
 				fffd fd = core->file->fd(c->in, FCOM_FILE_ACQUIRE);
 				core->com->input_dir(c->cmd, fd);
-			}
-
-			if (0 != core->com->input_allowed(c->cmd, c->iname)) {
-				c->st = I_IN;
-				continue;
 			}
 
 			if (!fffile_isdir(fffileinfo_attr(&c->fi)))

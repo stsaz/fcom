@@ -17,6 +17,7 @@ struct main {
 	struct fcom_coreinit *ci;
 	struct fcom_core *core;
 	struct args conf;
+	char *cmd_line;
 	fcom_task task;
 	char binfn[4096];
 	ffstr rootdir;
@@ -25,7 +26,7 @@ static struct main *m;
 
 #include <exe/log.h>
 
-static char* path(const char *fn)
+char* path(const char *fn)
 {
 	if (ffpath_abs(fn, ffsz_len(fn)))
 		return ffsz_dup(fn);
@@ -83,6 +84,7 @@ static void main_free()
 	if (m->core_dl != NULL)
 		ffdl_close(m->core_dl);
 	args_destroy(&m->conf);
+	ffmem_free(m->cmd_line);
 	ffmem_free(m->core_fn);
 	ffmem_free(m);
 }
@@ -98,8 +100,15 @@ int main(int argc, char **argv)
 	ffpath_splitpath(m->binfn, ffsz_len(m->binfn), &m->rootdir, NULL);
 	m->rootdir.ptr[m->rootdir.len] = '\0';
 
-	if (0 != args_read(&m->conf, argc, argv))
+#ifdef FF_WIN
+	m->cmd_line = ffsz_alloc_wtou(GetCommandLineW());
+#endif
+	int r;
+	if ((r = args_read(&m->conf, argc, argv, m->cmd_line))) {
+		if (r > 0)
+			ec = 0;
 		goto exit;
+	}
 
 	if (0 != load_core())
 		goto exit;

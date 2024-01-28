@@ -7,10 +7,11 @@ static const char* touch_help()
 Change file date/time.\n\
 By default uses the current date/time.\n\
 Usage:\n\
-  fcom touch INPUT... [OPTIONS]\n\
-    OPTIONS:\n\
-    -d, --date=STR      Set local date/time\n\
-    -r, --reference=FILE\n\
+  `fcom touch` INPUT... [OPTIONS]\n\
+\n\
+OPTIONS:\n\
+    `-d`, `--date` STR      Set local date/time\n\
+    `-r`, `--reference` FILE\n\
                         Set date/time from this file\n\
 ";
 }
@@ -20,21 +21,23 @@ Usage:\n\
 static const fcom_core *core;
 
 struct touch {
+	fcom_cominfo cominfo;
+
 	uint st;
 	fcom_cominfo *cmd;
 	uint stop;
 	fcom_file_obj *in;
 	fftime mtime;
 
-	char *reference_fn;
+	const char *reference_fn;
 };
 
-static int arg_date(ffcmdarg_scheme *as, struct touch *t, const ffstr *val)
+static int arg_date(struct touch *t, ffstr val)
 {
 	ffdatetime dt = {};
-	if (val->len == fftime_fromstr1(&dt, val->ptr, val->len, FFTIME_YMD))
+	if (val.len == fftime_fromstr1(&dt, val.ptr, val.len, FFTIME_YMD))
 	{}
-	else if (val->len == fftime_fromstr1(&dt, val->ptr, val->len, FFTIME_DATE_YMD))
+	else if (val.len == fftime_fromstr1(&dt, val.ptr, val.len, FFTIME_DATE_YMD))
 	{}
 	else
 		return 0xbad;
@@ -44,21 +47,23 @@ static int arg_date(ffcmdarg_scheme *as, struct touch *t, const ffstr *val)
 	return 0;
 }
 
+#define O(member)  (void*)FF_OFF(struct touch, member)
 static int args_parse(struct touch *t, fcom_cominfo *cmd)
 {
-	static const ffcmdarg_arg args[] = {
-		{ 'd',  "date",  FFCMDARG_TSTR, (ffsize)arg_date },
-		{ 'r',  "reference",  FFCMDARG_TSTRZ | FFCMDARG_FNOTEMPTY, FF_OFF(struct touch, reference_fn) },
+	static const struct ffarg args[] = {
+		{ "--date",		'S',	arg_date },
+		{ "--reference",'s',	O(reference_fn) },
+		{ "-d",			'S',	arg_date },
+		{ "-r",			's',	O(reference_fn) },
 		{}
 	};
-	return core->com->args_parse(cmd, args, t);
+	return core->com->args_parse(cmd, args, t, FCOM_COM_AP_INOUT);
 }
 
 static void touch_close(fcom_op *op)
 {
 	struct touch *t = op;
 	core->file->destroy(t->in);
-	ffmem_free(t->reference_fn);
 	ffmem_free(t);
 }
 
@@ -106,13 +111,13 @@ static int touch_do(struct touch *t, ffstr iname)
 	r = core->file->info(t->in, &fi);
 	if (r == FCOM_FILE_ERR) return 0xbad;
 
+	if (0 != core->com->input_allowed(t->cmd, iname, fffile_isdir(fffileinfo_attr(&fi))))
+		return 0;
+
 	if (fffile_isdir(fffileinfo_attr(&fi))) {
 		fffd fd = core->file->fd(t->in, FCOM_FILE_ACQUIRE);
 		core->com->input_dir(t->cmd, fd);
 	}
-
-	if (0 != core->com->input_allowed(t->cmd, iname))
-		return 0;
 
 	core->file->close(t->in);
 
