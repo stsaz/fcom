@@ -91,6 +91,50 @@ struct copy {
 	byte write_into;
 
 	copy() : input(core) {}
+
+	int input_next()
+	{
+		int r;
+		if (0 > core->com->input_next(this->cmd, &this->name, &this->basename, 0)) {
+			if (!this->nfiles) {
+				fcom_errlog("no input files");
+				return 'erro';
+			}
+			return 'done';
+		}
+		this->nfiles++;
+		this->iname = ffsz_dupstr(&this->name);
+
+		uint flags = FCOM_FILE_READ | FCOM_FILE_READAHEAD;
+		flags |= fcom_file_cominfo_flags_i(this->cmd);
+		r = this->input.open(this->iname, flags);
+		if (r == FCOM_FILE_ERR) return 'erro';
+
+		r = this->input.info(&this->fi);
+		if (r == FCOM_FILE_ERR) return 'erro';
+
+		if (core->com->input_allowed(this->cmd, this->name, this->fi.dir())) {
+			return 'next';
+		}
+
+		if (this->fi.dir() && this->cmd->recursive)
+			core->com->input_dir(this->cmd, this->input.acquire_fd());
+
+		return 0;
+	}
+
+	void complete()
+	{
+		if (this->rename_source) {
+			xxvec fn;
+			if (fffile_rename(this->iname, fn.add_f("%s.deleted", this->iname).strz())) {
+				fcom_syserrlog("file rename: '%s' -> '%s'", this->iname, fn.ptr);
+			}
+		}
+
+		fcom_verblog("'%s' -> '%s'  [%,U]"
+			, this->iname, this->o.name, this->o.total);
+	}
 };
 
 #define O(member)  (void*)FF_OFF(struct copy, member)
@@ -192,7 +236,7 @@ static void copy_run(fcom_op *op)
 	struct copy *c = (struct copy*)op;
 	int r, k = 0;
 	enum {
-		I_SRC, I_OPEN_IN, I_MKDIR, I_OPEN_OUT,
+		I_SRC, I_OPEN_OUT,
 		I_READ, I_CRYPT, I_WRITE, I_RD_DONE, I_VERIFY, I_DONE,
 	};
 	while (!FFINT_READONCE(c->stop)) {
@@ -200,56 +244,20 @@ static void copy_run(fcom_op *op)
 
 		case I_SRC:
 			copy_reset(c);
-			if (0 > core->com->input_next(c->cmd, &c->name, &c->basename, 0)) {
-				if (c->nfiles == 0) {
-					fcom_errlog("no input files");
-					goto end;
-				}
-				k = 1;
-				goto end;
-			}
-			c->nfiles++;
-			c->iname = ffsz_dupstr(&c->name);
-			c->st = I_OPEN_IN;
-			// fallthrough
-
-		case I_OPEN_IN: {
-			uint flags = FCOM_FILE_READ | FCOM_FILE_READAHEAD;
-			flags |= fcom_file_cominfo_flags_i(c->cmd);
-			r = c->input.open(c->iname, flags);
-			if (r == FCOM_FILE_ERR) goto end;
-
-			if (!c->cmd->stdout) {
-				ffmem_free0(c->o.name);
-				ffmem_free0(c->o.name_tmp);
-				if (NULL == (c->o.name = out_name(c, c->name, c->basename)))
-					goto end;
-				c->o.name_tmp = ffsz_allocfmt("%s.fcomtmp", c->o.name);
-			}
-
-			r = c->input.info(&c->fi);
-			if (r == FCOM_FILE_ERR) goto end;
-
-			if (0 != core->com->input_allowed(c->cmd, c->name, c->fi.dir())) {
+			switch (c->input_next()) {
+			case 'next':
 				c->st = I_SRC;
 				continue;
-			}
 
-			if (c->fi.dir()) {
-				c->st = I_MKDIR;
-				continue;
+			case 'done':
+				k = 1;
+				goto end;
+
+			case 'erro':
+				goto end;
 			}
 
 			c->st = I_OPEN_OUT;
-			continue;
-		}
-
-		case I_MKDIR:
-			r = core->file->dir_create(c->o.name, FCOM_FILE_DIR_RECURSIVE);
-			if (r == FCOM_FILE_ERR) goto end;
-			if (c->cmd->recursive == 1)
-				core->com->input_dir(c->cmd, c->input.acquire_fd());
-			c->st = I_SRC;
 			continue;
 
 		case I_OPEN_OUT:
@@ -340,15 +348,7 @@ static void copy_run(fcom_op *op)
 			if (r == 'asyn') return;
 			if (r != 0) goto end;
 
-			if (c->rename_source) {
-				ffstrxx_buf<4096> fn;
-				if (0 != fffile_rename(c->iname, fn.zfmt("%s.deleted", c->iname))) {
-					fcom_syserrlog("file rename: '%s' -> '%s'", c->iname, fn.ptr);
-				}
-			}
-
-			fcom_verblog("'%s' -> '%s'  [%,U]"
-				, c->iname, c->o.name, c->o.total);
+			c->complete();
 
 			c->st = I_SRC;
 			continue;
@@ -369,16 +369,4 @@ static const fcom_operation fcom_op_copy = {
 	copy_help,
 };
 
-
-static void copy_init(const fcom_core *_core) { core = _core; }
-static void copy_destroy() {}
-static const fcom_operation* copy_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "copy"))
-		return &fcom_op_copy;
-	return NULL;
-}
-FCOM_EXPORT const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	copy_init, copy_destroy, copy_provide_op,
-};
+FCOM_MOD_DEFINE(copy, fcom_op_copy, core)

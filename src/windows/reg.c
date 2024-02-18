@@ -151,16 +151,4 @@ static const fcom_operation fcom_op_reg = {
 	reg_help,
 };
 
-
-static void reg_init(const fcom_core *_core) { core = _core; }
-static void reg_destroy() {}
-static const fcom_operation* reg_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "reg"))
-		return &fcom_op_reg;
-	return NULL;
-}
-FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	reg_init, reg_destroy, reg_provide_op,
-};
+FCOM_MOD_DEFINE(reg, fcom_op_reg, core)

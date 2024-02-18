@@ -240,16 +240,4 @@ static const fcom_operation fcom_op_textcount = {
 	txcnt_help,
 };
 
-
-static void txcnt_init(const fcom_core *_core) { core = _core; }
-static void txcnt_destroy() {}
-static const fcom_operation* txcnt_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "textcount"))
-		return &fcom_op_textcount;
-	return NULL;
-}
-FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	txcnt_init, txcnt_destroy, txcnt_provide_op,
-};
+FCOM_MOD_DEFINE(textcount, fcom_op_textcount, core)

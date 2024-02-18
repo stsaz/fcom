@@ -379,10 +379,15 @@ static inline int _fntree_cmp_eq(void *opaque, const fntree_entry *l, const fntr
 	return FNTREE_CMP_EQ;
 }
 
+enum FNTREE_CMP_F {
+	FNTREE_CMP_FCASE_SENSITIVE = 1, // use case-sensitive string comparison
+};
+
 typedef struct fntree_cmp {
 	fntree_cursor lc, rc;
 	fntree_cmp_func cmp;
 	void *opaque;
+	uint flags; // enum FNTREE_CMP_F
 } fntree_cmp;
 
 /** Initialize comparator */
@@ -409,7 +414,11 @@ static int fntree_cmp1(fntree_cmp *c, const fntree_entry *l, const fntree_entry 
 	}
 
 	ffstr lname = fntree_name(l), rname = fntree_name(r);
-	int i = ffstr_cmp2(&lname, &rname);
+	int i;
+	if (c->flags & FNTREE_CMP_FCASE_SENSITIVE)
+		i = ffstr_cmp2(&lname, &rname);
+	else
+		i = ffstr_icmp2(&lname, &rname);
 	if (i < 0)
 		return FNTREE_CMP_LEFT;
 	else if (i > 0)

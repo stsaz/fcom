@@ -117,6 +117,20 @@ static char* out_name(struct copy *c, ffstr in, ffstr base)
 
 static int output_open(struct copy *c)
 {
+	if (!c->cmd->stdout) {
+		ffmem_free0(c->o.name);
+		ffmem_free0(c->o.name_tmp);
+		if (!(c->o.name = out_name(c, c->name, c->basename)))
+			return 0xbad;
+		c->o.name_tmp = ffsz_allocfmt("%s.fcomtmp", c->o.name);
+	}
+
+	if (c->fi.dir()) {
+		int r = core->file->dir_create(c->o.name, FCOM_FILE_DIR_RECURSIVE);
+		if (r == FCOM_FILE_ERR) return 0xbad;
+		return 'skip';
+	}
+
 	if (c->update
 		&& !fffile_info_path(c->o.name, &c->o.fi.info)) {
 

@@ -302,16 +302,4 @@ static const fcom_operation fcom_op_unpack = {
 	unpack_help,
 };
 
-
-static void unpack_init(const fcom_core *_core) { core = _core; }
-static void unpack_destroy() {}
-static const fcom_operation* unpack_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "unpack"))
-		return &fcom_op_unpack;
-	return NULL;
-}
-FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	unpack_init, unpack_destroy, unpack_provide_op,
-};
+FCOM_MOD_DEFINE(unpack, fcom_op_unpack, core)

@@ -407,16 +407,4 @@ static const fcom_operation fcom_op_pic = {
 	pic_help,
 };
 
-
-static void pic_init(const fcom_core *_core) { core = _core; }
-static void pic_destroy() {}
-static const fcom_operation* pic_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "pic"))
-		return &fcom_op_pic;
-	return NULL;
-}
-FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	pic_init, pic_destroy, pic_provide_op,
-};
+FCOM_MOD_DEFINE(pic, fcom_op_pic, core)

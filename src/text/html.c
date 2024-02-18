@@ -203,22 +203,10 @@ static void html_signal(fcom_op *op, uint signal)
 	FFINT_WRITEONCE(h->stop, 1);
 }
 
-static const fcom_operation fcom_op_hex = {
+static const fcom_operation fcom_op_html = {
 	html_create, html_close,
 	html_run, html_signal,
 	html_help,
 };
 
-
-static void html_init(const fcom_core *_core) { core = _core; }
-static void html_destroy() {}
-static const fcom_operation* html_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "html"))
-		return &fcom_op_hex;
-	return NULL;
-}
-FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	html_init, html_destroy, html_provide_op,
-};
+FCOM_MOD_DEFINE(html, fcom_op_html, core)

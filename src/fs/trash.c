@@ -349,16 +349,4 @@ static const fcom_operation fcom_op_trash = {
 	trash_help,
 };
 
-
-static void trash_init(const fcom_core *_core) { core = _core; }
-static void trash_destroy() {}
-static const fcom_operation* trash_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "trash"))
-		return &fcom_op_trash;
-	return NULL;
-}
-FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	trash_init, trash_destroy, trash_provide_op,
-};
+FCOM_MOD_DEFINE(trash, fcom_op_trash, core)

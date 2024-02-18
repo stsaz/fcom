@@ -119,6 +119,7 @@ int main(int argc, char **argv)
 		.app_path = m->rootdir.ptr,
 		.debug = m->conf.debug,
 		.verbose = m->conf.verbose,
+		.stdout_color = !ffstd_attr(ffstdout, FFSTD_VTERM, FFSTD_VTERM),
 	};
 	if (NULL == (m->core = m->ci->conf(&cconf)))
 		goto exit;

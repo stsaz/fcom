@@ -2,7 +2,7 @@
 # fcom/v1 tester
 
 CMDS_FS=(copy list move sync touch trash)
-CMDS_OPS=(help hex md5 pic textcount utf8 html)
+CMDS_OPS=(help hex md5 pic textcount utf8 html disana)
 CMDS_WIN=(reg-search)
 CMDS_PACK=(gz iso tar un7z unxz zip zst unpack)
 # listdisk mount unico
@@ -159,6 +159,7 @@ test_list() {
 	echo hello >fcomtest/list
 	./fcom list
 	./fcom list "fcomtest" "."
+	test "$(./fcom list --oneline "fcomtest" "./fcom")" == '"fcomtest/list" "./fcom" '
 	./fcom list -l "fcomtest" "."
 }
 
@@ -188,6 +189,12 @@ test_move() {
 	echo hi >>fcomtest/unbranch/a/test
 	./fcom -V move "fcomtest/unbranch/a/test" --replace "test/new"
 	test -f fcomtest/unbranch/a/new
+
+	# replace in directory name
+	mkdir -p fcomtest/dir1
+	./fcom -V move "fcomtest/dir1" --replace "1/2"
+	! test -d fcomtest/dir1
+	test -d fcomtest/dir2
 
 	# unbranch-flat
 	cd fcomtest
@@ -277,30 +284,33 @@ test_sync() {
 	echo eq >left/d/eq ; cp -a left/d/eq right/d/eq
 	echo moved >left/d/mv ; cp -a left/d/mv right/mv
 	echo leftmod >left/d/mod
+	sleep .1
 	echo rightmod >right/d/mod
 	echo l >left/l
 	echo r >right/r
-	../fcom -V sync --diff "" --src-path-strip1 --dst-path-strip1 "left" -o "right"
-	../fcom -V sync --diff "" --src-path-strip1 --dst-path-strip1 --plain --add "left" -o "right"
-	../fcom -V sync --diff "" --src-path-strip1 --dst-path-strip1 --plain --update "left" -o "right"
+	../fcom -V sync --diff U --diff-time-sec "left" -o "right"
+	../fcom -V sync --diff "" "left" -o "right"
+	../fcom -V sync --diff "" --diff-no-dir "left" -o "right"
+	../fcom -V sync --diff "" --plain --add "left" -o "right"
+	../fcom -V sync --diff "" --plain --update "left" -o "right"
 
 	# write snapshot, diff snapshot and dir
 	../fcom -V sync --snapshot "left" -o "fcomtest.snap" -f
-	../fcom -V sync --src-path-strip1 --dst-path-strip1 --diff "" --source-snap "fcomtest.snap" -o "right" >LOG
-	grep 'moved:1  add:1  del:1  upd:1  eq:1  total:5/5' LOG
+	../fcom -V sync --diff "" --source-snap "fcomtest.snap" -o "right" 2>LOG
+	grep 'moved:1  add:1  del:1  upd:2  eq:1  total:5/5' LOG
 
 	# diff 2 snapshots
 	../fcom -V sync --snapshot "right" -o "fcomtest-right.snap" -f
-	../fcom -V sync --src-path-strip1 --dst-path-strip1 --diff "" --source-snap "fcomtest.snap" --target-snap -o "fcomtest-right.snap" >LOG
-	grep 'moved:1  add:1  del:1  upd:1  eq:1  total:5/5' LOG
+	../fcom -V sync --diff "" --source-snap "fcomtest.snap" --target-snap -o "fcomtest-right.snap" 2>LOG
+	grep 'moved:1  add:1  del:1  upd:2  eq:1  total:5/5' LOG
 
 	# snapshot 2 dirs
 	../fcom -V sync --snapshot "left" "right" -o "fcomtest2.snap" -f
 	cat fcomtest2.snap
 
 	# sync 2 dirs
-	../fcom -V sync --src-path-strip1 --dst-path-strip1 "left" -o "right" --add
-	../fcom -V sync --src-path-strip1 --dst-path-strip1 "left" -o "right" --delete -f
+	../fcom -V sync "left" -o "right" --add
+	../fcom -V sync "left" -o "right" --delete -f
 
 	cd ..
 }
@@ -361,6 +371,10 @@ test_html() {
 EOF
 	./fcom html "fcomtest/html" --filter "tag.attr" | grep 123
 	./fcom html "fcomtest/html" --filter "tag.attr" | grep 234
+}
+
+test_disana() {
+	objdump -d ./fcom | ./fcom disana
 }
 
 # PACK
@@ -503,7 +517,7 @@ test_unpack() {
 	./fcom -V unpack "fcomtest/targz.tar.gz" -C "fcomtest/targz"
 	diff fcomtest/file fcomtest/targz/fcomtest/file
 
-	./fcom unpack "fcomtest/targz.tar.gz" -C "fcomtest/targz" -l | grep fcomtest/file
+	./fcom unpack "fcomtest/targz.tar.gz" -C "fcomtest/targz" -l 2>&1 | grep fcomtest/file
 
 	# xz "fcomtest/tar.tar" -o "fcomtest/tarxz.tar.xz"
 	# ./fcom unpack "fcomtest/tarxz.tar.xz" -C "fcomtest/tarxz"

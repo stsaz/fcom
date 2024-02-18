@@ -210,16 +210,4 @@ static const fcom_operation fcom_op_utf8 = {
 	utf8_help,
 };
 
-
-static void utf8_init(const fcom_core *_core) { core = _core; }
-static void utf8_destroy() {}
-static const fcom_operation* utf8_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "utf8"))
-		return &fcom_op_utf8;
-	return NULL;
-}
-FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	utf8_init, utf8_destroy, utf8_provide_op,
-};
+FCOM_MOD_DEFINE(utf8, fcom_op_utf8, core)

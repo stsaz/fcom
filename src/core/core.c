@@ -142,6 +142,7 @@ static fcom_core* core_conf(struct fcom_core_conf *conf)
 	core->codepage = conf->codepage;
 	core->debug = conf->debug;
 	core->verbose = conf->debug | conf->verbose;
+	core->stdout_color = conf->stdout_color;
 
 	if (FFKQ_NULL == (gcore->kq = ffkq_create())) {
 		syserrlog("ffkq_create");

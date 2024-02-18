@@ -75,6 +75,18 @@ static void sync_copy(struct sync *s, fntree_cmp_ent *ce)
 	fcom_dbglog("sync: copy: %S -> %S", &s->sc.lname, &c->output);
 }
 
+static void sync_move(struct sync *s, fntree_cmp_ent *ce)
+{
+	// "right_root/left_subpath/left_name"
+	ffstr lpath = fntree_path(ce->lb);
+	ffstr_shift(&lpath, s->src.root_dir.len);
+	s->sc.lname.len = 0;
+	s->sc.lname.add_f("%S%S%c%S"
+		, &s->dst.root_dir, &lpath, FFPATH_SLASH, &xxrval(fntree_name(ce->l)));
+
+	core->file->move(*(ffstr*)&s->sc.rname, s->sc.lname.str(), FCOM_FILE_MOVE_SAFE);
+}
+
 static void sync_trash(struct sync *s)
 {
 	fcom_cominfo *c = core->com->create();
@@ -109,10 +121,6 @@ static int sync1(struct sync *s)
 	if (ce->status & FNTREE_CMP_SKIP)
 		goto next;
 
-	if (ce->status & FNTREE_CMP_MOVED) {
-		goto next;
-	}
-
 	full_name(&s->sc.lname, ce->l, ce->lb);
 	full_name(&s->sc.rname, ce->r, ce->rb);
 
@@ -121,15 +129,36 @@ static int sync1(struct sync *s)
 		break;
 
 	case FNTREE_CMP_LEFT:
+		if (ce->status & FNTREE_CMP_MOVED) {
+			if (s->sync_move) {
+				sync_move(s, ce);
+				goto next;
+			}
+			break;
+		}
+
+		if (s->sync_add) {
+			sync_copy(s, ce);
+			return 0x123;
+		}
+		break;
+
 	case FNTREE_CMP_NEQ:
-		if ((st == FNTREE_CMP_LEFT && s->sync_add)
-			|| (st == FNTREE_CMP_NEQ && s->sync_update)) {
+		if (s->sync_update) {
 			sync_copy(s, ce);
 			return 0x123;
 		}
 		break;
 
 	case FNTREE_CMP_RIGHT:
+		if (ce->status & FNTREE_CMP_MOVED) {
+			if (s->sync_move) {
+				sync_move(s, ce);
+				goto next;
+			}
+			break;
+		}
+
 		if (s->sync_del) {
 			sync_trash(s);
 			return 0x123;
@@ -137,7 +166,7 @@ static int sync1(struct sync *s)
 		break;
 
 	default:
-		FCOM_ASSERT("0");
+		FCOM_ASSERT(0);
 		return 1;
 	}
 

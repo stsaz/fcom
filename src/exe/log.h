@@ -39,10 +39,7 @@ static void stdlogv(uint flags, const char *fmt, va_list args)
 	}
 
 	d.ptr[d.len++] = '\n';
-	if (level == FCOM_LOG_INFO || level == FCOM_LOG_VERBOSE)
-		ffstdout_write(d.ptr, d.len);
-	else
-		ffstderr_write(d.ptr, d.len);
+	ffstderr_write(d.ptr, d.len);
 }
 
 void stdlog(uint flags, const char *fmt, ...)

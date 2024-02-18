@@ -113,16 +113,4 @@ static const fcom_operation fcom_op_mount = {
 	mount_help,
 };
 
-
-static void mount_init(const fcom_core *_core) { core = _core; }
-static void mount_destroy() {}
-static const fcom_operation* mount_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "mount"))
-		return &fcom_op_mount;
-	return NULL;
-}
-FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	mount_init, mount_destroy, mount_provide_op,
-};
+FCOM_MOD_DEFINE(mount, fcom_op_mount, core)

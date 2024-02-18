@@ -187,16 +187,4 @@ static const fcom_operation fcom_op_touch = {
 	touch_help,
 };
 
-
-static void touch_init(const fcom_core *_core) { core = _core; }
-static void touch_destroy() {}
-static const fcom_operation* touch_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "touch"))
-		return &fcom_op_touch;
-	return NULL;
-}
-FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	touch_init, touch_destroy, touch_provide_op,
-};
+FCOM_MOD_DEFINE(touch, fcom_op_touch, core)

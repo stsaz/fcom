@@ -11,8 +11,8 @@
 #include <ffbase/args.h>
 #include <assert.h>
 
-#define FCOM_VER "1.0-beta11"
-#define FCOM_CORE_VER 111
+#define FCOM_VER "1.0-beta12"
+#define FCOM_CORE_VER 10012
 
 #undef stdin
 #undef stdout
@@ -55,6 +55,7 @@ struct fcom_core_conf {
 	uint codepage;
 	uint debug :1;
 	uint verbose :1;
+	uint stdout_color :1;
 };
 
 /** Core initializer.
@@ -130,6 +131,7 @@ struct fcom_core {
 
 	uint debug :1;
 	uint verbose :1;
+	uint stdout_color :1;
 };
 
 #define fcom_sysfatlog(fmt, ...)  (core)->log(FCOM_LOG_FATAL | FCOM_LOG_SYSERR, fmt, ##__VA_ARGS__)
@@ -289,6 +291,20 @@ struct fcom_operation {
 	void (*signal)(fcom_op *op, uint signal);
 	const char* (*help)();
 };
+
+#define FCOM_MOD_DEFINE(modname, iface_obj, gcore) \
+	static void modname##_init(const fcom_core *_core) { gcore = _core; } \
+	static void modname##_destroy() {} \
+	static const fcom_operation* modname##_provide_op(const char *name) \
+	{ \
+		if (ffsz_eq(name, #modname)) \
+			return &iface_obj; \
+		return NULL; \
+	} \
+	FCOM_EXPORT const struct fcom_module fcom_module = { \
+		FCOM_VER, FCOM_CORE_VER, \
+		modname##_init, modname##_destroy, modname##_provide_op, \
+	};
 
 
 // FILE

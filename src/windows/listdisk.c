@@ -153,16 +153,4 @@ static const fcom_operation fcom_op_listdisk = {
 	listdisk_help,
 };
 
-
-static void listdisk_init(const fcom_core *_core) { core = _core; }
-static void listdisk_destroy() {}
-static const fcom_operation* listdisk_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "listdisk"))
-		return &fcom_op_listdisk;
-	return NULL;
-}
-FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	listdisk_init, listdisk_destroy, listdisk_provide_op,
-};
+FCOM_MOD_DEFINE(listdisk, fcom_op_listdisk, core)

@@ -158,16 +158,4 @@ static const fcom_operation fcom_op_hex = {
 	hex_help,
 };
 
-
-static void hex_init(const fcom_core *_core) { core = _core; }
-static void hex_destroy() {}
-static const fcom_operation* hex_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "hex"))
-		return &fcom_op_hex;
-	return NULL;
-}
-FF_EXP const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	hex_init, hex_destroy, hex_provide_op,
-};
+FCOM_MOD_DEFINE(hex, fcom_op_hex, core)

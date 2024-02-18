@@ -8,13 +8,13 @@ static ffstr wsnap_hdr()
 }
 
 /** Branch header */
-static void wsnap_bhdr(ffvecxx& buf, ffstr dirname)
+static void wsnap_bhdr(xxvec& buf, ffstr dirname)
 {
-	buf.addf("b \"%S\" {\r\n\tv 1\r\n", &dirname);
+	buf.add_f("b \"%S\" {\r\n\tv 1\r\n", &dirname);
 }
 
 /** File entry */
-static void wsnap_ent_serialize(ffvecxx& buf, const struct ent *e)
+static void wsnap_ent_serialize(xxvec& buf, const struct ent *e)
 {
 	const struct entdata *d = &e->d;
 	ffdatetime dt;
@@ -30,7 +30,7 @@ static void wsnap_ent_serialize(ffvecxx& buf, const struct ent *e)
 
 	// TODO escape
 	// f|d "file" size unixattr/winattr uid:gid yyyy-mm-dd+hh:mm:ss.msc crc32
-	buf.addf("\t%c \"%S\"\t%U\t%xu/%xu\t%u:%u\t%S+%S\t%u\r\n"
+	buf.add_f("\t%c \"%S\"\t%U\t%xu/%xu\t%u:%u\t%S+%S\t%u\r\n"
 		, e->type, &e->name
 		, d->size, d->unixattr, d->winattr, d->uid, d->gid, &date, &time, d->crc32);
 }

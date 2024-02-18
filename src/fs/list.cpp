@@ -10,6 +10,7 @@ Usage:\n\
 \n\
 OPTIONS:\n\
     `-l`, `--long`          Use long format\n\
+          `--oneline`       Display all file names in a single line\n\
 ";
 }
 
@@ -20,21 +21,92 @@ OPTIONS:\n\
 
 static const fcom_core *core;
 
+#ifdef FF_WIN
+	#define NEWLINE  "\r\n"
+#else
+	#define NEWLINE  "\n"
+#endif
+
 struct list {
 	fcom_cominfo cominfo;
 
 	uint st;
 	fcom_cominfo *cmd;
-	ffstr name, base;
+	xxstr			name, base;
 	fcom_filexx		input;
 	xxfileinfo		fi;
-	ffvecxx			buf;
+	xxvec			buf;
 	uint stop;
 	uint skip_prefix;
 
-	byte long_fmt;
+	u_char	long_fmt;
+	u_char	one_line;
 
 	list() : input(core) {}
+
+	int read_input()
+	{
+		int r;
+		if (0 > (r = core->com->input_next(this->cmd, &this->name, &this->base, 0))) {
+			if (r == FCOM_COM_RINPUT_NOMORE) {
+				return 'done';
+			}
+			return 'erro';
+		}
+
+		r = this->input.open(this->name.ptr, FCOM_FILE_READ | fcom_file_cominfo_flags_i(this->cmd));
+		if (r == FCOM_FILE_ERR) return 'next';
+
+		r = this->input.info(&this->fi);
+		if (r == FCOM_FILE_ERR) return 'next';
+
+		if (core->com->input_allowed(this->cmd, this->name, this->fi.dir()))
+			return 'next';
+
+		if ((this->base.len == 0 || this->cmd->recursive)
+			&& this->fi.dir()) {
+			core->com->input_dir(this->cmd, this->input.acquire_fd());
+
+			if (!this->base.len)
+				return 'next'; // skip directory itself (e.g. skip "." for "fcom list .")
+		}
+
+		this->input.close();
+		return 0;
+	}
+
+	void process()
+	{
+		if (this->skip_prefix)
+			ffstr_shift(&this->name, 2);
+
+		if (!this->long_fmt && this->one_line) {
+			if (this->name.find_char('"') >= 0)
+				fcom_warnlog("file name '%S' contains double-quote character", &this->name);
+			this->buf.add_f("\"%S\" ", &this->name);
+
+		} else if (!this->long_fmt) {
+			this->buf.add_f("%S" NEWLINE, &this->name);
+
+		} else {
+			ffdatetime dt;
+			fftime_split1(&dt, &xxrval(this->fi.mtime1()));
+			char date[128];
+			int r = fftime_tostr1(&dt, date, sizeof(date), FFTIME_DATE_YMD | FFTIME_HMS_USEC);
+			date[r] = '\0';
+
+			this->buf.add_f("%12U %s %S" NEWLINE
+				, this->fi.size(), date, &this->name);
+		}
+	}
+
+	void display(int force)
+	{
+		if (force || this->buf.len >= 4096) {
+			ffstdout_write(this->buf.ptr, this->buf.len);
+			this->buf.len = 0;
+		}
+	}
 };
 
 #define O(member)  (void*)FF_OFF(struct list, member)
@@ -42,8 +114,9 @@ struct list {
 static int args_parse(struct list *l, fcom_cominfo *cmd)
 {
 	static const struct ffarg args[] = {
-		{ "--long",	'1',	O(long_fmt) },
-		{ "-l",		'1',	O(long_fmt) },
+		{ "--long",		'1',	O(long_fmt) },
+		{ "--oneline",	'1',	O(one_line) },
+		{ "-l",			'1',	O(long_fmt) },
 		{}
 	};
 	int r = core->com->args_parse(cmd, args, l, FCOM_COM_AP_INOUT);
@@ -87,81 +160,35 @@ end:
 	return NULL;
 }
 
-#ifdef FF_WIN
-	#define NEWLINE  "\r\n"
-#else
-	#define NEWLINE  "\n"
-#endif
-
 static void list_run(fcom_op *op)
 {
 	struct list *l = (struct list*)op;
-	int r, rc = 1;
-	enum { I_IN, I_INFO, I_PRINT, };
+	int rc = 1;
+	enum { I_IN, I_PRINT, };
 
 	while (!FFINT_READONCE(l->stop)) {
 		switch (l->st) {
 
 		case I_IN:
-			if (0 > (r = core->com->input_next(l->cmd, &l->name, &l->base, 0))) {
-				if (r == FCOM_COM_RINPUT_NOMORE) {
-					ffstdout_write(l->buf.ptr, l->buf.len);
-					rc = 0;
-				}
+			switch (l->read_input()) {
+			case 'next':
+				continue;
+
+			case 'done':
+				l->display(1);
+				rc = 0;
+				goto end;
+
+			case 'erro':
 				goto end;
 			}
 
-			l->st = I_INFO;
+			l->st = I_PRINT;
 			// fallthrough
 
-		case I_INFO:
-			r = l->input.open(l->name.ptr, FCOM_FILE_READ | fcom_file_cominfo_flags_i(l->cmd));
-			if (r == FCOM_FILE_ERR) goto next;
-
-			r = l->input.info(&l->fi);
-			if (r == FCOM_FILE_ERR) goto next;
-
-			if (0 != core->com->input_allowed(l->cmd, l->name, l->fi.dir()))
-				goto next;
-
-			if ((l->base.len == 0 || l->cmd->recursive)
-				&& l->fi.dir()) {
-				core->com->input_dir(l->cmd, l->input.acquire_fd());
-
-				if (!l->base.len)
-					goto next; // skip directory itself (e.g. skip "." for "fcom list .")
-			}
-
-			l->input.close();
-			l->st = I_PRINT;
-			continue;
-next:
-			l->st = I_IN;
-			continue;
-
 		case I_PRINT:
-			if (l->skip_prefix)
-				ffstr_shift(&l->name, 2);
-
-			if (!l->long_fmt) {
-				l->buf.addf("%S" NEWLINE, &l->name);
-			} else {
-				ffdatetime dt;
-				fftime_split1(&dt, &xxrval(l->fi.mtime1()));
-				char date[128];
-				r = fftime_tostr1(&dt, date, sizeof(date), FFTIME_DATE_YMD | FFTIME_HMS_USEC);
-				date[r] = '\0';
-
-				l->buf.addf("%12U %s %S" NEWLINE
-					, l->fi.size(), date, &l->name);
-			}
-
-			if (!l->buf.len) {
-				ffstdout_write(l->buf.ptr, l->buf.len);
-				l->buf.len = 0;
-				continue;
-			}
-
+			l->process();
+			l->display(0);
 			l->st = I_IN;
 			continue;
 		}
@@ -187,16 +214,4 @@ static const fcom_operation fcom_op_list = {
 	list_help,
 };
 
-
-static void list_init(const fcom_core *_core) { core = _core; }
-static void list_destroy() {}
-static const fcom_operation* list_provide_op(const char *name)
-{
-	if (ffsz_eq(name, "list"))
-		return &fcom_op_list;
-	return NULL;
-}
-FCOM_EXPORT const struct fcom_module fcom_module = {
-	FCOM_VER, FCOM_CORE_VER,
-	list_init, list_destroy, list_provide_op,
-};
+FCOM_MOD_DEFINE(list, fcom_op_list, core)

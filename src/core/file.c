@@ -5,6 +5,7 @@
 #include <core/fbuf.h>
 #include <ffsys/std.h>
 #include <ffsys/dir.h>
+#include <ffsys/pipe.h>
 #include <ffsys/perf.h>
 
 extern fcom_core *core;
@@ -283,7 +284,7 @@ static int file_read(fcom_file_obj *_f, ffstr *d, int64 off)
 			return FCOM_FILE_ERR;
 		}
 
-		r = fffile_read(f->fd, b->ptr, f->buffer_size);
+		r = ffpipe_read(f->fd, b->ptr, f->buffer_size);
 	} else {
 		offset = ffint_align_floor2(off, ALIGN);
 		r = fffile_readat(f->fd, b->ptr, f->buffer_size, offset);
@@ -333,7 +334,7 @@ static int f_write(struct file *f, ffstr d, uint64 off)
 			return FCOM_FILE_ERR;
 		}
 
-		r = fffile_write(f->fd, d.ptr, d.len);
+		r = ffpipe_write(f->fd, d.ptr, d.len);
 	} else {
 		if (f->open_flags & FCOM_FILE_DIRECTIO) {
 			len = ffint_align_ceil2(d.len, ALIGN);

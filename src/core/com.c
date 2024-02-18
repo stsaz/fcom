@@ -3,6 +3,7 @@
 
 #include <fcom.h>
 #include <ffsys/std.h>
+#include <ffsys/pipe.h>
 #include <ffbase/map.h>
 #include <util/fntree.h>
 
@@ -328,7 +329,11 @@ static int input_names_read(struct cmd *c)
 	for (;;) {
 		ffvec_grow(&in_list, 64*1024, 1);
 		dbglog("reading from input names file...");
-		ffssize r = fffile_read(cmd->input_fd, ffslice_end(&in_list, 1), ffvec_unused(&in_list));
+		ffssize r;
+		if (cmd->input_fd == ffstdin)
+			r = ffpipe_read(cmd->input_fd, ffslice_end(&in_list, 1), ffvec_unused(&in_list));
+		else
+			r = fffile_read(cmd->input_fd, ffslice_end(&in_list, 1), ffvec_unused(&in_list));
 		if (r == 0) {
 			break;
 		} else if (r < 0) {
