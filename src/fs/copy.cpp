@@ -21,8 +21,10 @@ OPTIONS:\n\
     `-y`, `--verify`        Verify data consistency with MD5.\n\
                         Implies `--directio` on output file.\n\
 \n\
-        `--rename-source` Rename source file to *.deleted after successful operation\n\
-    `-u`, `--update`        Overwrite only older files\n\
+        `--rename-source`   Rename source file to *.deleted after successful operation\n\
+    `-u`, `--update`          Overwrite only older files\n\
+          `--replace-date`  Just copy file date (don't overwrite content).\n\
+                          Use with `--update`.\n\
         `--write-into`\n\
                         Overwrite file data instead of deleting the old target\n\
 ";
@@ -30,6 +32,7 @@ OPTIONS:\n\
 
 #include <fcom.h>
 #include <ffsys/path.h>
+#include <ffsys/globals.h>
 #include <util/util.hpp>
 
 static const fcom_core *core;
@@ -82,13 +85,14 @@ struct copy {
 		byte md5_result_r[16];
 	} vf;
 
-	byte verify;
-	byte print_md5;
 	ffstr encrypt, decrypt;
-	byte preserve_date;
-	byte rename_source;
-	byte update;
-	byte write_into;
+	u_char verify;
+	u_char print_md5;
+	u_char preserve_date;
+	u_char rename_source;
+	u_char replace_date;
+	u_char update;
+	u_char write_into;
 
 	copy() : input(core) {}
 
@@ -150,6 +154,7 @@ static int args_parse(struct copy *c, fcom_cominfo *cmd)
 		{ "--encrypt",		'S',	O(encrypt) },
 		{ "--md5",			'1',	O(print_md5) },
 		{ "--rename-source",'1',	O(rename_source) },
+		{ "--replace-date",	'1',	O(replace_date) },
 		{ "--update",		'1',	O(update) },
 		{ "--verify",		'1',	O(verify) },
 		{ "--write-into",	'1',	O(write_into) },
@@ -163,13 +168,16 @@ static int args_parse(struct copy *c, fcom_cominfo *cmd)
 	if (0 != core->com->args_parse(cmd, args, c, FCOM_COM_AP_INOUT))
 		return -1;
 
+	if (!(cmd->chdir.len || cmd->output.len))
+		fcom_errlog("please use --output or --chdir to set destination");
+
 	if (cmd->stdout)
 		c->update = 0;
 
 	if (c->update)
 		cmd->overwrite = 1;
 
-	cmd->recursive = 1;
+	cmd->recursive = (cmd->recursive != 0xff) ? 1 : 0;
 	return 0;
 }
 

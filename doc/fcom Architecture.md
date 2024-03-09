@@ -1,8 +1,13 @@
 # fcom Architecture
 
-fcom is just a bunch of different modules operating in a shared memory space.  Each module knows its own job and relies on other modules to perform their particular job.  Modules are linked to each other via Core.  The key idea here is to provide convenient interfaces for an operation module to do its job, such as asynchronous I/O events delivery (e.g. timers).  The Core interacts with each module and provides the standard way for each module to find each other, talk to each other and send/receive asynchronous events to each other.
+fcom is just a bunch of different modules operating in a shared memory space.
+Each module knows its own job and relies on other modules to perform their particular job.
+Modules are linked to each other via Core.
+The key idea here is to provide convenient interfaces for an operation module to do its job, such as asynchronous I/O events delivery (e.g. timers).
+The Core interacts with each module and provides the standard way for each module to find each other, talk to each other and send/receive asynchronous events to each other.
 
-Here's an example how fcom initializes its core resources, how Core finds an operation handling function, and finally, how this operation module finds a secondary operation interface from another module.  Although it may look complex, it actually performs pretty fast.
+Here's an example how fcom initializes its core resources, how Core finds an operation handling function, and finally, how this operation module finds a secondary operation interface from another module.
+Although it may look complex, it actually performs pretty fast.
 
 ![](arch.svg)
 
@@ -47,4 +52,6 @@ Of course it's not enough to just pass control to the target module without havi
 
 ## Final words
 
-The code which implements Core module isn't limited to just fcom project alone.  One can copy `core/` directory along with the necessary Core interfaces from `fcom.h` into any other project and it will work.  `fcom_core_conf` initial configuration can be extended in any way (that's why it doesn't parse `argv[]` by itself), while unused code (probably `fcom_command` and its `com.c` implementation) can be just thrown away.
+The code which implements Core module isn't limited to just fcom project alone.
+One can copy `core/` directory along with the necessary Core interfaces from `fcom.h` into any other project and it will work.
+`fcom_core_conf` initial configuration can be extended in any way (that's why it doesn't parse `argv[]` by itself), while unused code (probably `fcom_command` and its `com.c` implementation) can be just thrown away.

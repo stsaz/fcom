@@ -38,3 +38,16 @@
 		make -j8
 
 `fcom-1` is the app directory.  Now you may move it anywhere you want (see section "Install on Linux").
+
+
+## Cross-Build on Linux for Debian-buster:
+
+	```sh
+	bash xbuild-debianbuster.sh
+	```
+
+## Cross-Build on Linux for Windows/AMD64:
+
+	```sh
+	bash xbuild-win64.sh
+	```

@@ -56,6 +56,13 @@ template<uint N> struct xxstr_buf : ffstr {
 		va_end(va);
 		return ptr;
 	}
+	ffstr& fmt(const char *fmt, ...) {
+		va_list va;
+		va_start(va, fmt);
+		len = ffs_formatv(ptr, N, fmt, va);
+		va_end(va);
+		return *this;
+	}
 };
 
 template<uint N> struct xxwstr_buf {
@@ -72,7 +79,10 @@ template<uint N> struct xxwstr_buf {
 struct xxvec : ffvec {
 	xxvec() { ffvec_null(this); }
 	xxvec(ffstr s) {
-		ptr = s.ptr, len = s.len, cap = s.len;
+		ptr = s.ptr, len = s.len, cap = (s.len == 0 && s.ptr != NULL) ? 1 : s.len;
+	}
+	xxvec(ffslice s) {
+		ptr = s.ptr, len = s.len, cap = (s.len == 0 && s.ptr != NULL) ? 1 : s.len;
 	}
 	~xxvec() { ffvec_free(this); }
 	void free() { ffvec_free(this); }
@@ -103,6 +113,7 @@ struct xxvec : ffvec {
 		va_end(va);
 		return *this;
 	}
+	template<class T> T at(ffsize i) { return *ffslice_itemT(this, i, T); }
 	template<class T> T* alloc(ffsize n) { return ffvec_allocT(this, n, T); }
 	template<class T> T* push() { return ffvec_pushT(this, T); }
 	template<class T> T* push_z() { return ffvec_zpushT(this, T); }

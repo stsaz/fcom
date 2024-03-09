@@ -3,51 +3,70 @@
 
 #include <util/conf-scheme.h>
 
-static void rsnap_destroy(struct sync *s)
-{
-	ffstr_free(&s->sr.ent.name);
-}
+struct rsnap {
+	uint	state;
+	xxvec	ibuf;
+	ffstr	data;
+	struct ent ent;
+	struct snapshot *sd;
+	fntree_block *curblock;
+	fntree_entry *cur_ent;
+	fntree_cursor cur;
+	char *fn;
 
-static int rsnap_read(struct sync *s, const char *fn, ffstr *output)
-{
-	s->sr.ibuf.len = 0;
-	if (0 != fffile_readwhole(fn, &s->sr.ibuf, 100*1024*1024)) {
-		fcom_syserrlog("file read: %s", fn);
-		return FCOM_FILE_ERR;
+	~rsnap() {
+		ffstr_free(&this->ent.name);
+		ffmem_free(this->fn);
 	}
-	ffstr_setstr(output, &s->sr.ibuf);
-	s->sr.fn = fn;
+
+	int read(const char *fn, ffstr *output);
+	int parse(fcom_sync_snapshot *ss, ffstr input);
+};
+
+int rsnap::read(const char *fn, ffstr *output)
+{
+	this->ibuf.len = 0;
+	if (0 != fffile_readwhole(fn, &this->ibuf, 100*1024*1024)) {
+		fcom_syserrlog("file read: %s", fn);
+		return -1;
+	}
+	ffstr_setstr(output, &this->ibuf);
+	this->fn = ffsz_dup(fn);
 	return 0;
 }
 
-static int rsnap_ver(ffconf_scheme *cs, struct sync *s, ffstr *val)
+static int rsnap_ver(ffconf_scheme *cs, struct rsnap *sr, ffstr *val)
 {
 	if (!ffstr_eqz(val, "1"))
 		return 0xbad;
 	return 0;
 }
 
-static int rsnap_file(ffconf_scheme *cs, struct sync *s, ffstr *val)
+static int rsnap_file(ffconf_scheme *cs, struct rsnap *sr, ffstr *val)
 {
-	struct ent *ent = &s->sr.ent;
-	switch (s->sr.state++) {
+	struct ent *ent = &sr->ent;
+	switch (sr->state++) {
 	case 0:
 		ffstr_dupstr(&ent->name, val);
 		break;
+
 	case 1:
 		if (!ffstr_to_uint64(val, &ent->d.size))
 			goto err;
 		break;
+
 	case 2:
-		if (0 != ffstr_matchfmt(val, "%xu/%xu", &ent->d.unixattr, &ent->d.winattr))
+		if (0 != ffstr_matchfmt(val, "%xu/%xu", &ent->d.unix_attr, &ent->d.win_attr))
 			goto err;
-		s->sr.state++;
+		sr->state++;
 		break;
+
 	case 4:
 		if (0 != ffstr_matchfmt(val, "%u:%u", &ent->d.uid, &ent->d.gid))
 			goto err;
-		s->sr.state++;
+		sr->state++;
 		break;
+
 	case 6: {
 		ffdatetime dt, dtt;
 		ffstr s = *val;
@@ -65,15 +84,16 @@ static int rsnap_file(ffconf_scheme *cs, struct sync *s, ffstr *val)
 		fftime_join1(&ent->d.mtime, &dt);
 		break;
 	}
+
 	case 7: {
 		if (!ffstr_to_uint32(val, &ent->d.crc32))
 			goto err;
 
-		s->sr.state = 0;
-		fntree_entry *e = fntree_add(&s->sr.curblock, ent->name, sizeof(struct entdata));
-		struct entdata *d = (entdata*)fntree_data(e);
+		sr->state = 0;
+		fntree_entry *e = fntree_add(&sr->curblock, ent->name, sizeof(struct fcom_sync_entry));
+		struct fcom_sync_entry *d = (struct fcom_sync_entry*)fntree_data(e);
 		*d = ent->d;
-		ffstr path = fntree_path(s->sr.curblock);
+		ffstr path = fntree_path(sr->curblock);
 		fcom_dbglog("added entry '%S/%S'", &path, &ent->name);
 		ffstr_free(&ent->name);
 		break;
@@ -82,18 +102,18 @@ static int rsnap_file(ffconf_scheme *cs, struct sync *s, ffstr *val)
 	return 0;
 
 err:
-	fcom_errlog("%s: bad snapshot file: near '%S'", s->sr.fn, val);
+	fcom_errlog("%s: bad snapshot file: near '%S'", sr->fn, val);
 	return 0xbad;
 }
 
-static int rsnap_branch_close(ffconf_scheme *cs, struct sync *s)
+static int rsnap_branch_close(ffconf_scheme *cs, struct rsnap *sr)
 {
-	fntree_block *b = s->sr.curblock;
-	if (s->sr.sd->root == NULL) {
-		s->sr.sd->root = b;
+	fntree_block *b = sr->curblock;
+	if (sr->sd->root == NULL) {
+		sr->sd->root = b;
 	} else {
-		fntree_attach(s->sr.cur_ent, b);
-		s->sr.sd->total += b->entries;
+		fntree_attach(sr->cur_ent, b);
+		sr->sd->total += b->entries;
 	}
 	return 0;
 }
@@ -118,23 +138,23 @@ static char* rsnap_full_fn(fntree_block *parent, fntree_entry *e)
 	return full_fn;
 }
 
-static int rsnap_branch(ffconf_scheme *cs, struct sync *s)
+static int rsnap_branch(ffconf_scheme *cs, struct rsnap *sr)
 {
 	char *full_fn = NULL;
 	ffstr *path = ffconf_scheme_objval(cs);
 	fntree_block *b = fntree_create(*path);
-	if (s->sr.sd->root != NULL) {
-		fntree_block *parent = s->sr.curblock;
+	if (sr->sd->root != NULL) {
+		fntree_block *parent = sr->curblock;
 		fntree_entry *e;
 		for (;;) {
-			e = fntree_cur_next_r(&s->sr.cur, &parent);
+			e = fntree_cur_next_r(&sr->cur, &parent);
 			if (e == NULL) {
-				fcom_errlog("%s: bad snapshot file: near '%S'", s->sr.fn, path);
+				fcom_errlog("%s: bad snapshot file: near '%S'", sr->fn, path);
 				return 0xbad;
 			}
 
-			const struct entdata *d = (entdata*)fntree_data(e);
-			if (!(d->unixattr & FFFILE_UNIX_DIR))
+			const struct fcom_sync_entry *d = (struct fcom_sync_entry*)fntree_data(e);
+			if (!(d->unix_attr & FFFILE_UNIX_DIR))
 				continue;
 
 			full_fn = rsnap_full_fn(parent, e);
@@ -145,11 +165,11 @@ static int rsnap_branch(ffconf_scheme *cs, struct sync *s)
 
 			break;
 		}
-		s->sr.cur_ent = e;
+		sr->cur_ent = e;
 	}
 	fcom_dbglog("added branch '%S'", path);
-	s->sr.curblock = b;
-	ffconf_scheme_addctx(cs, branch_args, s);
+	sr->curblock = b;
+	ffconf_scheme_addctx(cs, branch_args, sr);
 	ffmem_free(full_fn);
 	return 0;
 }
@@ -159,28 +179,42 @@ static const ffconf_arg root_args[] = {
 	{}
 };
 
-static int rsnap_parse(struct sync *s, struct srcdst *sd, ffstr input)
+int rsnap::parse(fcom_sync_snapshot *ss, ffstr input)
 {
-	s->sr.sd = sd;
-	s->sr.cur_ent = NULL;
-	ffmem_zero_obj(&s->sr.cur);
+	this->sd = ss;
+	this->cur_ent = NULL;
+	ffmem_zero_obj(&this->cur);
 
 	ffstr errmsg = {};
-	int r = ffconf_parse_object(root_args, s, &input, 0, &errmsg);
+	int r = ffconf_parse_object(root_args, this, &input, 0, &errmsg);
 	if (r != 0) {
 		fcom_errlog("bad snapshot file: %S", &errmsg);
 		r = 0xbad;
 	} else {
 		r = 0xdeed;
-		if (sd->root == NULL) {
+		if (ss->root == NULL) {
 			fcom_errlog("bad snapshot file: no data");
 			r = 0xbad;
 		}
 
-		if (s->sr.cur_ent != NULL)
-			fntree_attach(s->sr.cur_ent, s->sr.curblock);
+		if (this->cur_ent != NULL)
+			fntree_attach(this->cur_ent, this->curblock);
 	}
 
 	ffstr_free(&errmsg);
 	return r;
+}
+
+static fcom_sync_snapshot* sync_snapshot_open(const char *snapshot_path, uint flags)
+{
+	struct rsnap sr = {};
+	ffstr data;
+	int r = sr.read(snapshot_path, &data);
+	if (r)
+		return NULL;
+	fcom_sync_snapshot *ss = ffmem_new(fcom_sync_snapshot);
+	r = sr.parse(ss, data);
+	if (r == 0xbad)
+		return NULL;
+	return ss;
 }

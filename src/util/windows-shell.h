@@ -1,18 +1,20 @@
-/**
-Copyright (c) 2020 Simon Zolin
-*/
+/** Windows shell utils
+2020, Simon Zolin */
 
 /*
 ffui_file_del
-ffui_openfolder
+ffui_openfolder ffui_openfolder1
 ffui_createlink
-ffui_shellexec
+ffui_shellexec ffui_exec
 ffui_clipbd_set ffui_clipbd_setfile
 */
 
 #pragma once
 #ifndef COBJMACROS
-#define COBJMACROS
+	#define COBJMACROS
+#endif
+#ifndef CINTERFACE
+	#define CINTERFACE
 #endif
 #include <ffsys/path.h>
 #include <ffsys/dir.h>
@@ -22,7 +24,6 @@ ffui_clipbd_set ffui_clipbd_setfile
 #include <objidl.h>
 #include <shobjidl.h>
 #include <shlguid.h>
-
 
 /** Prepare double-null terminated string array from char*[]
 dst: "el1 \0 el2 \0 \0" */
@@ -52,11 +53,13 @@ enum FFUI_FILE_F {
 flags: enum FFUI_FILE_F */
 static inline int ffui_file_del(const char *const *names, ffsize cnt, ffuint flags)
 {
+	if (!cnt) return 0;
+
 	if (flags & FFUI_FILE_TRASH) {
 		for (ffsize i = 0;  i != cnt;  i++) {
 			if (!ffpath_abs(names[i], ffsz_len(names[i]))) {
 				fferr_set(ERROR_INVALID_PARAMETER);
-				return -1; //protect against permanently deleting files with non-absolute names
+				return -1; // protect against permanently deleting files with non-absolute names
 			}
 		}
 	}
@@ -65,7 +68,7 @@ static inline int ffui_file_del(const char *const *names, ffsize cnt, ffuint fla
 	ffsize cap = _ff_arrzz_copy(NULL, 0, names, cnt);
 	if (NULL == (fs.pFrom = ffws_alloc(cap)))
 		return -1;
-	_ff_arrzz_copy((void*)fs.pFrom, cap, names, cnt);
+	_ff_arrzz_copy((wchar_t*)fs.pFrom, cap, names, cnt);
 
 	fs.wFunc = FO_DELETE;
 	fs.fFlags = flags;
@@ -75,6 +78,12 @@ static inline int ffui_file_del(const char *const *names, ffsize cnt, ffuint fla
 	return r;
 }
 
+#ifdef __cplusplus
+#define _FFCOM_ID(id)  id
+#else
+#define _FFCOM_ID(id)  &id
+#endif
+
 /** Create .lnk file. */
 static inline int ffui_createlink(const char *target, const char *linkname)
 {
@@ -82,18 +91,18 @@ static inline int ffui_createlink(const char *target, const char *linkname)
 	IShellLinkW *sl = NULL;
 	IPersistFile *pf = NULL;
 	wchar_t ws[255], *w = ws;
+	ffsize n = FF_COUNT(ws);
 
-	if (0 != (r = CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, &IID_IShellLinkW, (void**)&sl)))
+	if (0 != (r = CoCreateInstance(_FFCOM_ID(CLSID_ShellLink), NULL, CLSCTX_INPROC_SERVER, _FFCOM_ID(IID_IShellLinkW), (void**)&sl)))
 		goto end;
 
-	size_t n = FF_COUNT(ws);
 	if (NULL == (w = ffs_utow(ws, &n, target, -1)))
 		goto end;
 	IShellLinkW_SetPath(sl, w);
 	if (w != ws)
 		ffmem_free(w);
 
-	if (0 != (r = IShellLinkW_QueryInterface(sl, &IID_IPersistFile, (void**)&pf)))
+	if (0 != (r = IShellLinkW_QueryInterface(sl, _FFCOM_ID(IID_IPersistFile), (void**)&pf)))
 		goto end;
 
 	n = FF_COUNT(ws);
@@ -116,32 +125,27 @@ end:
 @flags: SW_* */
 static inline int ffui_shellexec(const char *filename, ffuint flags)
 {
-	int r;
 	wchar_t *w, ws[4096];
-	size_t n = FF_COUNT(ws);
+	ffsize n = FF_COUNT(ws);
 	if (NULL == (w = ffs_utow(ws, &n, filename, -1)))
 		return -1;
 
-	r = (size_t)ShellExecuteW(NULL, L"open", w, NULL, NULL, flags);
+	int r = (ffsize)ShellExecuteW(NULL, L"open", w, NULL, NULL, flags);
 	if (w != ws)
 		ffmem_free(w);
-	if (r <= 32)
-		return -1;
-	return 0;
+	return (r <= 32) ? -1 : 0;
 }
 
+#define ffui_exec(filename)  ffui_shellexec(filename, SW_SHOWNORMAL)
+
 /** Return 0 on success. */
-static inline int ffui_clipbd_set(const char *s, size_t len)
+static inline int ffui_clipbd_set(const char *s, ffsize len)
 {
 	HGLOBAL glob;
-	wchar_t *buf;
-	size_t n;
-
-	n = ff_utow(NULL, 0, s, len, 0);
-
+	ffsize n = ff_utow(NULL, 0, s, len, 0);
 	if (NULL == (glob = GlobalAlloc(GMEM_SHARE | GMEM_MOVEABLE, (n + 1) * sizeof(wchar_t))))
 		return -1;
-	buf = (void*)GlobalLock(glob);
+	wchar_t *buf = (wchar_t*)GlobalLock(glob);
 	n = ff_utow(buf, n + 1, s, len, 0);
 	buf[n] = '\0';
 	GlobalUnlock(glob);
@@ -161,20 +165,19 @@ fail:
 	return -1;
 }
 
-static inline int ffui_clipbd_setfile(const char *const *names, size_t cnt)
+static inline int ffui_clipbd_setfile(const char *const *names, ffsize cnt)
 {
 	HGLOBAL glob;
-	size_t cap = 0;
-	struct {
+	struct df_s {
 		DROPFILES df;
 		wchar_t names[0];
 	} *s;
 
-	cap = _ff_arrzz_copy(NULL, 0, names, cnt);
+	ffsize cap = _ff_arrzz_copy(NULL, 0, names, cnt);
 	if (NULL == (glob = GlobalAlloc(GMEM_SHARE | GMEM_MOVEABLE, sizeof(DROPFILES) + cap * sizeof(wchar_t))))
 		return -1;
 
-	s = (void*)GlobalLock(glob);
+	s = (struct df_s*)GlobalLock(glob);
 	ffmem_zero_obj(&s->df);
 	s->df.pFiles = sizeof(DROPFILES);
 	s->df.fWide = 1;
@@ -206,13 +209,12 @@ static void path_backslash(wchar_t *path)
 	}
 }
 
-static inline int ffui_openfolder(const char *const *items, size_t selcnt)
+static inline int ffui_openfolder(const char *const *items, ffsize selcnt)
 {
 	ITEMIDLIST *dir = NULL;
 	int r = -1;
 	wchar_t *pathz = NULL;
-	ffvec norm = {};
-	ffvec sel = {}; // ITEMIDLIST*[]
+	ffvec norm = {}, sel = {};
 
 	// normalize directory path
 	ffstr path;
@@ -221,15 +223,15 @@ static inline int ffui_openfolder(const char *const *items, size_t selcnt)
 		ffpath_splitpath(path.ptr, path.len, &path, NULL);
 	if (NULL == ffvec_alloc(&norm, path.len + 1, 1))
 		goto done;
-	if (0 >= (norm.len = ffpath_normalize(norm.ptr, norm.cap, path.ptr, path.len, FFPATH_FORCE_BACKSLASH))) {
-		fferr_set(EINVAL);
+	if (0 >= (norm.len = ffpath_normalize((char*)norm.ptr, norm.cap, path.ptr, path.len, FFPATH_FORCE_BACKSLASH))) {
+		fferr_set(ERROR_INVALID_PARAMETER);
 		goto done;
 	}
 	*ffvec_pushT(&norm, char) = '\\';
 
 	// get directory object
-	size_t n;
-	if (NULL == (pathz = ffs_utow(NULL, &n, norm.ptr, norm.len)))
+	ffsize n;
+	if (NULL == (pathz = ffs_utow(NULL, &n, (char*)norm.ptr, norm.len)))
 		goto done;
 	pathz[n] = '\0';
 	if (NULL == (dir = ILCreateFromPathW(pathz)))
@@ -240,7 +242,7 @@ static inline int ffui_openfolder(const char *const *items, size_t selcnt)
 		selcnt = 1;
 	if (NULL == ffvec_allocT(&sel, selcnt, ITEMIDLIST*))
 		goto done;
-	for (size_t i = 0;  i != selcnt;  i++) {
+	for (ffsize i = 0;  i != selcnt;  i++) {
 		if (NULL == (pathz = ffs_utow(NULL, NULL, items[i], -1)))
 			goto done;
 		path_backslash(pathz);
@@ -249,15 +251,13 @@ static inline int ffui_openfolder(const char *const *items, size_t selcnt)
 		if (NULL == (dir = ILCreateFromPathW(pathz)))
 			goto done;
 		*ffvec_pushT(&sel, ITEMIDLIST*) = dir;
-		ffmem_free(pathz);
-		pathz = NULL;
+		ffmem_free(pathz);  pathz = NULL;
 	}
 
 	r = SHOpenFolderAndSelectItems(dir, selcnt, (const ITEMIDLIST **)sel.ptr, 0);
 
 done:
-	if (dir != NULL)
-		ILFree(dir);
+	if (dir != NULL) ILFree(dir);
 
 	ITEMIDLIST **it;
 	FFSLICE_WALK(&sel, it) {
@@ -268,4 +268,9 @@ done:
 	ffvec_free(&norm);
 	ffmem_free(pathz);
 	return r;
+}
+
+static inline int ffui_openfolder1(const char *path)
+{
+	return ffui_openfolder(&path, 0);
 }

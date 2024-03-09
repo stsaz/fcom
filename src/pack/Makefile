@@ -7,6 +7,7 @@ MODS += \
 	7z.$(SO) \
 	gz.$(SO) \
 	iso.$(SO) \
+	pack.$(SO) \
 	tar.$(SO) \
 	unpack.$(SO) \
 	xz.$(SO) \

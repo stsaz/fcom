@@ -16,6 +16,7 @@ Contents:
 ```
   FS:
     copy                Copy files from one place to another, plus encryption & verification
+    gsync               Show GUI for synchronizing directories
     list                List directory contents
     move                Move and/or rename files
     sync                Compare/synchronize directories or create a file tree snapshot
@@ -27,6 +28,7 @@ Contents:
     zst                 Compress file into .zst
 
   Pack files:
+    pack                Pack files into any supported archive type
     iso                 Pack files into .iso
     tar                 Pack files into .tar
     zip                 Pack files into .zip
@@ -65,7 +67,7 @@ Contents:
 
 1. Unpack the archive to the directory of your choice, e.g. to Home/bin:
 
-		tar xf fcom-v1.0beta1-linux-amd64.tar.zst --zstd -C ~/bin
+		tar xf fcom-v1.0-beta1-linux-amd64.tar.zst --zstd -C ~/bin
 
 2. Optionally, create a symbolic link:
 

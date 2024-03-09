@@ -14,13 +14,13 @@ CFLAGS := -MMD -MP \
 	-I$(FCOM_DIR)/src -I$(FFSYS_DIR) -I$(FFBASE_DIR) \
 	-DFFBASE_HAVE_FFERR_STR -DFFBASE_MEM_ASSERT \
 	-Wall -Wextra -Wno-unused-parameter -Wno-multichar \
-	-fPIC
+	-fPIC \
+	-g
 CFLAGS += -march=nehalem
 ifeq "$(DEBUG)" "1"
-	CFLAGS += -g -O0 -DFF_DEBUG -Werror
+	CFLAGS += -O0 -DFF_DEBUG -Werror
 else
 	CFLAGS += -O3 -fno-strict-aliasing -fvisibility=hidden
-	LINKFLAGS += -s
 endif
 ifeq "$(ASAN)" "1"
 	CFLAGS += -fsanitize=address
@@ -34,10 +34,19 @@ ifeq "$(OS)" "windows"
 else
 	LINKXXFLAGS += -static-libstdc++
 endif
+LINK_DL :=
+ifeq "$(OS)" "linux"
+	LINK_DL := -ldl
+endif
 
 # build, install
+ifneq "$(DEBUG)" "1"
+default: strip-debug
+	$(SUBMAKE) app
+else
 default: build
 	$(SUBMAKE) app
+endif
 
 # build, install, package
 build-package: default
@@ -61,19 +70,32 @@ clean:
 
 %.o: $(FCOM_DIR)/src/exe/%.c
 	$(C) $(CFLAGS) $< -o $@
-$(BIN): main.o args.o
-	$(LINK) $+ $(LINKFLAGS) -o $@
+$(BIN): main.o args.o \
+		core.$(SO)
+	$(LINK) $+ $(LINKFLAGS) $(LINK_RPATH_ORIGIN) -o $@
 
 %.o: $(FCOM_DIR)/src/core/%.c
 	$(C) $(CFLAGS) $< -o $@
 core.$(SO): com.o core.o file.o
-	$(LINK) -shared $+ $(LINKFLAGS) -o $@
+	$(LINK) -shared $+ $(LINKFLAGS) $(LINK_DL) -o $@
 
 %.$(SO): %.o
 	$(LINK) -shared $+ $(LINKFLAGS) -o $@
 
 test: test.o
 	$(LINK) $+ $(LINKFLAGS) -o $@
+
+
+# Debug symbols
+strip-debug: core.$(SO).debug \
+		fcom$(DOTEXE).debug \
+		$(EXES:.exe=.exe.debug) \
+		$(MODS:.$(SO)=.$(SO).debug)
+%.debug: %
+	$(OBJCOPY) --only-keep-debug $< $@
+	$(STRIP) $<
+	$(OBJCOPY) --add-gnu-debuglink=$@ $<
+	touch $@
 
 
 # copy files to app directory
@@ -93,6 +115,8 @@ app:
 	$(CP) $(MODS) fcom-1/ops
 	$(CP) $(LIBS3) fcom-1/ops
 	chmod 0644 fcom-1/ops/*.$(SO)
+
+	$(SUBMAKE) app-gsync
 
 
 # package

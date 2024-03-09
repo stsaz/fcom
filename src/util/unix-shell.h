@@ -3,13 +3,16 @@
 
 /*
 ffui_glib_trash
+ffui_exec
+ffui_openfolder1
 */
 
 #pragma once
-#include <ffbase/base.h>
+#include <ffsys/base.h>
 
 #ifdef FF_LINUX
 
+#include <ffsys/process.h>
 #include <ffsys/dylib.h>
 
 #define LIBGIO_PATH  "/lib64/libgio-2.0.so"
@@ -37,8 +40,8 @@ static inline int ffui_glib_trash(const char *path, const char **error)
 			}
 		}
 
-		_g_file_new_for_path = ffdl_addr(gio, "g_file_new_for_path");
-		_g_file_trash = ffdl_addr(gio, "g_file_trash");
+		_g_file_new_for_path = (void* (*)(const char*))ffdl_addr(gio, "g_file_new_for_path");
+		_g_file_trash = (int (*)(void*, void*, void**))ffdl_addr(gio, "g_file_trash");
 		if (_g_file_new_for_path == NULL || _g_file_trash == NULL) {
 			e = "can't get g_file_new_for_path and g_file_trash from " LIBGIO_PATH;
 			goto err;
@@ -51,7 +54,7 @@ static inline int ffui_glib_trash(const char *path, const char **error)
 			}
 		}
 
-		_g_object_unref = ffdl_addr(gobject, "g_object_unref");
+		_g_object_unref = (void (*)(void*))ffdl_addr(gobject, "g_object_unref");
 		if (_g_object_unref == NULL) {
 			e = "can't get g_object_unref from " LIBGOBJECT_PATH;
 			goto err;
@@ -60,12 +63,14 @@ static inline int ffui_glib_trash(const char *path, const char **error)
 		// ffdl_close(gobject);
 	}
 
-	void *gfile = _g_file_new_for_path(path);
-	int r = _g_file_trash(gfile, NULL, NULL);
-	_g_object_unref(gfile);
-	if (r == 0) {
-		e = "g_file_trash() returned error";
-		goto err;
+	{
+		void *gfile = _g_file_new_for_path(path);
+		int r = _g_file_trash(gfile, NULL, NULL);
+		_g_object_unref(gfile);
+		if (r == 0) {
+			e = "g_file_trash() returned error";
+			goto err;
+		}
 	}
 	return 0;
 
@@ -74,5 +79,20 @@ err:
 		*error = e;
 	return -1;
 }
+
+static inline int ffui_exec(const char *arg)
+{
+	const char *path = "/usr/bin/xdg-open";
+	const char *argv[] = {
+		"xdg-open", arg, NULL
+	};
+	ffps ps = ffps_exec(path, argv, (const char**)environ);
+	if (ps == FFPS_NULL)
+		return -1;
+	ffps_close(ps);
+	return 0;
+}
+
+#define ffui_openfolder1(path)  ffui_exec(path)
 
 #endif

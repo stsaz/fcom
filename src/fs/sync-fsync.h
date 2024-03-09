@@ -15,14 +15,14 @@ static void sync_on_op_complete(void *param, int result)
 	}
 
 	fntree_cmp_ent *ce = ffslice_itemT(&s->cmp.ents, s->sc.cmp_idx, fntree_cmp_ent);
-	switch (ce->status & 0x0f) {
-	case FNTREE_CMP_LEFT:
+	switch (ce->status & FCOM_SYNC_MASK) {
+	case FCOM_SYNC_LEFT:
 		s->sc.stats.add++;
 		break;
-	case FNTREE_CMP_NEQ:
+	case FCOM_SYNC_NEQ:
 		s->sc.stats.overwritten++;
 		break;
-	case FNTREE_CMP_RIGHT:
+	case FCOM_SYNC_RIGHT:
 		s->sc.stats.del++;
 		break;
 	}
@@ -31,42 +31,46 @@ static void sync_on_op_complete(void *param, int result)
 }
 
 /** Prepare target full file name */
-static ffstr out_name(ffstr lname, ffstr lbase, ffstr rpath)
+static ffstr out_name(ffstr lname, ffstr lbase, ffstr rbase)
 {
 	// `in/d/f` -> `out/d/f`
 	ffstr_shift(&lname, lbase.len);
+	if (lname.len && ffpath_slash(lname.ptr[0]))
+		ffstr_shift(&lname, 1);
 	ffstr s = {};
 	ffsize cap = 0;
-	ffstr_growfmt(&s, &cap, "%S%c%S%Z", &rpath, FFPATH_SLASH, &lname);
+	ffstr_growfmt(&s, &cap, "%S%c%S%Z", &rbase, FFPATH_SLASH, &lname);
 	return s;
 }
 
-static void sync_copy(struct sync *s, fntree_cmp_ent *ce)
+static void sync_copy_async(struct sync *s, ffstr src, ffstr dst, uint status)
 {
 	fcom_cominfo *c = core->com->create();
 	c->operation = ffsz_dup("copy");
 
 	ffvec a = {};
 	*ffvec_pushT(&a, char*) = ffsz_dup("--verify");
+	if (s->replace_date) {
+		*ffvec_pushT(&a, char*) = ffsz_dup("--update");
+		*ffvec_pushT(&a, char*) = ffsz_dup("--replace-date");
+	}
 	ffvec_zpushT(&a, char*);
 	c->argv = (char**)a.ptr;
 	c->argc = a.len - 1;
 
 	ffstr *p = ffvec_pushT(&c->input, ffstr);
-	char *sz = ffsz_dupstr((ffstr*)&s->sc.lname);
+	char *sz = ffsz_dupstr(&src);
 	ffstr_setz(p, sz);
 
-	ffstr lbase = fntree_path(_fntr_ent_first(s->src.root)->children);
-	c->output = out_name(*(ffstr*)&s->sc.lname, lbase, s->cmd->output);
+	c->output = dst;
 
 	c->recursive = 0xff; // disable auto-recursive mode
 	c->test = s->cmd->test;
 	c->buffer_size = s->cmd->buffer_size;
 	c->directio = s->cmd->directio;
-	c->overwrite = s->cmd->overwrite;
 
-	uint st = ce->status & 0x0f;
-	if (st == FNTREE_CMP_NEQ)
+	c->overwrite = s->cmd->overwrite;
+	if (status == FCOM_SYNC_NEQ)
 		c->overwrite = 1;
 
 	c->on_complete = sync_on_op_complete;
@@ -75,25 +79,25 @@ static void sync_copy(struct sync *s, fntree_cmp_ent *ce)
 	fcom_dbglog("sync: copy: %S -> %S", &s->sc.lname, &c->output);
 }
 
-static void sync_move(struct sync *s, fntree_cmp_ent *ce)
+static void sync_move(struct sync *s, fntree_cmp_ent *ce, ffstr lname, ffstr rname)
 {
 	// "right_root/left_subpath/left_name"
 	ffstr lpath = fntree_path(ce->lb);
-	ffstr_shift(&lpath, s->src.root_dir.len);
+	ffstr_shift(&lpath, s->src->root_dir.len);
 	s->sc.lname.len = 0;
 	s->sc.lname.add_f("%S%S%c%S"
-		, &s->dst.root_dir, &lpath, FFPATH_SLASH, &xxrval(fntree_name(ce->l)));
+		, &s->dst->root_dir, &lpath, FFPATH_SLASH, &xxrval(fntree_name(ce->l)));
 
-	core->file->move(*(ffstr*)&s->sc.rname, s->sc.lname.str(), FCOM_FILE_MOVE_SAFE);
+	core->file->move(rname, s->sc.lname.str(), FCOM_FILE_MOVE_SAFE);
 }
 
-static void sync_trash(struct sync *s)
+static void sync_trash_async(struct sync *s, ffstr rname)
 {
 	fcom_cominfo *c = core->com->create();
 	c->operation = ffsz_dup("trash");
 
 	ffstr *p = ffvec_pushT(&c->input, ffstr);
-	char *sz = ffsz_dupstr((ffstr*)&s->sc.rname);
+	char *sz = ffsz_dupstr(&rname);
 	ffstr_setz(p, sz);
 
 	c->test = s->cmd->test;
@@ -103,7 +107,7 @@ static void sync_trash(struct sync *s)
 	c->on_complete = sync_on_op_complete;
 	c->opaque = s;
 	core->com->run(c);
-	fcom_dbglog("sync: trash: %S", &s->sc.rname);
+	fcom_dbglog("sync: trash: %S", &rname);
 }
 
 /** Perform a single sync operation */
@@ -116,52 +120,40 @@ static int sync1(struct sync *s)
 	}
 
 	fntree_cmp_ent *ce = ffslice_itemT(&s->cmp.ents, s->sc.cmp_idx, fntree_cmp_ent);
-	uint st = ce->status & 0x0f;
 
-	if (ce->status & FNTREE_CMP_SKIP)
-		goto next;
+	snapshot::full_name(&s->sc.lname, ce->l, ce->lb);
+	snapshot::full_name(&s->sc.rname, ce->r, ce->rb);
 
-	full_name(&s->sc.lname, ce->l, ce->lb);
-	full_name(&s->sc.rname, ce->r, ce->rb);
-
-	switch (st) {
-	case FNTREE_CMP_EQ:
-		break;
-
-	case FNTREE_CMP_LEFT:
-		if (ce->status & FNTREE_CMP_MOVED) {
-			if (s->sync_move) {
-				sync_move(s, ce);
-				goto next;
-			}
-			break;
-		}
-
+	switch (ce->status & FCOM_SYNC_MASK) {
+	case FCOM_SYNC_LEFT:
 		if (s->sync_add) {
-			sync_copy(s, ce);
+			ffstr dst = out_name(*(ffstr*)&s->sc.lname, s->cmp.left->root_dir, s->cmp.right->root_dir);
+			sync_copy_async(s, *(ffstr*)&s->sc.lname, dst, 0);
 			return 0x123;
 		}
 		break;
 
-	case FNTREE_CMP_NEQ:
-		if (s->sync_update) {
-			sync_copy(s, ce);
-			return 0x123;
-		}
-		break;
-
-	case FNTREE_CMP_RIGHT:
-		if (ce->status & FNTREE_CMP_MOVED) {
-			if (s->sync_move) {
-				sync_move(s, ce);
-				goto next;
-			}
-			break;
-		}
-
+	case FCOM_SYNC_RIGHT:
 		if (s->sync_del) {
-			sync_trash(s);
+			sync_trash_async(s, *(ffstr*)&s->sc.rname);
 			return 0x123;
+		}
+		break;
+
+	case FCOM_SYNC_EQ:
+		break;
+
+	case FCOM_SYNC_NEQ:
+		if (s->sync_update) {
+			ffstr dst = out_name(*(ffstr*)&s->sc.lname, s->cmp.left->root_dir, s->cmp.right->root_dir);
+			sync_copy_async(s, *(ffstr*)&s->sc.lname, dst, FCOM_SYNC_NEQ);
+			return 0x123;
+		}
+		break;
+
+	case FCOM_SYNC_MOVE:
+		if (s->sync_move) {
+			sync_move(s, ce, *(ffstr*)&s->sc.lname, *(ffstr*)&s->sc.rname);
 		}
 		break;
 
@@ -170,7 +162,83 @@ static int sync1(struct sync *s)
 		return 1;
 	}
 
-next:
 	s->sc.cmp_idx++;
+	return 0;
+}
+
+int sync_sync(fcom_sync_diff *sd, void *diff_entry_id, uint flags
+	, void(*on_complete)(void*, int), void *param)
+{
+	const fcom_sync_diff_entry *de = sync_info_id(sd, diff_entry_id, flags);
+
+	switch (de->status & FCOM_SYNC_MASK) {
+	case FCOM_SYNC_LEFT:
+	case FCOM_SYNC_NEQ: {
+		fcom_cominfo *c = core->com->create();
+		c->operation = ffsz_dup("copy");
+
+		ffvec a = {};
+		if (0)
+			*ffvec_pushT(&a, char*) = ffsz_dup("--verify");
+		*ffvec_pushT(&a, char*) = ffsz_dup("--md5");
+		ffvec_zpushT(&a, char*);
+		c->argv = (char**)a.ptr;
+		c->argc = a.len - 1;
+
+		ffstr *p = ffvec_pushT(&c->input, ffstr);
+		char *sz = ffsz_dupstr(&de->lname);
+		ffstr_setz(p, sz);
+
+		c->output = out_name(de->lname, sd->left->root_dir, sd->right->root_dir);
+
+		c->recursive = 0xff; // disable auto-recursive mode
+		c->overwrite = !!(de->status & FCOM_SYNC_NEQ);
+
+		c->on_complete = on_complete;
+		c->opaque = param;
+		fcom_dbglog("sync: copy: '%S' -> '%S'", &de->lname, &c->output);
+		core->com->run(c);
+		return 1;
+	}
+
+	case FCOM_SYNC_RIGHT: {
+		fcom_cominfo *c = core->com->create();
+		c->operation = ffsz_dup("trash");
+
+		ffstr *p = ffvec_pushT(&c->input, ffstr);
+		char *sz = ffsz_dupstr(&de->rname);
+		ffstr_setz(p, sz);
+
+		c->overwrite = 1; // if trash doesn't work: delete
+
+		c->on_complete = on_complete;
+		c->opaque = param;
+		fcom_dbglog("sync: trash: '%S'", &de->rname);
+		core->com->run(c);
+		return 1;
+	}
+
+	case FCOM_SYNC_EQ:
+		break;
+
+	case FCOM_SYNC_MOVE: {
+		// "right_root/left_subpath/left_name"
+		ffstr lname = de->lname;
+		if (lname.len && ffpath_slash(lname.ptr[0]))
+			ffstr_shift(&lname, 1);
+		ffstr_shift(&lname, sd->left->root_dir.len);
+		xxvec v;
+		v.add_f("%S%c%S"
+			, &sd->right->root_dir, FFPATH_SLASH, &lname);
+		if (core->file->move(de->rname, v.str(), FCOM_FILE_MOVE_SAFE))
+			return -1;
+		break;
+	}
+
+	default:
+		FCOM_ASSERT(0);
+		return -1;
+	}
+
 	return 0;
 }

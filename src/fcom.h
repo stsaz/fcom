@@ -10,17 +10,17 @@
 #include <ffbase/vector.h>
 #include <ffbase/args.h>
 #include <assert.h>
-
-#define FCOM_VER "1.0-beta12"
-#define FCOM_CORE_VER 10012
-
 #undef stdin
 #undef stdout
-typedef ffbyte byte;
-typedef ffbyte u_char;
-typedef ffushort ushort;
-typedef ffuint uint;
-typedef ffuint64 uint64;
+
+#define FCOM_VER "1.0-beta13"
+#define FCOM_CORE_VER 10013
+
+typedef unsigned char byte;
+typedef unsigned char u_char;
+typedef unsigned short ushort;
+typedef unsigned int uint;
+typedef unsigned long long uint64;
 
 #ifdef __cplusplus
 #define FCOM_EXPORT extern "C" FF_EXPORT
@@ -119,6 +119,7 @@ struct fcom_core {
 	void (*timer)(fcom_timer *timer, int interval_msec, fcom_task_func func, void *param);
 
 	/** Get current time
+	dt: Optional
 	flags: enum FCOM_CORE_CLOCK */
 	fftime (*clock)(ffdatetime *dt, uint flags);
 
@@ -168,7 +169,7 @@ typedef struct fcom_cominfo {
 	byte recursive;
 	fffd fd_stdin;
 
-	ffstr output;
+	ffstr output; // NULL-terminated
 	char *outputz;
 	ffstr chdir;
 	byte stdout;
@@ -212,6 +213,7 @@ enum FCOM_COM_IA {
 };
 
 enum FCOM_COM_AP {
+	/** Use global command-line arguments for input/output. */
 	FCOM_COM_AP_INOUT = 1,
 };
 
@@ -291,6 +293,14 @@ struct fcom_operation {
 	void (*signal)(fcom_op *op, uint signal);
 	const char* (*help)();
 };
+
+#define FCOM_MOD_DEFINE1(modname, provide_op_func, gcore) \
+	static void modname##_init(const fcom_core *_core) { gcore = _core; } \
+	static void modname##_destroy() {} \
+	FCOM_EXPORT const struct fcom_module fcom_module = { \
+		FCOM_VER, FCOM_CORE_VER, \
+		modname##_init, modname##_destroy, modname##_provide_op, \
+	};
 
 #define FCOM_MOD_DEFINE(modname, iface_obj, gcore) \
 	static void modname##_init(const fcom_core *_core) { gcore = _core; } \
@@ -466,6 +476,111 @@ static inline fftime fffileinfo_mtime1(const fffileinfo *fi)
 	t.sec += FFTIME_1970_SECONDS;
 	return t;
 }
+
+
+// SYNC
+
+enum FCOM_SYNC_DIFF {
+	FCOM_SYNC_DIFF_LEFT_PATH_STRIP = 1,
+	FCOM_SYNC_DIFF_RIGHT_PATH_STRIP = 2,
+	FCOM_SYNC_DIFF_NO_ATTR = 8,
+	FCOM_SYNC_DIFF_NO_TIME = 0x10,
+	FCOM_SYNC_DIFF_TIME_2SEC = 0x20,
+};
+
+enum FCOM_SYNC {
+	FCOM_SYNC_LEFT = 1,
+	FCOM_SYNC_RIGHT = 2,
+	FCOM_SYNC_NEQ = 4,
+	FCOM_SYNC_MOVE = 8,
+	FCOM_SYNC_EQ = 0x10,
+	FCOM_SYNC_MASK = 0xff,
+
+	FCOM_SYNC_NEWER = 0x0100,
+	FCOM_SYNC_OLDER = 0x0200,
+
+	FCOM_SYNC_LARGER = 0x0400,
+	FCOM_SYNC_SMALLER = 0x0800,
+
+	FCOM_SYNC_ATTR = 0x1000,
+
+	FCOM_SYNC_DIR = 0x2000,
+	FCOM_SYNC_SWAP = 0x4000,
+	_FCOM_SYNC_SKIP = 0x8000, // moved-double
+
+	// user:
+	FCOM_SYNC_SYNCING = 0x010000,
+	FCOM_SYNC_ERROR = 0x020000,
+	FCOM_SYNC_DONE = 0x040000,
+};
+
+struct fcom_sync_diff_stats {
+	uint eq, left, right, neq, moved;
+	uint ltotal, rtotal, entries;
+};
+
+struct fcom_sync_props {
+	ffslice include, exclude; // ffstr[]
+	fftime since_time;
+
+	struct fcom_sync_diff_stats stats;
+};
+
+struct fcom_sync_entry {
+	uint64	size;
+	uint	unix_attr, win_attr;
+	uint	uid, gid;
+	fftime	mtime; // UTC
+	uint	crc32;
+};
+
+struct fcom_sync_diff_entry {
+	uint status; // enum FCOM_SYNC
+	ffstr lname, rname;
+	struct fcom_sync_entry *left, *right;
+	void *id;
+};
+
+typedef struct snapshot fcom_sync_snapshot;
+typedef struct diff fcom_sync_diff;
+typedef struct fcom_sync_if fcom_sync_if;
+struct fcom_sync_if {
+	/** Read shapshot from file. */
+	fcom_sync_snapshot* (*open)(const char *snapshot_path, uint flags);
+
+	/** Create snapshot from directory. */
+	fcom_sync_snapshot* (*scan)(ffstr path, uint flags);
+
+	void (*snapshot_free)(fcom_sync_snapshot *ss);
+
+	/** Compare two snapshots.
+	flags: enum FCOM_SYNC_DIFF */
+	fcom_sync_diff* (*diff)(fcom_sync_snapshot *left, fcom_sync_snapshot *right
+		, struct fcom_sync_props *props, uint flags);
+
+	void (*diff_free)(fcom_sync_diff *sd);
+
+	/** Filter diff entries.
+	flags: enum FCOM_SYNC_DIFF */
+	uint (*view)(fcom_sync_diff *sd, struct fcom_sync_props *props, uint flags);
+
+	/** Get diff entry.
+	flags: FCOM_SYNC_SWAP */
+	const struct fcom_sync_diff_entry* (*info)(fcom_sync_diff *sd, uint i, uint flags);
+	const struct fcom_sync_diff_entry* (*info_id)(fcom_sync_diff *sd, void *id, uint flags);
+
+	/** Update diff entry's status. */
+	uint (*status)(fcom_sync_diff *sd, void *id, uint mask, uint val);
+
+	/** Synchronize files.
+	flags: FCOM_SYNC_SWAP
+	Return
+		0: success
+		1: async; on_complete() will be called
+		-1: error */
+	int (*sync)(fcom_sync_diff *sd, void *diff_entry_id, uint flags
+		, void(*on_complete)(void*, int), void *param);
+};
 
 
 // HASH

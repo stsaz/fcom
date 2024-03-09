@@ -88,28 +88,30 @@ static void output_reset(struct copy *c)
 */
 static char* out_name(struct copy *c, ffstr in, ffstr base)
 {
-	char *s;
-	if (c->cmd->output.len != 0 && c->cmd->chdir.len == 0) {
+	char *s = NULL;
+	if (c->cmd->output.len && !c->cmd->chdir.len) {
 		s = ffsz_dupstr(&c->cmd->output);
 
-	} else if (c->cmd->output.len != 0 && c->cmd->chdir.len != 0) {
+	} else if (c->cmd->output.len && c->cmd->chdir.len) {
 		s = ffsz_allocfmt("%S%c%S"
 			, &c->cmd->chdir, FFPATH_SLASH, &c->cmd->output);
 
-	} else if (c->cmd->output.len == 0 && c->cmd->chdir.len != 0) {
+	} else if (!c->cmd->output.len && c->cmd->chdir.len) {
 		ffstr name;
-		if (base.len == 0)
+		if (!base.len)
 			base = in;
 		ffpath_splitpath(base.ptr, base.len, NULL, &name);
-		if (name.len != 0)
+		if (name.len)
 			ffstr_shift(&in, name.ptr - base.ptr);
 		s = ffsz_allocfmt("%S%c%S"
 			, &c->cmd->chdir, FFPATH_SLASH, &in);
-
-	} else {
-		fcom_errlog("please use --output or --chdir to set destination");
-		return NULL;
 	}
+
+	uint f = 0;
+#ifdef FF_WIN
+	f = FFPATH_FORCE_BACKSLASH;
+#endif
+	ffpath_normalize(s, -1, s, ffsz_len(s), f);
 
 	fcom_dbglog("output file name: %s", s);
 	return s;
@@ -139,7 +141,16 @@ static int output_open(struct copy *c)
 			return 0xbad;
 		}
 
-		if (fftime_cmp(&xxrval(c->fi.mtime1()), &xxrval(c->o.fi.mtime1())) <= 0) {
+		if (c->replace_date) {
+			if (fffile_set_mtime_path(c->o.name, &xxrval(c->fi.mtime1()))) {
+				fcom_syserrlog("fffile_set_mtime_path: %s", c->o.name);
+				return 0xbad;
+			}
+			fcom_verblog("replace date: %s", c->o.name);
+			return 'skip';
+		}
+
+		if (fftime_cmp_val(c->fi.mtime1(), c->o.fi.mtime1()) <= 0) {
 			fcom_dbglog("--update: target file is of the same date or newer; skipping");
 			return 'skip';
 		}

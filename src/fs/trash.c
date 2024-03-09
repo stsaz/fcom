@@ -17,7 +17,7 @@ OPTIONS:\n\
 }
 
 #ifdef _WIN32
-#include <util/winapi-shell.h>
+#include <util/windows-shell.h>
 #endif
 #include <fcom.h>
 #include <util/unix-shell.h>

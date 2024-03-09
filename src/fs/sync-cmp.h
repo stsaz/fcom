@@ -3,399 +3,419 @@
 
 #include <ffsys/std.h>
 
+struct fntree_cmp_ent {
+	uint status; // enum FNTREE_CMP | enum FCOM_SYNC
+	const fntree_entry *l, *r;
+	const fntree_block *lb, *rb;
+};
+
 #define WIDTH_NAME  40L
 #define WIDTH_SIZE  "10"
 
-static void cmp_destroy(struct sync *s)
-{
-	ffmap_free(&s->cmp.moved);
-}
+struct diff {
+	fntree_cmp	fcmp;
+	xxvec		ents; // fntree_cmp_ent[]
+	xxvec		filter; // fntree_cmp_ent*[]
+	ffmap		moved; // hash(name, struct fcom_sync_entry) -> fntree_cmp_ent*
+	fcom_sync_snapshot *left, *right;
+	xxvec		lname, rname;
+	uint		options;
+	struct fcom_sync_props props;
+	fcom_sync_diff_entry dif_ent;
+	struct fcom_sync_diff_stats stats;
 
-/** Compare 2 files */
-static int data_cmp(void *opaque, const fntree_entry *l, const fntree_entry *r)
-{
-	struct sync *s = (struct sync*)opaque;
-	const struct entdata *ld = (entdata*)fntree_data(l), *rd = (entdata*)fntree_data(r);
-
-	if (s->diff_no_dir
-		&& fffile_isdir(ld->unixattr)
-		&& fffile_isdir(rd->unixattr)) {
-		return FNTREE_CMP_EQ;
+	~diff() {
+		ffmap_free(&this->moved);
 	}
 
-	uint k = FNTREE_CMP_EQ;
+	/** Compare 2 files */
+	static int data_cmp(void *opaque, const fntree_entry *l, const fntree_entry *r)
+	{
+		ffstr lname = fntree_name(l), rname = fntree_name(r);
+		int i = ffstr_icmp2(&lname, &rname);
+		if (i < 0)
+			return FNTREE_CMP_LEFT;
+		else if (i > 0)
+			return FNTREE_CMP_RIGHT;
 
-	if (ld->size != rd->size) {
-		uint f = (ld->size < rd->size) ? FNTREE_CMP_SMALLER : FNTREE_CMP_LARGER;
-		k |= FNTREE_CMP_NEQ | f;
-	}
+		struct diff *sd = (struct diff*)opaque;
+		const struct fcom_sync_entry *ld = (struct fcom_sync_entry*)fntree_data(l)
+			, *rd = (struct fcom_sync_entry*)fntree_data(r);
 
-	if (!s->diff_no_attr
-		&& (ld->unixattr != rd->unixattr
-			|| ld->winattr != rd->winattr))
-		k |= FNTREE_CMP_NEQ | FNTREE_CMP_ATTR;
+		uint k = FNTREE_CMP_EQ;
 
-	int i;
-	if (!s->diff_no_time
-		&& !(s->diff_time_2sec && ld->mtime.sec/2 == rd->mtime.sec/2)
-		&& ((i = fftime_cmp(&ld->mtime, &rd->mtime)))) {
-		uint f = (i < 0) ? FNTREE_CMP_OLDER : FNTREE_CMP_NEWER;
-		k |= FNTREE_CMP_NEQ | f;
-	}
-
-	return k;
-}
-
-/** Prepare full file name */
-static void full_name(ffvec *buf, const fntree_entry *e, const fntree_block *b)
-{
-	buf->len = 0;
-	if (e == NULL)
-		return;
-	ffstr name = fntree_name(e);
-	ffstr path = fntree_path(b);
-	if (path.len != 0)
-		ffvec_addfmt(buf, "%S%c", &path, FFPATH_SLASH);
-	ffvec_addfmt(buf, "%S%Z", &name);
-	buf->len--;
-}
-
-/** Return 1 if two files match by name and meta */
-static int moved_keyeq(void *opaque, const void *key, ffsize keylen, void *val)
-{
-	struct sync *s = (struct sync*)opaque;
-	const fntree_cmp_ent *ce = (fntree_cmp_ent*)val;
-	const fntree_entry *l = ce->l;
-	if (l == NULL)
-		l = ce->r;
-	const struct entdata *ld = (entdata*)fntree_data(l);
-
-	const fntree_entry *r = (fntree_entry*)key;
-	const struct entdata *rd = (entdata*)fntree_data(r);
-
-	return l->name_len == r->name_len
-		&& !ffmem_cmp(l->name, r->name, l->name_len)
-		&& ld->size == rd->size
-		&& (s->diff_no_attr || (ld->unixattr & FFFILE_UNIX_DIR) == (rd->unixattr & FFFILE_UNIX_DIR))
-		&& (s->diff_no_time || fftime_to_msec(&ld->mtime) == fftime_to_msec(&rd->mtime));
-}
-
-static uint ent_moved_hash(struct sync *s, fntree_entry *e)
-{
-	const struct entdata *d = (entdata*)fntree_data(e);
-	struct {
-		char type;
-		char mtime_msec[8];
-		char size[8];
-		char name[1024];
-	} key;
-
-	key.type = 0;
-	if (!s->diff_no_attr)
-		key.type = !!(d->unixattr & FFFILE_UNIX_DIR);
-
-	*(uint64*)key.mtime_msec = 0;
-	if (!s->diff_no_time)
-		*(uint64*)key.mtime_msec = fftime_to_msec(&d->mtime);
-
-	*(uint64*)key.size = d->size;
-	ffuint n = 1+8+8 + ffmem_ncopy(key.name, sizeof(key.name), e->name, e->name_len);
-	return murmurhash3(&key, n, 0x789abcde);
-}
-
-/** Find (and add if not found) unique file to a Moved table */
-static fntree_cmp_ent* moved_find_add(struct sync *s, fntree_entry *e, fntree_cmp_ent *ce)
-{
-	uint hash = ent_moved_hash(s, e);
-	ffstr name = fntree_name(e);
-	fntree_cmp_ent *it = (fntree_cmp_ent*)ffmap_find_hash(&s->cmp.moved, hash, e, sizeof(void*), s);
-	fcom_dbglog("move: found:%u  hash:%u  '%S'"
-		, (!!it), hash, &name);
-	if (it == NULL) {
-		// store this file in Moved table
-		ffmap_add_hash(&s->cmp.moved, hash, ce);
-	}
-	return it;
-}
-
-/** Prepare to analyze the difference */
-static void diff_init(struct sync *s)
-{
-	ffmap_init(&s->cmp.moved, moved_keyeq);
-
-	const fntree_block *l = s->src.root, *r = s->dst.root;
-	if (s->left_path_strip)
-		l = _fntr_ent_first(s->src.root)->children;
-	if (s->right_path_strip)
-		r = _fntr_ent_first(s->dst.root)->children;
-
-	fntree_cmp_init(&s->cmp.fcmp, l, r, data_cmp, s);
-	ffvec_allocT(&s->cmp.ents, s->src.total + s->dst.total + 2, fntree_cmp_ent);
-}
-
-/** Compare next file pair */
-static int diff_next(struct sync *s)
-{
-	fntree_entry *le, *re;
-	fntree_block *lb, *rb;
-	int r = fntree_cmp_next(&s->cmp.fcmp, &le, &re, &lb, &rb);
-	if (r < 0) {
-		fcom_infolog("Diff status: moved:%u  add:%u  del:%u  upd:%u  eq:%u  total:%U/%U"
-			, s->cmp.stats.moved, s->cmp.stats.left, s->cmp.stats.right, s->cmp.stats.neq, s->cmp.stats.eq
-			, s->src.total, s->dst.total);
-		return 1;
-	}
-
-	// unset the unused elements
-	switch (r & 0x0f) {
-	case FNTREE_CMP_LEFT:
-		re = NULL, rb = NULL; break;
-	case FNTREE_CMP_RIGHT:
-		le = NULL, lb = NULL; break;
-	}
-
-	fntree_cmp_ent *ce = ffvec_pushT(&s->cmp.ents, fntree_cmp_ent);
-	ce->status = r;
-	ce->l = le;
-	ce->r = re;
-	ce->lb = lb;
-	ce->rb = rb;
-
-	full_name(&s->cmp.lname, le, lb);
-	full_name(&s->cmp.rname, re, rb);
-
-	fcom_dbglog("%S <-> %S: %d", &s->cmp.lname, &s->cmp.rname, r);
-
-	switch (r & 0x0f) {
-	case FNTREE_CMP_LEFT: {
-		const struct entdata *ld = (entdata*)fntree_data(ce->l);
-		if (ld->unixattr & FFFILE_UNIX_DIR) {
-			ce->status |= FNTREE_CMP_SKIP;
-			return 0; // skip directories
+		if (ld->size != rd->size) {
+			uint f = (ld->size < rd->size) ? FCOM_SYNC_SMALLER : FCOM_SYNC_LARGER;
+			k |= FNTREE_CMP_NEQ | f;
 		}
 
-		s->cmp.stats.left++;
+		if (!(sd->options & FCOM_SYNC_DIFF_NO_ATTR)
+			&& (ld->unix_attr != rd->unix_attr
+				|| ld->win_attr != rd->win_attr))
+			k |= FNTREE_CMP_NEQ | FCOM_SYNC_ATTR;
 
-		fntree_cmp_ent *it = moved_find_add(s, le, ce);
-		if (it != NULL && it->l == NULL && it->r != NULL) {
-			// the same file was seen before within Right list
-			fcom_dbglog("moved R: %S", &s->cmp.lname);
-			it->status |= FNTREE_CMP_MOVED;
-			ce->status |= FNTREE_CMP_MOVED | FNTREE_CMP_SKIP;
-			it->l = le;
-			it->lb = lb;
-			s->cmp.stats.moved++;
-			s->cmp.stats.left--;
-			s->cmp.stats.right--;
-		}
-		break;
-	}
-
-	case FNTREE_CMP_RIGHT: {
-		const struct entdata *rd = (entdata*)fntree_data(ce->r);
-		if (rd->unixattr & FFFILE_UNIX_DIR) {
-			ce->status |= FNTREE_CMP_SKIP;
-			return 0;
+		if (!(sd->options & FCOM_SYNC_DIFF_NO_TIME)) {
+			int i;
+			if ((sd->options & FCOM_SYNC_DIFF_TIME_2SEC)
+				&& ld->mtime.sec/2 == rd->mtime.sec/2)
+			{}
+			else if ((i = fftime_cmp(&ld->mtime, &rd->mtime))) {
+				uint f = (i < 0) ? FCOM_SYNC_OLDER : FCOM_SYNC_NEWER;
+				k |= FNTREE_CMP_NEQ | f;
+			}
 		}
 
-		s->cmp.stats.right++;
+		return k;
+	}
 
-		fntree_cmp_ent *it = moved_find_add(s, re, ce);
-		if (it != NULL && it->l != NULL && it->r == NULL) {
-			// the same file was seen before within Left list
-			fcom_dbglog("moved L: %S", &s->cmp.rname);
-			it->status |= FNTREE_CMP_MOVED;
-			ce->status |= FNTREE_CMP_MOVED | FNTREE_CMP_SKIP;
-			it->r = re;
-			it->rb = rb;
-			s->cmp.stats.moved++;
-			s->cmp.stats.left--;
-			s->cmp.stats.right--;
+	/** Return 1 if two files match by name and meta */
+	static int moved_keyeq(void *opaque, const void *key, ffsize keylen, void *val)
+	{
+		struct diff *sd = (struct diff*)opaque;
+		const fntree_cmp_ent *ce = (fntree_cmp_ent*)val;
+		const fntree_entry *l = ce->l;
+		if (l == NULL)
+			l = ce->r;
+		const struct fcom_sync_entry *ld = (struct fcom_sync_entry*)fntree_data(l);
+
+		const fntree_entry *r = (fntree_entry*)key;
+		const struct fcom_sync_entry *rd = (struct fcom_sync_entry*)fntree_data(r);
+
+		return l->name_len == r->name_len
+			&& !ffmem_cmp(l->name, r->name, l->name_len)
+			&& ld->size == rd->size
+			&& ((sd->options & FCOM_SYNC_DIFF_NO_ATTR)
+				|| (ld->unix_attr & FFFILE_UNIX_DIR) == (rd->unix_attr & FFFILE_UNIX_DIR))
+			&& ((sd->options & FCOM_SYNC_DIFF_NO_TIME)
+				|| fftime_to_msec(&ld->mtime) == fftime_to_msec(&rd->mtime));
+	}
+
+	uint ent_moved_hash(fntree_entry *e)
+	{
+		const struct fcom_sync_entry *d = (struct fcom_sync_entry*)fntree_data(e);
+		struct {
+			char type;
+			char mtime_msec[8];
+			char size[8];
+			char name[1024];
+		} key;
+
+		key.type = 0;
+		if (!(this->options & FCOM_SYNC_DIFF_NO_ATTR))
+			key.type = !!(d->unix_attr & FFFILE_UNIX_DIR);
+
+		*(uint64*)key.mtime_msec = 0;
+		if (!(this->options & FCOM_SYNC_DIFF_NO_TIME))
+			*(uint64*)key.mtime_msec = fftime_to_msec(&d->mtime);
+
+		*(uint64*)key.size = d->size;
+		ffuint n = 1+8+8 + ffmem_ncopy(key.name, sizeof(key.name), e->name, e->name_len);
+		return murmurhash3(&key, n, 0x789abcde);
+	}
+
+	/** Find (and add if not found) unique file to a Moved table */
+	fntree_cmp_ent* moved_find_add(fntree_entry *e, fntree_cmp_ent *ce)
+	{
+		uint hash = this->ent_moved_hash(e);
+		ffstr name = fntree_name(e);
+		fntree_cmp_ent *it = (fntree_cmp_ent*)ffmap_find_hash(&this->moved, hash, e, sizeof(void*), this);
+		fcom_dbglog("move: found:%u  hash:%u  '%S'"
+			, (!!it), hash, &name);
+		if (it == NULL) {
+			// store this file in Moved table
+			ffmap_add_hash(&this->moved, hash, ce);
 		}
-		break;
+		return it;
 	}
 
-	case FNTREE_CMP_EQ:
-		s->cmp.stats.eq++;
-		break;
+	/** Prepare to analyze the difference */
+	void init(fcom_sync_snapshot *left, fcom_sync_snapshot *right, uint flags)
+	{
+		this->options = flags;
+		this->left = left;
+		this->right = right;
+		ffmap_init(&this->moved, moved_keyeq);
 
-	case FNTREE_CMP_NEQ: {
-		const struct entdata *ld = (entdata*)fntree_data(ce->l);
-		if ((ld->unixattr & FFFILE_UNIX_DIR)
-			&& (ce->status & (FNTREE_CMP_LARGER | FNTREE_CMP_SMALLER))
-			&& !(ce->status & (FNTREE_CMP_NEWER | FNTREE_CMP_OLDER | FNTREE_CMP_ATTR))) {
-			// skip directories that differ only by size - we already know their files were added/deleted
-			ce->status |= FNTREE_CMP_SKIP;
-			return 0;
-		}
+		const fntree_block *l = left->root, *r = right->root;
+		if (flags & FCOM_SYNC_DIFF_LEFT_PATH_STRIP)
+			l = _fntr_ent_first(left->root)->children;
+		if (flags & FCOM_SYNC_DIFF_RIGHT_PATH_STRIP)
+			r = _fntr_ent_first(right->root)->children;
 
-		s->cmp.stats.neq++;
-		break;
+		fntree_cmp_init(&this->fcmp, l, r, data_cmp, this);
+		ffvec_allocT(&this->ents, left->total + right->total + 2, fntree_cmp_ent);
+		this->stats.ltotal = left->total;
+		this->stats.rtotal = right->total;
 	}
 
-	default:
-		FCOM_ASSERT(0);
-		return 1;
-	}
-	return 0;
-}
-
-static void status_print(struct sync *s, fntree_cmp_ent *ce, ffvec lname, ffvec rname)
-{
-	const char *clr_add = "", *clr_del = "", *clr_move = "", *clr_reset = "";
-	if (core->stdout_color) {
-		clr_move = FFSTD_CLR_I(FFSTD_BLUE);
-		clr_add = FFSTD_CLR_I(FFSTD_GREEN);
-		clr_del = FFSTD_CLR_I(FFSTD_RED);
-		clr_reset = FFSTD_CLR_RESET;
-	}
-
-	if (!s->diff_full_name && s->src.root_dir.len) {
-		if (lname.len)
-			ffstr_shift((ffstr*)&lname, s->src.root_dir.len);
-		if (rname.len)
-			ffstr_shift((ffstr*)&rname, s->cmd->output.len);
-	}
-
-	if (ce->status & FNTREE_CMP_MOVED) {
-		if (s->diff_flags & DIFF_MOVE) {
-			fcom_infolog("%sMOV       %*S  ->  %S%s"
-				, clr_move, WIDTH_NAME, &lname, &rname, clr_reset);
-		}
-		return;
-	}
-
-	uint st = ce->status;
-
-	switch (ce->status & 0x0f) {
-	case FNTREE_CMP_LEFT:
-		if (s->diff_flags & DIFF_LEFT) {
-			fcom_infolog("%sADD       %*S  >>%s"
-				, clr_add, WIDTH_NAME, &lname, clr_reset);
-		}
-		break;
-
-	case FNTREE_CMP_RIGHT:
-		if (s->diff_flags & DIFF_RIGHT) {
-			fcom_infolog("%sDEL       %*c  <<  %S%s"
-				, clr_del, WIDTH_NAME, ' ', &rname, clr_reset);
-		}
-		break;
-
-	case FNTREE_CMP_NEQ: {
-		if (!(s->diff_flags & DIFF_MOD))
-			break;
-
-		int a1 = '.', a2 = '.', a3 = '.';
-
-		if (st & FNTREE_CMP_NEWER)
-			a1 = 'N';
-		else if (st & FNTREE_CMP_OLDER)
-			a1 = 'O';
-
-		if (st & FNTREE_CMP_LARGER)
-			a2 = '>';
-		else if (st & FNTREE_CMP_SMALLER)
-			a2 = '<';
-
-		if (st & FNTREE_CMP_ATTR)
-			a3 = 'A';
-
-		const char *cmp = "!=";
-		if (st & FNTREE_CMP_LARGER)
-			cmp = "> ";
-		else if (st & FNTREE_CMP_SMALLER)
-			cmp = "< ";
-		else if (st & FNTREE_CMP_NEWER)
-			cmp = ">=";
-		else if (st & FNTREE_CMP_OLDER)
-			cmp = "<=";
-
-		const struct entdata *ld = (entdata*)fntree_data(ce->l), *rd = (entdata*)fntree_data(ce->r);
-		xxvec v;
-		v.add_f("UPD[%c%c%c]  %*S  %s  %*S"
-			, a1, a2, a3
-			, WIDTH_NAME, &lname
-			, cmp
-			, WIDTH_NAME, &rname);
-
-		if (st & (FNTREE_CMP_LARGER | FNTREE_CMP_SMALLER)) {
-			v.add_f(" %" WIDTH_SIZE "U %" WIDTH_SIZE "U"
-				, ld->size, rd->size);
+	/** Compare next file pair */
+	int next()
+	{
+		fntree_entry *le, *re;
+		fntree_block *lb, *rb;
+		int r = fntree_cmp_next(&this->fcmp, &le, &re, &lb, &rb);
+		if (r < 0) {
+			return 1;
 		}
 
-		if (st & FNTREE_CMP_ATTR) {
-			uint la = ld->unixattr, ra = rd->unixattr;
-#ifdef FF_WIN
-			la = ld->winattr, ra = rd->winattr;
-#endif
-			v.add_f(" %xu %xu"
-				, la, ra);
-		}
-
-		fcom_infolog("%S", &v);
-		break;
-	}
-	}
-}
-
-/** Show next difference from 'cmp.ents' */
-static int diff_show_next(struct sync *s)
-{
-	if (s->cmp.cmp_idx == s->cmp.ents.len) {
-		return 1;
-	}
-
-	fntree_cmp_ent *ce = ffslice_itemT(&s->cmp.ents, s->cmp.cmp_idx, fntree_cmp_ent);
-	s->cmp.cmp_idx++;
-
-	full_name(&s->cmp.lname, ce->l, ce->lb);
-	full_name(&s->cmp.rname, ce->r, ce->rb);
-
-	if (ce->status & FNTREE_CMP_SKIP)
-		return 0;
-
-	if (s->plain_list) {
-		if (ce->status & FNTREE_CMP_MOVED)
-			return 0;
-		switch (ce->status & 0x0f) {
+		// unset the unused elements
+		switch (r & 0x0f) {
 		case FNTREE_CMP_LEFT:
-			if (s->sync_add)
-				ffstdout_fmt("%S\n", &s->cmp.lname);
-			break;
+			re = NULL, rb = NULL; break;
 		case FNTREE_CMP_RIGHT:
-			if (s->sync_del)
-				ffstdout_fmt("%S\n", &s->cmp.rname);
-			break;
-		case FNTREE_CMP_NEQ:
-			if (s->sync_update)
-				ffstdout_fmt("%S\n", &s->cmp.lname);
+			le = NULL, lb = NULL; break;
+		}
+
+		fntree_cmp_ent *ce = ffvec_pushT(&this->ents, fntree_cmp_ent);
+		ce->status = 0;
+		ce->l = le;
+		ce->r = re;
+		ce->lb = lb;
+		ce->rb = rb;
+
+		snapshot::full_name(&this->lname, le, lb);
+		snapshot::full_name(&this->rname, re, rb);
+
+		fcom_dbglog("%S <-> %S: %xu", &this->lname, &this->rname, r);
+
+		switch (r & 0x0f) {
+		case FNTREE_CMP_LEFT: {
+			this->stats.left++;
+
+			fntree_cmp_ent *ce2 = this->moved_find_add(le, ce);
+			if (ce2 && (ce2->status & FCOM_SYNC_RIGHT)) {
+				// the same file was seen before within Right list
+				fcom_dbglog("moved R: %S", &this->lname);
+				ce2->status &= ~FCOM_SYNC_RIGHT;
+				ce2->status |= FCOM_SYNC_MOVE;
+				ce->status = FCOM_SYNC_MOVE | _FCOM_SYNC_SKIP;
+				ce2->l = le;
+				ce2->lb = lb;
+				this->stats.moved++;
+				this->stats.left--;
+				this->stats.right--;
+				this->stats.entries--;
+			} else {
+				ce->status = FCOM_SYNC_LEFT;
+			}
 			break;
 		}
+
+		case FNTREE_CMP_RIGHT: {
+			this->stats.right++;
+
+			fntree_cmp_ent *ce2 = this->moved_find_add(re, ce);
+			if (ce2 && (ce2->status & FCOM_SYNC_LEFT)) {
+				// the same file was seen before within Left list
+				fcom_dbglog("moved L: %S", &this->rname);
+				ce2->status &= ~FCOM_SYNC_LEFT;
+				ce2->status |= FCOM_SYNC_MOVE;
+				ce->status = FCOM_SYNC_MOVE | _FCOM_SYNC_SKIP;
+				ce2->r = re;
+				ce2->rb = rb;
+				this->stats.moved++;
+				this->stats.left--;
+				this->stats.right--;
+				this->stats.entries--;
+			} else {
+				ce->status = FCOM_SYNC_RIGHT;
+			}
+			break;
+		}
+
+		case FNTREE_CMP_EQ:
+			this->stats.eq++;
+			ce->status = FCOM_SYNC_EQ;
+			break;
+
+		case FNTREE_CMP_NEQ:
+			this->stats.neq++;
+			ce->status = FCOM_SYNC_NEQ | (r & ~0x0f);
+			break;
+
+		default:
+			FCOM_ASSERT(0);
+			return 1;
+		}
+
+		this->stats.entries++;
 		return 0;
 	}
+};
 
-	if (ce->status & FNTREE_CMP_MOVED) {
-		status_print(s, ce, s->cmp.lname, s->cmp.rname);
+static fcom_sync_diff* sync_diff(fcom_sync_snapshot *left, fcom_sync_snapshot *right, struct fcom_sync_props *props, uint flags)
+{
+	struct diff *sd = ffmem_new(struct diff);
+	sd->props = *props;
+	sd->init(left, right, flags);
+	while (!sd->next()) {
+	}
+	props->stats = sd->stats;
+	return sd;
+}
+
+static void sync_diff_free(fcom_sync_diff *sd)
+{
+	if (sd)
+		sd->~diff();
+	ffmem_free(sd);
+}
+
+static int str_match(const fntree_block *b, const fntree_entry *e, ffstr m)
+{
+	if (!e)
 		return 0;
+	ffstr path = fntree_path(b);
+	ffstr name = fntree_name(e);
+	return (ffstr_findstr(&name, &m) >= 0
+		|| ffstr_findstr(&path, &m) >= 0);
+}
+
+static uint flags_swap(uint u, uint a, uint b)
+{
+	if (u & a)
+		u = (u & ~a) | b;
+	else if (u & b)
+		u = (u & ~b) | a;
+	return u;
+}
+
+static uint status_swap(uint st)
+{
+	st = flags_swap(st, FCOM_SYNC_LEFT, FCOM_SYNC_RIGHT);
+	st = flags_swap(st, FCOM_SYNC_NEWER, FCOM_SYNC_OLDER);
+	st = flags_swap(st, FCOM_SYNC_LARGER, FCOM_SYNC_SMALLER);
+	return st;
+}
+
+static uint sync_view(fcom_sync_diff *sd, struct fcom_sync_props *props, uint flags)
+{
+	sd->filter.len = 0;
+	fntree_cmp_ent *ce;
+	FFSLICE_WALK(&sd->ents, ce) {
+
+		if (ce->status & _FCOM_SYNC_SKIP)
+			continue;
+
+		uint st = ce->status;
+		if (flags & FCOM_SYNC_SWAP)
+			st = status_swap(ce->status);
+
+		switch (st & FCOM_SYNC_MASK) {
+		case FCOM_SYNC_LEFT:
+			if (!(flags & FCOM_SYNC_LEFT))
+				continue;
+			break;
+
+		case FCOM_SYNC_RIGHT:
+			if (!(flags & FCOM_SYNC_RIGHT))
+				continue;
+			break;
+
+		case FCOM_SYNC_NEQ:
+			if (!(flags & FCOM_SYNC_NEQ))
+				continue;
+			break;
+
+		case FCOM_SYNC_MOVE:
+			if (!(flags & FCOM_SYNC_MOVE))
+				continue;
+			break;
+
+		case FCOM_SYNC_EQ:
+			if (!(flags & FCOM_SYNC_EQ))
+				continue;
+			break;
+		}
+
+		const struct fcom_sync_entry *ld = NULL, *rd = NULL;
+		if (ce->l)
+			ld = (struct fcom_sync_entry*)fntree_data(ce->l);
+		if (ce->r)
+			rd = (struct fcom_sync_entry*)fntree_data(ce->r);
+
+		if (!(flags & FCOM_SYNC_DIR)
+			&& ((ld && (ld->unix_attr & FFFILE_UNIX_DIR))
+				|| (rd && (rd->unix_attr & FFFILE_UNIX_DIR))))
+			continue;
+
+		if (flags & FCOM_SYNC_SWAP) {
+			if (rd && fftime_cmp(&rd->mtime, &props->since_time) < 0)
+				continue;
+		} else {
+			if (ld && fftime_cmp(&ld->mtime, &props->since_time) < 0)
+				continue;
+		}
+
+		uint included = !props->include.len;
+
+		ffstr *s;
+		FFSLICE_WALK(&props->exclude, s) {
+			if (str_match(ce->lb, ce->l, *s)
+				|| str_match(ce->rb, ce->r, *s))
+				goto next;
+		}
+
+		FFSLICE_WALK(&props->include, s) {
+			if (str_match(ce->lb, ce->l, *s)
+				|| str_match(ce->rb, ce->r, *s)) {
+				included = 1;
+				break;
+			}
+		}
+
+		if (!included)
+			continue;
+
+		*sd->filter.push<void*>() = ce;
+
+	next:
+		;
 	}
 
-	uint st = ce->status;
+	return sd->filter.len;
+}
 
-	switch (st & 0x0f) {
-	case FNTREE_CMP_LEFT:
-	case FNTREE_CMP_RIGHT:
-	case FNTREE_CMP_NEQ:
-		status_print(s, ce, s->cmp.lname, s->cmp.rname);
-		break;
+#define FF_SWAP2(a, b) \
+({ \
+	__typeof__(a) __tmp = a; \
+	a = b; \
+	b = __tmp; \
+})
 
-	case FNTREE_CMP_EQ:
-		break;
+static const fcom_sync_diff_entry* sync_info_id(fcom_sync_diff *sd, void *id, uint flags)
+{
+	fntree_cmp_ent *ce = (fntree_cmp_ent*)id;
+	sd->dif_ent.status = ce->status;
+	snapshot::full_name(&sd->lname, ce->l, ce->lb);
+	snapshot::full_name(&sd->rname, ce->r, ce->rb);
+	sd->dif_ent.lname = sd->lname.str();
+	sd->dif_ent.rname = sd->rname.str();
+	sd->dif_ent.left = (ce->l) ? (struct fcom_sync_entry*)fntree_data(ce->l) : NULL;
+	sd->dif_ent.right = (ce->r) ? (struct fcom_sync_entry*)fntree_data(ce->r) : NULL;
 
-	default:
-		FCOM_ASSERT(0);
-		return 1;
+	if (flags & FCOM_SYNC_SWAP) {
+		sd->dif_ent.status = status_swap(ce->status);
+		FF_SWAP2(sd->dif_ent.lname, sd->dif_ent.rname);
+		FF_SWAP2(sd->dif_ent.left, sd->dif_ent.right);
 	}
 
-	return 0;
+	sd->dif_ent.id = ce;
+	return &sd->dif_ent;
+}
+
+static const fcom_sync_diff_entry* sync_info(fcom_sync_diff *sd, uint i, uint flags)
+{
+	if (i >= sd->filter.len)
+		return NULL;
+
+	fntree_cmp_ent *ce = *ffslice_itemT(&sd->filter, i, fntree_cmp_ent*);
+	return sync_info_id(sd, ce, flags);
+}
+
+static uint sync_status(fcom_sync_diff *sd, void *id, uint mask, uint val)
+{
+	fntree_cmp_ent *ce = (fntree_cmp_ent*)id;
+	ce->status = (ce->status & ~mask) | val;
+	return ce->status;
 }

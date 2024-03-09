@@ -92,7 +92,8 @@ static void core_timer(fcom_timer *t, int interval_msec, fcom_task_func func, vo
 static fftime core_clock(ffdatetime *dt, uint flags)
 {
 	if (flags == FCOM_CORE_UTC) {
-		fftime_split1(dt, &gcore->utc);
+		if (dt)
+			fftime_split1(dt, &gcore->utc);
 		return gcore->utc;
 	}
 	return gcore->now;
@@ -128,6 +129,7 @@ static void tmr_func(void *param)
 {
 	fftimer_consume(gcore->tmr);
 	fftime_now(&gcore->utc);
+	gcore->utc.sec += FFTIME_1970_SECONDS;
 	gcore->now = fftime_monotonic();
 	gcore->now_msec = fftime_to_msec(&gcore->now);
 	uint n = fftimerqueue_process(&gcore->tq, gcore->now_msec);

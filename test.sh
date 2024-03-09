@@ -2,10 +2,10 @@
 # fcom/v1 tester
 
 CMDS_FS=(copy list move sync touch trash)
-CMDS_OPS=(help hex md5 pic textcount utf8 html disana)
+CMDS_OPS=(help hex md5 textcount utf8 html disana)
 CMDS_WIN=(reg-search)
 CMDS_PACK=(gz iso tar un7z unxz zip zst unpack)
-# listdisk mount unico
+# pic listdisk mount unico
 
 if test "$#" -lt 1 ; then
 	echo Usage: bash test.sh all
@@ -32,11 +32,13 @@ test_copy_update() {
 	cd fcomtest
 	echo hello >file
 
-	# Unknown option
-	../fcom copy "file" -o "file-u" --update2 || true
-
 	../fcom -V copy --update "file" -o "file-u" ; diff file file-u
 	../fcom -D copy --update "file" -o "file-u" 2>&1 | grep -E 'update.*skipping' ; diff file file-u
+
+	echo hellohello >file-rd
+	touch "file-rd" -t 12310000
+	../fcom -V copy --update --replace-date "file" -o "file-rd" 2>&1 | grep 'replace date'
+	../fcom list -l "file" "file-rd"
 
 	cd ..
 }
@@ -291,8 +293,13 @@ test_sync() {
 	../fcom -V sync --diff U --diff-time-sec "left" -o "right"
 	../fcom -V sync --diff "" "left" -o "right"
 	../fcom -V sync --diff "" --diff-no-dir "left" -o "right"
-	../fcom -V sync --diff "" --plain --add "left" -o "right"
-	../fcom -V sync --diff "" --plain --update "left" -o "right"
+	../fcom -V sync --diff "A" --plain "left" -o "right"
+	../fcom -V sync --diff "U" --plain "left" -o "right"
+
+	echo left >left/d/l_old
+	touch left/d/l_old -t 0001010000
+	../fcom -V sync --diff "" --recent 30 "left" -o "right"
+	rm left/d/l_old
 
 	# write snapshot, diff snapshot and dir
 	../fcom -V sync --snapshot "left" -o "fcomtest.snap" -f
@@ -394,7 +401,11 @@ test_tar() {
 test_un7z() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
-	7z a fcomtest/7z.7z fcomtest/file
+	if test -f /usr/bin/7zr ; then
+		7zr a fcomtest/7z.7z fcomtest/file
+	else
+		7z a fcomtest/7z.7z fcomtest/file
+	fi
 	./fcom -V un7z "fcomtest/7z.7z" -C "fcomtest/un7z"
 	diff fcomtest/un7z/fcomtest/file fcomtest/file
 
@@ -494,39 +505,49 @@ test_iso() {
 test_unpack() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
-	./fcom gz "fcomtest/file" -o "fcomtest/gz.gz"
-	./fcom tar "fcomtest/file" -o "fcomtest/tar.tar"
-	./fcom zip "fcomtest/file" -o "fcomtest/zip.zip"
-	./fcom zst "fcomtest/file" -o "fcomtest/zst.zst"
 
+	./fcom -V pack "fcomtest/file" -o "fcomtest/tar.tar"
+	./fcom -V pack "fcomtest/file" -o "fcomtest/zip.zip"
 	./fcom -V unpack "fcomtest/tar.tar" "fcomtest/zip.zip" -C "fcomtest" --autodir
 	diff fcomtest/file fcomtest/tar/fcomtest/file
 	diff fcomtest/file fcomtest/zip/fcomtest/file
 
+	./fcom -V pack "fcomtest/file" -o "fcomtest/zipx.zipx"
+	./fcom -V unpack "fcomtest/zipx.zipx" -C "fcomtest" --autodir
+	diff fcomtest/file fcomtest/zipx/fcomtest/file
+
+	./fcom -V pack "fcomtest/file" -o "fcomtest/gz.gz"
 	./fcom -V unpack "fcomtest/gz.gz" -C "fcomtest/gz"
 	diff fcomtest/file fcomtest/gz/file
 
+	./fcom -V pack "fcomtest/file" -o "fcomtest/zst.zst"
 	./fcom -V unpack "fcomtest/zst.zst" -C "fcomtest/zst"
 	diff fcomtest/file fcomtest/zst/zst
 
-	./fcom zst "fcomtest/tar.tar" -o "fcomtest/tarzst.tar.zst"
+	./fcom -V pack "fcomtest/file" -o "fcomtest/tarzst.tar.zst"
 	./fcom -V unpack "fcomtest/tarzst.tar.zst" -C "fcomtest/tarzst"
 	diff fcomtest/file fcomtest/tarzst/fcomtest/file
 
-	./fcom gz "fcomtest/tar.tar" -o "fcomtest/targz.tar.gz"
-	./fcom -V unpack "fcomtest/targz.tar.gz" -C "fcomtest/targz"
+	./fcom -V pack "fcomtest/file" -o "fcomtest/tartargz.tar.gz"
+	./fcom -V unpack "fcomtest/tartargz.tar.gz" -C "fcomtest/tartargz"
+	diff fcomtest/file fcomtest/tartargz/fcomtest/file
+
+	./fcom -V pack "fcomtest/file" -o "fcomtest/targz.tgz"
+	./fcom -V unpack "fcomtest/targz.tgz" -C "fcomtest/targz"
 	diff fcomtest/file fcomtest/targz/fcomtest/file
 
-	./fcom unpack "fcomtest/targz.tar.gz" -C "fcomtest/targz" -l 2>&1 | grep fcomtest/file
+	./fcom unpack "fcomtest/tartargz.tar.gz" -l 2>&1 | grep fcomtest/file
 
 	# xz "fcomtest/tar.tar" -o "fcomtest/tarxz.tar.xz"
 	# ./fcom unpack "fcomtest/tarxz.tar.xz" -C "fcomtest/tarxz"
 	# diff fcomtest/file fcomtest/tarxz/fcomtest/file
 }
 
+mkdir -p fcomtest
+
 for CMD in "${CMDS[@]}" ; do
 
-	rm -rf ./fcomtest ; mkdir fcomtest
+	rm -rf ./fcomtest/*
 	test_$CMD
 
 done

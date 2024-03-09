@@ -11,6 +11,8 @@ Usage:\n\
 \n\
 OPTIONS:\n\
     `-d`, `--date` STR      Set local date/time\n\
+                            Format:\n\
+                              yyyy-MM-dd [hh:mm:ss]\n\
     `-r`, `--reference` FILE\n\
                         Set date/time from this file\n\
 ";

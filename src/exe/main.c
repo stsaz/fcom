@@ -3,7 +3,6 @@
 
 #include <fcom.h>
 #include <exe/args.h>
-#include <ffsys/dylib.h>
 #include <ffsys/std.h>
 #include <ffsys/path.h>
 #include <ffsys/process.h>
@@ -11,9 +10,9 @@
 #include <ffsys/thread.h>
 #include <ffsys/globals.h>
 
+extern struct fcom_coreinit fcom_coreinit;
+
 struct main {
-	char *core_fn;
-	ffdl core_dl;
 	struct fcom_coreinit *ci;
 	struct fcom_core *core;
 	struct args conf;
@@ -35,17 +34,7 @@ char* path(const char *fn)
 
 static int load_core()
 {
-	m->core_fn = path("core." FFDL_EXT);
-
-	if (NULL == (m->core_dl = ffdl_open(m->core_fn, 0))) {
-		stdlog(FCOM_LOG_ERR, "ffdl_open: %s: %s", m->core_fn, ffdl_errstr());
-		return 1;
-	}
-	if (NULL == (m->ci = ffdl_addr(m->core_dl, "fcom_coreinit"))) {
-		stdlog(FCOM_LOG_ERR, "ffdl_addr: %s: fcom_coreinit: %s", m->core_fn, ffdl_errstr());
-		return 1;
-	}
-	m->ci->init();
+	fcom_coreinit.init();
 	return 0;
 }
 
@@ -79,13 +68,9 @@ static void on_signal(struct ffsig_info *i)
 
 static void main_free()
 {
-	if (m->ci != NULL)
-		m->ci->destroy();
-	if (m->core_dl != NULL)
-		ffdl_close(m->core_dl);
+	fcom_coreinit.destroy();
 	args_destroy(&m->conf);
 	ffmem_free(m->cmd_line);
-	ffmem_free(m->core_fn);
 	ffmem_free(m);
 }
 
@@ -121,7 +106,7 @@ int main(int argc, char **argv)
 		.verbose = m->conf.verbose,
 		.stdout_color = !ffstd_attr(ffstdout, FFSTD_VTERM, FFSTD_VTERM),
 	};
-	if (NULL == (m->core = m->ci->conf(&cconf)))
+	if (NULL == (m->core = fcom_coreinit.conf(&cconf)))
 		goto exit;
 
 	m->core->task(&m->task, operation, NULL);
@@ -129,7 +114,7 @@ int main(int argc, char **argv)
 	static const uint sigs[] = { FFSIG_INT };
 	ffsig_subscribe(on_signal, sigs, FF_COUNT(sigs));
 
-	ec = m->ci->run();
+	ec = fcom_coreinit.run();
 
 exit:
 	main_free();

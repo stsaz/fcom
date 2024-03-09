@@ -5,7 +5,7 @@
 #include <ffsys/std.h>
 #include <ffsys/pipe.h>
 #include <ffbase/map.h>
-#include <util/fntree.h>
+#include <ffbase/fntree.h>
 
 extern fcom_core *core;
 
@@ -521,7 +521,7 @@ static const struct ffarg args_global[] = {
 	{ "--Include",		'+S',	args_include },
 	{ "--Recursive",	'1',	O(recursive) },
 
-	{ "--buffer",		'z',	args_buffer }, //@
+	{ "--buffer",		'z',	args_buffer },
 	{ "--chdir",		'=S',	O(chdir) },
 	{ "--directio",		'1',	O(directio) },
 	{ "--help",			'0',	args_help },
