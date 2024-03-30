@@ -1,0 +1,92 @@
+General usage:
+
+  fcom OPERATION [INPUT] [OPTIONS] [-o OUTPUT]
+
+OPERATION:
+
+  FS:
+    `copy`                Copy files from one place to another, plus encryption & verification
+    `gsync`               Show GUI for synchronizing directories
+    `list`                List directory contents
+    `move`                Move and/or rename files
+    `sync`                Compare/synchronize directories or create a file tree snapshot
+    `touch`               Change file date/time
+    `trash`               Move files to user's trash directory, plus obfuscation
+
+  Compress files:
+    `gz`                  Compress file into .gz
+    `zst`                 Compress file into .zst
+
+  Pack files:
+    `pack`                Pack files into any supported archive type
+    `iso`                 Pack files into .iso
+    `tar`                 Pack files into .tar
+    `zip`                 Pack files into .zip
+
+  Decompress files:
+    `ungz`                Decompress file from .gz
+    `unxz`                Decompress file from .xz
+    `unzst`               Decompress file from .zst
+
+  Unpack files:
+    `unpack`              Unpack files from all supported archive types
+    `un7z`                Unpack files from .7z
+    `uniso`               Unpack files from .iso
+    `untar`               Unpack files from .tar
+    `unzip`               Unpack files from .zip
+
+  Text:
+    `html`                Parse HTML data
+    `textcount`           Analyze text files (e.g. print number of lines)
+    `utf8`                Convert files to UTF-8
+
+  Other:
+    `hex`                 Print file contents in hexadecimal format
+    `ico-extract`         Extract images from .ico
+    `md5`                 Compute MD5 hash
+    `pic`                 Convert images (.bmp/.jpg/.png)
+
+  Windows-only:
+    `listdisk`            List logical volumes (Windows)
+    `mount`               Mount logical volumes (Windows)
+    `reg`                 Windows Registry utils: search
+
+INPUT:
+
+  * ""                    Process data from STDIN
+  * FILE                  File name (relative or absolute)
+      OPTIONS:
+          `--directio`      Use direct I/O, bypassing system cache
+          `--buffer` N      Set file buffer size (=64k)
+  * DIR                   Directory name (relative or absolute)
+      OPTIONS:
+      `-R`, `--Recursive`     Expand subdirectories recursively
+      `-I`, `--Include` WILDCARD
+                          Include only matching names of files (`-R`)
+      `-E`, `--Exclude` WILDCARD
+                          Exclude matching names of files and directories (`-R`)
+  * `@`                     Get FILE and DIR names from STDIN
+  * "@FILE"               Get FILE and DIR names from FILE (can be specified only once)
+  * WILDCARD              Expands to a set of FILE or DIR (meaningful only for cmd.exe on Windows)
+
+`-o`, `--out` OUTPUT    Set output file
+
+OUTPUT:
+
+  * `STDOUT`                Print data to STDOUT
+  * FILE                  File name (relative or absolute)
+      OPTIONS:
+      `-f`, `--overwrite`     Overwrite
+      `-C`, `--chdir` DIR     Change (logically) current directory
+      `-T`, `--test`          Test mode: don't actually write anything
+          `--directio`      Use direct I/O, bypassing system cache
+          `--buffer` N      Set file buffer size (=64k)
+          `--no-prealloc`   Don't preallocate disk space
+
+General options:
+
+    `-V`, `--Verbose`       Print more information to stdout
+    `-D`, `--Debug`         Print debug log messages to stdout
+    `-h`, `--help`          Show general help
+
+Run 'fcom OPERATION -h' for more info on a particular operation.
