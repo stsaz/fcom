@@ -1,0 +1,170 @@
+# fcom v1.0-beta13 gsync UI
+
+menu mfile {
+	item "New Window" {
+		action A_WND_NEW
+		hotkey "Ctrl+N"
+	}
+	item "Scan and Compare" {
+		action A_SCAN_CMP
+		hotkey "F5"
+	}
+	item "Synchronize" {
+		action A_SYNC
+		hotkey "F6"
+	}
+	item "Replace Date" {
+		action A_SYNC_DATE
+	}
+	item "Swap Source and Target" {
+		action A_SWAP
+		hotkey "Ctrl+W"
+	}
+	item "E_xit" {
+		action A_QUIT
+		hotkey "Ctrl+Q"
+	}
+}
+
+menu mlist {
+	item "Select All" {
+		action A_SEL_ALL
+		hotkey "Ctrl+A"
+	}
+}
+
+menu mpopup {
+	item "Source: Exec" {
+		action A_SRC_EXEC
+	}
+	item "Source: Show Directory" {
+		action A_SRC_SHOW_DIR
+		hotkey "Ctrl+E"
+	}
+	item "-" {
+	}
+	item "Target: Exec" {
+		action A_DST_EXEC
+	}
+	item "Target: Show Directory" {
+		action A_DST_SHOW_DIR
+		hotkey "Ctrl+Shift+E"
+	}
+}
+
+window wmain {
+	title		"fcom gsync"
+	position	0 0 600 600
+	icon {
+		filename "gsync.ico"
+	}
+
+	mainmenu mmenu {
+		item "_File" {
+			submenu mfile
+		}
+		item "_List" {
+			submenu mlist
+		}
+	}
+
+	label llpath {
+		style	horizontal
+		text	"Source Dir:"
+	}
+	editbox lpath {
+	}
+
+	label lrpath {
+		style	horizontal
+		text	"Target Dir:"
+	}
+	editbox rpath {
+	}
+
+	label linclude {
+		style	horizontal
+		text	"Include:"
+	}
+	editbox include {
+		onchange	A_INCLUDE_CHANGE
+	}
+
+	label lexclude {
+		style	horizontal
+		text	"Exclude:"
+	}
+	editbox exclude {
+		onchange	A_EXCLUDE_CHANGE
+	}
+
+	label ldays {
+		style	horizontal
+		text	"Recent days:"
+	}
+	editbox recent_days {
+		onchange	A_RECENTDAYS_CHANGE
+	}
+
+	checkbox show_left {
+		text	"LEFT"
+		style	horizontal
+		action	A_SHOW_LEFT
+	}
+
+	checkbox show_eq {
+		text	"EQ"
+		style	horizontal
+		action	A_SHOW_EQ
+	}
+
+	checkbox show_neq {
+		text	"NEQ"
+		style	horizontal
+		action	A_SHOW_NEQ
+	}
+
+	checkbox show_mov {
+		text	"MOV"
+		style	horizontal
+		action	A_SHOW_MOV
+	}
+
+	checkbox show_right {
+		text	"RIGHT"
+		style	horizontal
+		action	A_SHOW_RIGHT
+	}
+
+	checkbox show_dir {
+		text	"DIR"
+		action	A_SHOW_DIR
+	}
+
+	listview view {
+		style		grid_lines multi_select
+		popup_menu	mpopup
+
+		column "Status" {
+		}
+		column "Source Dir" {
+		}
+		column "Source File" {
+		}
+		column "Target Dir" {
+		}
+		column "Target File" {
+		}
+		column "Source Size" {
+		}
+		column "Target Size" {
+		}
+		column "Source Date" {
+		}
+		column "Target Date" {
+		}
+	}
+
+	statusbar stbar {
+	}
+}
