@@ -12,7 +12,9 @@ struct snapshot {
 	fntree_block *root, *parent_blk;
 	fntree_cursor cur;
 	xxvec		name;
+	ffstr		path, name_segment;
 	uint64		total;
+	uint		zip_block;
 
 	~snapshot() {
 		fntree_free_all(this->root);
@@ -34,7 +36,7 @@ struct snapshot {
 	}
 
 	/** Get next file from tree */
-	int next(ffstr *name, fntree_entry **e)
+	int next(ffstr *pname, fntree_entry **e)
 	{
 		fntree_block *b = this->root;
 		fntree_entry *it = fntree_cur_next_r_ctx(&this->cur, &b);
@@ -44,19 +46,27 @@ struct snapshot {
 		}
 
 		ffstr nm = fntree_name(it);
-		ffstr path = fntree_path(b);
+		this->path = fntree_path(b);
 		this->name.len = 0;
-		if (path.len)
-			ffvec_addfmt(&this->name, "%S%c", &path, FFPATH_SLASH);
+		if (this->path.len)
+			ffvec_addfmt(&this->name, "%S%c", &this->path, FFPATH_SLASH);
 		ffvec_addfmt(&this->name, "%S%Z", &nm);
+		this->name_segment = nm;
 
-		ffstr_set(name, this->name.ptr, this->name.len - 1);
-		fcom_dbglog("file: '%S'", name);
+		ffstr_set(pname, this->name.ptr, this->name.len - 1);
+		fcom_dbglog("file: '%S'", pname);
 		*e = it;
 
 		if (this->parent_blk != b) {
 			this->parent_blk = b;
-			return 'dir ';
+
+			ffstr ext;
+			ffpath_splitpath_str(this->path, NULL, &ext);
+			ffpath_splitname_str(ext, NULL, &ext);
+			this->zip_block = (ffstr_ieqz(&ext, "zip")
+				|| ffstr_ieqz(&ext, "zipx"));
+
+			return 'nblk';
 		}
 		return 0;
 	}
@@ -70,42 +80,70 @@ struct snapshot {
 #ifdef FF_LINUX
 		ds.fd = fd;
 		flags = FFDIRSCAN_USEFD;
+#else
+		fffile_close(fd);
 #endif
 
 		if (ffdirscan_open(&ds, (char*)this->name.ptr, flags)) {
-			fcom_syserrlog("ffdirscan_open");
+			fcom_syserrlog("ffdirscan_open: %s", this->name.ptr);
 			return -1;
 		}
 		ffstr path = FFSTR_INITZ((char*)this->name.ptr);
 		fntree_block *b = fntree_from_dirscan(path, &ds, sizeof(struct fcom_sync_entry));
 		this->total += b->entries;
 		fntree_attach((fntree_entry*)this->cur.cur, b);
-		fcom_dbglog("added branch '%S' [%u]", &path, b->entries);
+		fcom_dbglog("added branch '%S' with %u files", &path, b->entries);
 		ffdirscan_close(&ds);
 		return 0;
 	}
 
-	/** Get file attributes
-	fd: [output] directory descriptor */
-	static int f_info(const char *name, struct fcom_sync_entry *d, fffd *fd)
+	/** Add .zip tree branch */
+	int add_zip(fffd fd, ffstr name)
 	{
-		int rc = -1;
-		fffd f = fffile_open(name, FFFILE_READONLY | FFFILE_NOATIME);
-		if (f == FFFILE_NULL) {
-			fcom_syserrlog("fffile_open: %s", name);
-			return -1;
+		int rc = 'erro';
+		fcom_unpack_obj *ux = NULL;
+		fntree_block *b = fntree_create(name);
+		const fcom_unpack_if *uif = (fcom_unpack_if*)core->com->provide("zip.fcom_unzip", 0);
+		if (!uif)
+			goto end;
+		if (!(ux = uif->open_file(fd)))
+			goto end;
+		for (;;) {
+			ffstr fn = uif->next(ux, NULL);
+			if (!fn.len)
+				break;
+			if (*ffstr_last(&fn) == '/')
+				fn.len--;
+			if (NULL == fntree_add(&b, fn, sizeof(struct fcom_sync_entry))) {
+				fntree_free_all(b);
+				goto end;
+			}
 		}
+		this->total += b->entries;
+		fntree_attach((fntree_entry*)this->cur.cur, b);
+		fcom_dbglog("added branch '%S' with %u files", &name, b->entries);
+		rc = 0;
+
+	end:
+		if (ux)
+			uif->close(ux);
+		return rc;
+	}
+
+	/** Get file attributes */
+	static int f_info(const char *name, struct fcom_sync_entry *d, fffd f)
+	{
+		int rc = 'erro';
 
 		xxfileinfo fi;
 		if (fffile_info(f, &fi.info)) {
 			fcom_syserrlog("fffile_info: %s", name);
-			goto end;
+			return 'erro';
 		}
 
-		if (fi.dir()) {
-			*fd = f;
-			f = FFFILE_NULL;
-		}
+		rc = 'file';
+		if (fi.dir())
+			rc = 'dir ';
 
 		d->size = fi.size();
 		d->mtime = fi.mtime1();
@@ -122,39 +160,71 @@ struct snapshot {
 #endif
 
 		// d->crc32 = ;
-		rc = 0;
-
-	end:
-		if (f != FFFILE_NULL)
-			fffile_close(f);
 		return rc;
 	}
 
 	int scan_next(struct ent *dst)
 	{
 		fntree_entry *e;
-		ffstr name;
+		ffstr name, ext;
 		int r = this->next(&name, &e);
 		if (r == 'done')
-			return r;
+			return 'done';
 
 		struct fcom_sync_entry *d = (struct fcom_sync_entry*)fntree_data(e);
 		ffmem_zero_obj(d);
 
-		fffd fd = FFFILE_NULL;
-		if (f_info(name.ptr, d, &fd))
-			return 'erro';
+		if (this->zip_block) {
+			if (dst) {
+				dst->type = 'f';
+				dst->name = name;
+				dst->d = *d;
+			}
+			return r;
+		}
+
+		int r2 = 0;
+		fffd fd = fffile_open(name.ptr, FFFILE_READONLY | FFFILE_NOATIME);
+		if (fd == FFFILE_NULL) {
+			fcom_syswarnlog("fffile_open: %s", name.ptr);
+		} else {
+			r2 = this->f_info(name.ptr, d, fd);
+			switch (r2) {
+			case 'erro':
+				r = 'erro';
+				goto end;
+
+			case 'dir ':
+				if (this->add_dir(fd)) {
+					fd = FFFILE_NULL;
+					r = 'erro';
+					goto end;
+				}
+				fd = FFFILE_NULL;
+				break;
+
+			case 'file':
+				ffpath_splitpath_str(name, NULL, &ext);
+				ffpath_splitname_str(ext, NULL, &ext);
+				if (ffstr_ieqz(&ext, "zip")
+					|| ffstr_ieqz(&ext, "zipx")) {
+					if (this->add_zip(fd, name)) {
+						r = 'erro';
+						goto end;
+					}
+				}
+				break;
+			}
+		}
 
 		if (dst) {
-			dst->type = (fd != FFFILE_NULL) ? 'd' : 'f';
+			dst->type = (r2 == 'dir ') ? 'd' : 'f';
 			dst->name = name;
 			dst->d = *d;
 		}
 
-		if (fd != FFFILE_NULL
-			&& this->add_dir(fd))
-			return 'erro';
-
+	end:
+		fffile_close(fd);
 		return r;
 	}
 };

@@ -184,17 +184,17 @@ test_move() {
 
 	# unbranch + replace
 	echo hi >>fcomtest/unbranch/a/hi
-	./fcom -V move --unbranch "fcomtest/unbranch" --replace "a - /new - "
+	./fcom -V move --unbranch "fcomtest/unbranch" --search "a - " --replace "new - "
 	test -f "fcomtest/unbranch - new - hi"
 
 	# replace
 	echo hi >>fcomtest/unbranch/a/test
-	./fcom -V move "fcomtest/unbranch/a/test" --replace "test/new"
+	./fcom -V move "fcomtest/unbranch/a/test" --search "test" --replace "new"
 	test -f fcomtest/unbranch/a/new
 
 	# replace in directory name
 	mkdir -p fcomtest/dir1
-	./fcom -V move "fcomtest/dir1" --replace "1/2"
+	./fcom -V move "fcomtest/dir1" --search "1" --replace "2"
 	! test -d fcomtest/dir1
 	test -d fcomtest/dir2
 
@@ -337,6 +337,16 @@ test_sync() {
 	cd ..
 }
 
+test_sync_zip() {
+	mkdir fcomtest/dir fcomtest/dir2
+	./fcom touch "fcomtest/dir/file1"
+	./fcom touch "fcomtest/dir/file2"
+	./fcom touch "fcomtest/dir2/file3"
+	./fcom zip "fcomtest/dir" "fcomtest/dir2" -o "fcomtest/sync.zip"
+	./fcom -D sync --snapshot "fcomtest" -o "fcomtest/snap.txt"
+	cat fcomtest/snap.txt
+}
+
 test_gsync() {
 	test_sync_prepare
 	cd fcomtest
@@ -469,6 +479,13 @@ test_zip() {
 	# --autodir
 	./fcom unzip "fcomtest/zip.zip" -C "fcomtest" --autodir
 	diff fcomtest/zipdir/file1 fcomtest/zip/fcomtest/zipdir/file1
+
+	# --each
+	echo file1 >fcomtest/a
+	echo file2 >fcomtest/b
+	echo file3 >fcomtest/c
+	./fcom zip --each "fcomtest/a" "fcomtest/b" "fcomtest/c" -C "fcomtest"
+	./fcom unzip -l "fcomtest/a.zip" "fcomtest/b.zip" "fcomtest/c.zip"
 }
 
 test_gz() {

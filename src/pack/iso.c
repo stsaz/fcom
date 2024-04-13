@@ -45,8 +45,6 @@ struct iso {
 	char *volname;
 };
 
-#define MIN_COMPRESS_SIZE 32
-
 #define O(member)  FF_OFF(struct iso, member)
 
 static int args_parse(struct iso *c, fcom_cominfo *cmd)

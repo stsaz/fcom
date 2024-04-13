@@ -15,7 +15,9 @@ if ! podman container exists fcom_debianbuster_build ; then
 FROM debian:buster-slim
 RUN apt update && \
  apt install -y \
-  gcc g++ make
+ make
+RUN apt install -y \
+ gcc g++
 RUN apt install -y \
  libgtk-3-dev
 RUN apt install -y \

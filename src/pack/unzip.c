@@ -17,6 +17,8 @@ OPTIONS:\n\
         `--plain`     Plain file names\n\
         `--autodir`   Add to OUTPUT_DIR a directory with name = input archive name.\n\
                      Same as manual 'unzip arc.zip -C odir/arc'.\n\
+        `--recovery`  Recovery mode\n\
+        `--skip`      Skip files on error\n\
 ";
 }
 
@@ -26,6 +28,8 @@ OPTIONS:\n\
 #include <ffbase/map.h>
 
 extern const fcom_core *core;
+
+#include <pack/unzip-if.h>
 
 struct file {
 	uint64 off;
@@ -50,21 +54,28 @@ struct unzip {
 	ffvec buf;
 	uint stop;
 	uint del_on_close :1;
+	uint recovery_list :1;
 	uint64 total_comp, total_uncomp;
 	int64 roff;
 
 	ffvec files; // struct file[]
-	ffsize ifile;
+	size_t ifile;
+
+	uint64 f_size;
 
 	// conf:
-	byte list, list_plain;
-	byte autodir;
-	ffvec members_data;
-	ffvec members_wildcard; // ffstr[]
-	ffmap members; // char*[]
+	u_char	list, list_plain;
+	u_char	autodir;
+	u_char	recovery;
+	u_char	skip;
+	ffvec	members_data;
+	ffvec	members_wildcard; // ffstr[]
+	ffmap	members; // char*[]
 };
 
-static int members_keyeq(void *opaque, const void *key, ffsize keylen, void *val)
+static int unzip_recovery_list(struct unzip *z, ffstr *input, ffstr *output);
+
+static int members_keyeq(void *opaque, const void *key, size_t keylen, void *val)
 {
 	char *v = val;
 	if (!ffmem_cmp(key, v, keylen) && v[keylen] == '\n')
@@ -132,6 +143,8 @@ static int unzip_args_parse(struct unzip *z, fcom_cominfo *cmd)
 		{ "--list",					'1',	O(list) },
 		{ "--members-from-file",	's',	unzip_args_members_from_file },
 		{ "--plain",				'1',	O(list_plain) },
+		{ "--recovery",				'1',	O(recovery) },
+		{ "--skip",					'1',	O(skip) },
 		{ "-l",						'1',	O(list) },
 		{ "-m",						's',	unzip_args_members_from_file },
 		{}
@@ -188,13 +201,95 @@ static fcom_op* unzip_create(fcom_cominfo *cmd)
 	z->in = core->file->create(&fc);
 	z->out = core->file->create(&fc);
 
-	ffsize cap = (cmd->buffer_size != 0) ? cmd->buffer_size : 64*1024;
+	size_t cap = (cmd->buffer_size != 0) ? cmd->buffer_size : 64*1024;
 	ffvec_alloc(&z->buf, cap, 1);
 	return z;
 
 end:
 	unzip_close(z);
 	return NULL;
+}
+
+static void unzip_reset(struct unzip *z)
+{
+	z->total_uncomp = 0;
+	z->total_comp = 0;
+	z->ifile = 0;
+	z->files.len = 0;
+	z->roff = -1;
+	z->zipdata.len = 0;
+	z->recovery_list = z->recovery;
+}
+
+static int unzip_input_open_next(struct unzip *z)
+{
+	int r;
+	if (0 > (r = core->com->input_next(z->cmd, &z->iname, &z->base, 0))) {
+		if (r == FCOM_COM_RINPUT_NOMORE) {
+			return 'done';
+		}
+		goto err;
+	}
+
+	uint flags = fcom_file_cominfo_flags_i(z->cmd);
+	flags |= FCOM_FILE_READ;
+	r = core->file->open(z->in, z->iname.ptr, flags);
+	if (r == FCOM_FILE_ERR)
+		goto err;
+
+	fffileinfo fi = {};
+	r = core->file->info(z->in, &fi);
+	if (r == FCOM_FILE_ERR)
+		goto err;
+
+	if (0 != core->com->input_allowed(z->cmd, z->iname, fffile_isdir(fffileinfo_attr(&fi)))) {
+		return 'next';
+	}
+
+	if ((z->base.len == 0 || z->cmd->recursive)
+			&& fffile_isdir(fffileinfo_attr(&fi))) {
+		fffd fd = core->file->fd(z->in, FCOM_FILE_ACQUIRE);
+		core->com->input_dir(z->cmd, fd);
+	}
+
+	unzip_reset(z);
+
+	ffzipread_open(&z->rzip, fffileinfo_size(&fi));
+	z->f_size = fffileinfo_size(&fi);
+	z->rzip.log = unzip_log;
+	z->rzip.timezone_offset = core->tz.real_offset;
+	return 0;
+
+err:
+	return (z->skip) ? 'next' : 'erro';
+}
+
+static int unzip_file_read(struct unzip *z, ffstr *output)
+{
+	switch (core->file->read(z->in, output, z->roff)) {
+	case FCOM_FILE_ERR: goto err;
+	case FCOM_FILE_ASYNC: return 'asyn';
+	case FCOM_FILE_EOF:
+		fcom_errlog("incomplete archive");
+		goto err;
+	}
+
+	z->roff = -1;
+	return 0;
+
+err:
+	return (z->skip) ? 'next' : 'erro';
+}
+
+static int unzip_file_write(struct unzip *z, ffstr data)
+{
+	switch (core->file->write(z->out, data, -1)) {
+	case FCOM_FILE_ERR: return 'erro';
+	case FCOM_FILE_ASYNC: return 'asyn';
+	}
+
+	z->total_uncomp += z->plain.len;
+	return 0;
 }
 
 /* "size zsize(%) date name" */
@@ -275,6 +370,9 @@ static char* unzip_outname(struct unzip *z, ffstr lname, ffstr rpath)
 
 static int unzip_read(struct unzip *z, ffstr *input, ffstr *output)
 {
+	if (z->recovery_list)
+		return unzip_recovery_list(z, input, output);
+
 	for (;;) {
 		int r = ffzipread_process(&z->rzip, input, output);
 		switch ((enum FFZIPREAD_R)r) {
@@ -312,179 +410,246 @@ static int unzip_read(struct unzip *z, ffstr *input, ffstr *output)
 			return FFZIPREAD_SEEK;
 
 		case FFZIPREAD_WARNING:
-			fcom_warnlog("%s", ffzipread_error(&z->rzip));
+			fcom_warnlog("%s @%xU"
+				, ffzipread_error(&z->rzip), ffzipread_offset(&z->rzip));
 			continue;
 
 		case FFZIPREAD_ERROR:
-			fcom_errlog("%s", ffzipread_error(&z->rzip));
+			fcom_errlog("%s @%xU"
+				, ffzipread_error(&z->rzip), ffzipread_offset(&z->rzip));
 			return FFZIPREAD_ERROR;
 		}
 	}
 }
 
-static void unzip_reset(struct unzip *z)
+/** Find all file headers */
+static int unzip_recovery_list(struct unzip *z, ffstr *input, ffstr *output)
 {
-	z->total_uncomp = 0;
-	z->total_comp = 0;
-	z->ifile = 0;
-	z->files.len = 0;
-	z->roff = -1;
+	ffstr d = *input;
+	uint64 off;
+	for (;;) {
+		ssize_t i = ffstr_find(&d, "PK\x03\x04", 4);
+		if (i < 0)
+			break;
+		ffstr_shift(&d, i);
+		if (sizeof(struct zip_filehdr) > d.len) {
+			break;
+		}
+
+		off = (uint64)(d.ptr - input->ptr);
+
+		ffmem_zero_obj(&z->rzip.fileinfo);
+		int fhdr_len = zip_filehdr_read(d.ptr, &z->rzip.fileinfo, 0);
+		if (fhdr_len < 0)
+			goto skip;
+		if ((uint)fhdr_len > d.len)
+			goto skip;
+		if ((uint64)fhdr_len + z->rzip.fileinfo.compressed_size > d.len)
+			goto skip;
+
+		switch (z->rzip.fileinfo.compress_method) {
+		case ZIP_STORED:
+		case ZIP_DEFLATED:
+		case ZIP_ZSTANDARD:
+			break;
+		default:
+			goto skip;
+		}
+
+		const struct zip_filehdr *h = (struct zip_filehdr*)d.ptr;
+		uint fn_len = ffint_le_cpu16_ptr(h->filenamelen);
+		ffstr fn = FFSTR_INITN(h->filename, fn_len);
+		_ffzipread_fn_copy(&z->rzip, fn);
+		ffstr_shift(&d, fhdr_len);
+
+		fcom_dbglog("found file header @%xU", off);
+		if (fn.len && fn.ptr[fn.len - 1] == '/') {
+			z->rzip.fileinfo.attr_unix = FFFILE_UNIX_DIR;
+			z->rzip.fileinfo.attr_win = FFFILE_WIN_DIR;
+		}
+		z->rzip.fileinfo.hdr_offset = off;
+		unzip_f_info(z);
+		continue;
+
+	skip:
+		fcom_infolog("skip file header @%xU", off);
+		ffstr_shift(&d, 4);
+	}
+
+	z->f_size -= input->len;
+	if (z->f_size != 0) {
+		if (input->len)
+			fcom_warnlog("Please use larger read buffer");
+		return FFZIPREAD_MORE;
+	}
+	z->recovery_list = 0;
+	return FFZIPREAD_DONE;
+}
+
+static void unzip_file_err(struct unzip *z)
+{
+	core->file->close(z->out);
+	if (z->del_on_close)
+		core->file->del(z->oname, 0);
+	z->del_on_close = 0;
+
+	z->ifile++;
+}
+
+static void unzip_file_done(struct unzip *z)
+{
+	const struct file *f = ffslice_itemT(&z->files, z->ifile, struct file);
+	z->total_comp += f->zsize;
+
+	core->file->mtime_set(z->out, f->mtime);
+
+	if (!f_isdir(f)) {
+		uint attr = f->attr_unix;
+#ifdef FF_WIN
+		attr = f->attr_win;
+#endif
+		if (attr != 0)
+			core->file->attr_set(z->out, attr);
+
+		core->file->close(z->out);
+		z->del_on_close = 0;
+		fcom_verblog("unzip: %s", z->oname);
+	}
+
+	z->ifile++;
+}
+
+static int unzip_file_next(struct unzip *z)
+{
+	if (z->ifile == z->files.len) {
+		// no more files to unpack
+		uint percent = FFINT_DIVSAFE(z->total_comp * 100, z->total_uncomp);
+		fcom_verblog("%U <- %U(%u%%)"
+			, z->total_uncomp, z->total_comp, percent);
+		return 1;
+	}
+
+	const struct file *f = ffslice_itemT(&z->files, z->ifile, struct file);
+	ffzipread_fileread(&z->rzip, f->off, f->zsize);
+	return 0;
+}
+
+static int unzip_out_open(struct unzip *z)
+{
+	int r;
+	const struct file *f = ffslice_itemT(&z->files, z->ifile, struct file);
+
+	if (f_isdir(f)) {
+		r = core->file->dir_create(z->oname, FCOM_FILE_DIR_RECURSIVE);
+		if (r == FCOM_FILE_ERR)
+			return -1;
+		return 0;
+	}
+
+	uint flags = FCOM_FILE_WRITE;
+	flags |= fcom_file_cominfo_flags_o(z->cmd);
+	r = core->file->open(z->out, z->oname, flags);
+	if (r == FCOM_FILE_ERR)
+		return -1;
+
+	core->file->trunc(z->out, f->size);
+
+	z->del_on_close = !z->cmd->stdout && !z->cmd->test;
+	return 0;
 }
 
 static void unzip_run(fcom_op *op)
 {
 	struct unzip *z = op;
-	int r, rc = 1;
-	enum { I_IN, I_INFO, I_PARSE, I_FILEREAD, I_OUT_OPEN, I_WRITE };
+	int rc = 1;
+	enum { I_IN, I_FILE_NEXT, I_PARSE, I_READ, I_OUT_OPEN, I_OUT_WRITE };
 
 	while (!FFINT_READONCE(z->stop)) {
 		switch (z->state) {
 
 		case I_IN:
-			if (0 > (r = core->com->input_next(z->cmd, &z->iname, &z->base, 0))) {
-				if (r == FCOM_COM_RINPUT_NOMORE) {
-					rc = 0;
-				}
+			switch (unzip_input_open_next(z)) {
+			case 'done':
+				rc = 0;
 				goto end;
+
+			case 'next': continue;
+			case 'erro': goto end;
 			}
-
-			z->state = I_INFO;
-			// fallthrough
-
-		case I_INFO: {
-			uint flags = fcom_file_cominfo_flags_i(z->cmd);
-			flags |= FCOM_FILE_READ;
-			r = core->file->open(z->in, z->iname.ptr, flags);
-			if (r == FCOM_FILE_ERR) goto end;
-
-			fffileinfo fi = {};
-			r = core->file->info(z->in, &fi);
-			if (r == FCOM_FILE_ERR) goto end;
-
-			if (0 != core->com->input_allowed(z->cmd, z->iname, fffile_isdir(fffileinfo_attr(&fi)))) {
-				z->state = I_IN;
-				continue;
-			}
-
-			if ((z->base.len == 0 || z->cmd->recursive)
-					&& fffile_isdir(fffileinfo_attr(&fi))) {
-				fffd fd = core->file->fd(z->in, FCOM_FILE_ACQUIRE);
-				core->com->input_dir(z->cmd, fd);
-			}
-
-			unzip_reset(z);
-
-			ffzipread_open(&z->rzip, fffileinfo_size(&fi));
-			z->rzip.log = unzip_log;
-			z->rzip.timezone_offset = core->tz.real_offset;
-
 			z->state = I_PARSE;
 			continue;
-		}
 
-		case I_FILEREAD:
-			r = core->file->read(z->in, &z->zipdata, z->roff);
-			if (r == FCOM_FILE_ERR) goto end;
-			if (r == FCOM_FILE_ASYNC) {
+		case I_READ:
+			switch (unzip_file_read(z, &z->zipdata)) {
+			case 'next':
+				z->state = I_IN;
+				continue;
+
+			case 'asyn':
 				core->com->async(z->cmd);
 				return;
+
+			case 'erro': goto end;
 			}
-			if (r == FCOM_FILE_EOF) {
-				fcom_errlog("incomplete archive");
-				goto end;
-			}
-			z->roff = -1;
 			z->state = I_PARSE;
-			// fallthrough
+			continue;
+
+		case I_FILE_NEXT:
+			z->state = I_PARSE;
+			if (unzip_file_next(z))
+				z->state = I_IN;
+			continue;
 
 		case I_PARSE:
-			r = unzip_read(z, &z->zipdata, &z->plain);
-			switch (r) {
+			switch (unzip_read(z, &z->zipdata, &z->plain)) {
 
-			case FFZIPREAD_FILEDONE: {
-				const struct file *f = ffslice_itemT(&z->files, z->ifile, struct file);
-				z->total_comp += f->zsize;
-
-				core->file->mtime_set(z->out, f->mtime);
-
-				if (!f_isdir(f)) {
-					uint attr = f->attr_unix;
-#ifdef FF_WIN
-					attr = f->attr_win;
-#endif
-					if (attr != 0)
-						core->file->attr_set(z->out, attr);
-
-					core->file->close(z->out);
-					z->del_on_close = 0;
-					fcom_verblog("unzip: %s", z->oname);
-				}
-
-				z->ifile++;
-			}
+			case FFZIPREAD_FILEDONE:
+				unzip_file_done(z);
 				// fallthrough
 
-			case FFZIPREAD_DONE: {
-				if (z->ifile == z->files.len) {
-					// no more files to unpack
-					uint percent = FFINT_DIVSAFE(z->total_comp * 100, z->total_uncomp);
-					fcom_verblog("%U <- %U(%u%%)"
-						, z->total_uncomp, z->total_comp, percent);
-					z->state = I_IN;
-					continue;
-				}
-
-				const struct file *f = ffslice_itemT(&z->files, z->ifile, struct file);
-				ffzipread_fileread(&z->rzip, f->off, f->zsize);
-				continue;
-			}
+			case FFZIPREAD_DONE:
+				z->state = I_FILE_NEXT; continue;
 
 			case FFZIPREAD_MORE:
 			case FFZIPREAD_SEEK:
-				z->state = I_FILEREAD; continue;
+				z->state = I_READ; continue;
 
 			case FFZIPREAD_FILEHEADER:
 				z->state = I_OUT_OPEN; continue;
 
 			case FFZIPREAD_DATA:
-				z->state = I_WRITE; continue;
+				z->state = I_OUT_WRITE; continue;
 
 			case FFZIPREAD_ERROR:
+				if (z->skip) {
+					unzip_file_err(z);
+					z->state = I_FILE_NEXT;
+					continue;
+				}
 				goto end;
 			}
 			continue;
 
-		case I_OUT_OPEN: {
-			const struct file *f = ffslice_itemT(&z->files, z->ifile, struct file);
-
-			if (f_isdir(f)) {
-				r = core->file->dir_create(z->oname, FCOM_FILE_DIR_RECURSIVE);
-				if (r == FCOM_FILE_ERR) goto end;
-				z->state = I_PARSE;
-				continue;
+		case I_OUT_OPEN:
+			if (unzip_out_open(z)) {
+				if (z->skip) {
+					unzip_file_err(z);
+					z->state = I_FILE_NEXT;
+					continue;
+				}
+				goto end;
 			}
 
-			uint flags = FCOM_FILE_WRITE;
-			flags |= fcom_file_cominfo_flags_o(z->cmd);
-			r = core->file->open(z->out, z->oname, flags);
-			if (r == FCOM_FILE_ERR) goto end;
-
-			core->file->trunc(z->out, f->size);
-
-			z->del_on_close = !z->cmd->stdout && !z->cmd->test;
 			z->state = I_PARSE;
 			continue;
-		}
 
-		case I_WRITE:
-			r = core->file->write(z->out, z->plain, -1);
-			if (r == FCOM_FILE_ERR) goto end;
-			if (r == FCOM_FILE_ASYNC) {
+		case I_OUT_WRITE:
+			switch (unzip_file_write(z, z->plain)) {
+			case 'erro': goto end;
+			case 'asyn':
 				core->com->async(z->cmd);
 				return;
 			}
-
-			z->total_uncomp += z->plain.len;
 			z->state = I_PARSE;
 			continue;
 		}

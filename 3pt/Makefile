@@ -3,9 +3,21 @@
 include config.mk
 BINDIR := _$(OS)-$(CPU)
 
-all:
+all: aes md5 sha
+
+.PHONY: aes
+aes: $(BINDIR)/AES.a
+$(BINDIR)/AES.a:
 	$(MAKE) -C aes -I ..
+
+.PHONY: md5
+md5: $(BINDIR)/MD5.a
+$(BINDIR)/MD5.a:
 	$(MAKE) -C md5 -I ..
+
+.PHONY: sha
+sha: $(BINDIR)/SHA256.a
+$(BINDIR)/SHA256.a:
 	$(MAKE) -C sha -I ..
 
 install:

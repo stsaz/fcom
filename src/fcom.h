@@ -12,8 +12,8 @@
 #undef stdin
 #undef stdout
 
-#define FCOM_VER "1.0-beta14"
-#define FCOM_CORE_VER 10014
+#define FCOM_VER "1.0-beta15"
+#define FCOM_CORE_VER 10015
 
 typedef unsigned char byte;
 typedef unsigned char u_char;
@@ -585,6 +585,17 @@ struct fcom_sync_if {
 		1: async; on_complete() will be called
 		-1: error */
 	int (*sync)(fcom_sync_diff *sd, void *diff_entry_id, uint flags, void(*on_complete)(void*, int), void *param);
+};
+
+
+// UNPACK
+
+typedef void fcom_unpack_obj;
+typedef struct fcom_unpack_if fcom_unpack_if;
+struct fcom_unpack_if {
+	fcom_unpack_obj* (*open_file)(fffd f);
+	void (*close)(fcom_unpack_obj *o);
+	ffstr (*next)(fcom_unpack_obj *o, void *unused);
 };
 
 

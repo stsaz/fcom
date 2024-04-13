@@ -236,8 +236,10 @@ static int args_exclude(struct fcom_cominfo *cmd, ffstr s)
 
 static int args_buffer(struct fcom_cominfo *cmd, ffint64 i)
 {
-	if (!ffint_ispower2(i))
+	if (i == 0) {
+		errlog("--buffer: incorrect value");
 		return FFCMDARG_ERROR;
+	}
 	cmd->buffer_size = i;
 	return 0;
 }
@@ -521,7 +523,7 @@ static const struct ffarg args_global[] = {
 	{ "--Include",		'+S',	args_include },
 	{ "--Recursive",	'1',	O(recursive) },
 
-	{ "--buffer",		'z',	args_buffer },
+	{ "--buffer",		'Z',	args_buffer },
 	{ "--chdir",		'=S',	O(chdir) },
 	{ "--directio",		'1',	O(directio) },
 	{ "--help",			'0',	args_help },

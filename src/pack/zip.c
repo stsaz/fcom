@@ -15,6 +15,7 @@ OPTIONS:\n\
                           deflate: 1..9; default:6\n\
                           zstd:   -7..22; default:3\n\
     `-j`, `--workers` INT   N of threads for compression (zstd)\n\
+        `--each`          Separate archive per each input argument\n\
 ";
 }
 
@@ -36,7 +37,9 @@ struct zip {
 	ffstr			plain;
 	fcom_file_obj*	in;
 	fffileinfo		fi;
+	uint64			nfile;
 	uint			in_file_notfound :1;
+	uint			input_complete :1;
 
 	ffzipwrite		wzip;
 	ffstr			zipdata;
@@ -51,6 +54,7 @@ struct zip {
 	uint	method;
 	uint	comp_level;
 	uint	comp_workers;
+	u_char	each;
 };
 
 #define MIN_COMPRESS_SIZE 32
@@ -74,17 +78,17 @@ static int arg_method(void *obj, ffstr val)
 }
 
 /**
-*                        -> INPUT[0].zip
-* -C OUT_DIR             -> OUT_DIR/INPUT[0].zip
+*                        -> INPUT.zip
+* -C OUT_DIR             -> OUT_DIR/INPUT.zip
 * -C OUT_DIR -o FILE.zip -> OUT_DIR/FILE.zip
 *            -o FILE.zip -> FILE.zip
 */
-static char* out_name(struct zip *z, ffstr output, ffstr chdir)
+static char* out_name(struct zip *z, ffstr input, ffstr output, ffstr chdir)
 {
 	ffvec v = {};
 	if (!output.len) {
-		ffstr path = ((ffstr*)z->cmd->input.ptr)[0], name;
-		ffpath_splitpath_str(path, NULL, &name);
+		ffstr name;
+		ffpath_splitpath_str(input, NULL, &name);
 		if (chdir.len)
 			ffvec_addfmt(&v, "%S%c", &chdir, FFPATH_SLASH);
 		ffvec_addfmt(&v, "%S.zip%Z", &name);
@@ -107,6 +111,7 @@ static int args_parse(struct zip *z, fcom_cominfo *cmd)
 	z->comp_level = 0xff;
 
 	static const struct ffarg args[] = {
+		{ "--each",		'1',	O(each) },
 		{ "--level",	'u',	O(comp_level) },
 		{ "--method",	'S',	arg_method },
 		{ "--workers",	'u',	O(comp_workers) },
@@ -118,8 +123,6 @@ static int args_parse(struct zip *z, fcom_cominfo *cmd)
 	int r = core->com->args_parse(cmd, args, z, FCOM_COM_AP_INOUT);
 	if (r)
 		return r;
-
-	z->oname = out_name(z, cmd->output, cmd->chdir);
 	return 0;
 }
 
@@ -182,6 +185,68 @@ static const ffzipwrite_filter zip_crc32_filter = {
 };
 
 
+static int zip_input_next(struct zip *z)
+{
+	int r;
+	if (0 > (r = core->com->input_next(z->cmd, &z->iname, &z->base, 0))) {
+		if (r == FCOM_COM_RINPUT_NOMORE) {
+			ffzipwrite_finish(&z->wzip);
+			return 'done';
+		}
+		return 'erro';
+	}
+	return 0;
+}
+
+static int zip_input_info(struct zip *z)
+{
+	uint flags = fcom_file_cominfo_flags_i(z->cmd);
+	flags |= FCOM_FILE_READ;
+	int r = core->file->open(z->in, z->iname.ptr, flags);
+	if (r == FCOM_FILE_ERR) {
+		if (fferr_notexist(fferr_last())) {
+			z->in_file_notfound = 1;
+			return 'next';
+		}
+		return 'erro';
+	}
+
+	r = core->file->info(z->in, &z->fi);
+	if (r == FCOM_FILE_ERR) return 'erro';
+
+	if (core->com->input_allowed(z->cmd, z->iname, fffile_isdir(fffileinfo_attr(&z->fi)))) {
+		return 'next';
+	}
+
+	if ((z->base.len == 0 || z->cmd->recursive)
+		&& fffile_isdir(fffileinfo_attr(&z->fi))) {
+		fffd fd = core->file->fd(z->in, FCOM_FILE_ACQUIRE);
+		core->com->input_dir(z->cmd, fd);
+	}
+	return 0;
+}
+
+static int zip_read(struct zip *z, ffstr *output)
+{
+	switch (core->file->read(z->in, output, -1)) {
+	case FCOM_FILE_ERR: return 'erro';
+	case FCOM_FILE_ASYNC: return 'asyn';
+	case FCOM_FILE_EOF:
+		ffzipwrite_filefinish(&z->wzip);
+	}
+	return 0;
+}
+
+static int zip_file_write(struct zip *z, ffstr data)
+{
+	switch (core->file->write(z->out, data, z->woff)) {
+	case FCOM_FILE_ERR: return 'erro';
+	case FCOM_FILE_ASYNC: return 'asyn';
+	}
+	z->woff = -1;
+	return 0;
+}
+
 static int zip_file_add(struct zip *z)
 {
 	ffzipwrite_conf conf = {};
@@ -222,6 +287,17 @@ static int zip_file_add(struct zip *z)
 	return 0;
 }
 
+static int zip_out_open(struct zip *z)
+{
+	uint flags = FCOM_FILE_WRITE;
+	flags |= fcom_file_cominfo_flags_o(z->cmd);
+	int r = core->file->open(z->out, z->oname, flags);
+	if (r == FCOM_FILE_ERR) return 'erro';
+	z->del_on_close = !z->cmd->stdout && !z->cmd->test;
+	z->woff = -1;
+	return 0;
+}
+
 static int zip_write(struct zip *z, ffstr *in, ffstr *out)
 {
 	for (;;) {
@@ -250,69 +326,69 @@ static int zip_write(struct zip *z, ffstr *in, ffstr *out)
 	}
 }
 
-static void zip_run(fcom_op *op)
+static void zip_done(struct zip *z)
 {
-	struct zip *z = op;
+	core->file->close(z->out);
+	ffmem_free(z->oname); z->oname = NULL;
+	z->del_on_close = 0;
+
+	ffzipwrite_destroy(&z->wzip);
+	ffmem_zero_obj(&z->wzip);
+	z->wzip.timezone_offset = core->tz.real_offset;
+}
+
+static void zip_run_each(struct zip *z)
+{
 	int r, rc = 1;
-	enum { I_OUT_OPEN, I_IN, I_INFO, I_ADD, I_FILEREAD, I_PROC, I_WRITE, I_DONE, };
+	enum { I_IN, I_OUT_OPEN, I_INFO, I_ADD, I_FILEREAD, I_PROC, I_WRITE, I_DONE, };
 
 	while (!FFINT_READONCE(z->stop)) {
 		switch (z->st) {
 
-		case I_OUT_OPEN: {
-			uint flags = FCOM_FILE_WRITE;
-			flags |= fcom_file_cominfo_flags_o(z->cmd);
-			r = core->file->open(z->out, z->oname, flags);
-			if (r == FCOM_FILE_ERR) goto end;
-			z->del_on_close = !z->cmd->stdout && !z->cmd->test;
-			z->woff = -1;
-			z->st = I_IN;
-		}
-			// fallthrough
-
 		case I_IN:
-			if (0 > (r = core->com->input_next(z->cmd, &z->iname, &z->base, 0))) {
-				if (r == FCOM_COM_RINPUT_NOMORE) {
+			switch (zip_input_next(z)) {
+			case 'done':
+				z->input_complete = 1;
+				z->st = I_PROC;
+				continue;
+			case 'erro': goto end;
+			}
+
+			if (!z->base.len) {
+				if (z->nfile != 0) {
 					ffzipwrite_finish(&z->wzip);
 					z->st = I_PROC;
 					continue;
 				}
-				goto end;
-			}
-
-			z->st = I_INFO;
-			// fallthrough
-
-		case I_INFO: {
-			uint flags = fcom_file_cominfo_flags_i(z->cmd);
-			flags |= FCOM_FILE_READ;
-			r = core->file->open(z->in, z->iname.ptr, flags);
-			if (r == FCOM_FILE_ERR) {
-				if (fferr_notexist(fferr_last())) {
-					z->in_file_notfound = 1;
-					z->st = I_IN;
-					continue;
-				}
-				goto end;
-			}
-
-			r = core->file->info(z->in, &z->fi);
-			if (r == FCOM_FILE_ERR) goto end;
-
-			if (0 != core->com->input_allowed(z->cmd, z->iname, fffile_isdir(fffileinfo_attr(&z->fi)))) {
-				z->st = I_IN;
+				z->st = I_OUT_OPEN;
 				continue;
 			}
 
-			if ((z->base.len == 0 || z->cmd->recursive)
-				&& fffile_isdir(fffileinfo_attr(&z->fi))) {
-				fffd fd = core->file->fd(z->in, FCOM_FILE_ACQUIRE);
-				core->com->input_dir(z->cmd, fd);
+			z->st = I_INFO;
+			continue;
+
+		case I_OUT_OPEN:
+			if (z->input_complete) {
+				rc = z->in_file_notfound;
+				goto end;
 			}
 
+			z->nfile++;
+			z->oname = out_name(z, z->iname, FFSTR_Z(""), z->cmd->chdir);
+			if (zip_out_open(z))
+				goto end;
+			z->st = I_INFO;
+			// fallthrough
+
+		case I_INFO:
+			switch (zip_input_info(z)) {
+			case 'erro': goto end;
+			case 'next':
+				z->st = I_IN;
+				continue;
+			}
 			z->st = I_ADD;
 			continue;
-		}
 
 		case I_ADD:
 			if (0 != (r = zip_file_add(z))) {
@@ -333,20 +409,17 @@ static void zip_run(fcom_op *op)
 			// fallthrough
 
 		case I_FILEREAD:
-			r = core->file->read(z->in, &z->plain, -1);
-			if (r == FCOM_FILE_ERR) goto end;
-			if (r == FCOM_FILE_ASYNC) {
+			switch (zip_read(z, &z->plain)) {
+			case 'erro': goto end;
+			case 'asyn':
 				core->com->async(z->cmd);
 				return;
 			}
-			if (r == FCOM_FILE_EOF)
-				ffzipwrite_filefinish(&z->wzip);
 			z->st = I_PROC;
 			// fallthrough
 
 		case I_PROC:
-			r = zip_write(z, &z->plain, &z->zipdata);
-			switch (r) {
+			switch (zip_write(z, &z->plain, &z->zipdata)) {
 			case FFZIPWRITE_MORE:
 				z->st = I_FILEREAD; break;
 
@@ -357,8 +430,7 @@ static void zip_run(fcom_op *op)
 				z->st = I_IN; break;
 
 			case FFZIPWRITE_DONE:
-				z->st = I_DONE;
-				break;
+				z->st = I_DONE; break;
 
 			case FFZIPWRITE_ERROR:
 				goto end;
@@ -366,14 +438,125 @@ static void zip_run(fcom_op *op)
 			continue;
 
 		case I_WRITE:
-			r = core->file->write(z->out, z->zipdata, z->woff);
-			if (r == FCOM_FILE_ERR) goto end;
-			if (r == FCOM_FILE_ASYNC) {
+			switch (zip_file_write(z, z->zipdata)) {
+			case 'erro': goto end;
+			case 'asyn':
 				core->com->async(z->cmd);
 				return;
 			}
+			z->st = I_PROC;
+			continue;
 
-			z->woff = -1;
+		case I_DONE:
+			zip_done(z);
+			z->st = I_OUT_OPEN;
+			continue;
+		}
+	}
+
+end:
+	{
+	fcom_cominfo *cmd = z->cmd;
+	zip_close(z);
+	core->com->complete(cmd, rc);
+	}
+}
+
+static void zip_run(fcom_op *op)
+{
+	struct zip *z = op;
+	int r, rc = 1;
+	enum { I_OUT_OPEN, I_IN, I_INFO, I_ADD, I_FILEREAD, I_PROC, I_WRITE, I_DONE, };
+
+	if (z->each) {
+		zip_run_each(z);
+		return;
+	}
+
+	while (!FFINT_READONCE(z->stop)) {
+		switch (z->st) {
+
+		case I_OUT_OPEN:
+			z->oname = out_name(z, ((ffstr*)z->cmd->input.ptr)[0], z->cmd->output, z->cmd->chdir);
+			if (zip_out_open(z))
+				goto end;
+			z->st = I_IN;
+			// fallthrough
+
+		case I_IN:
+			switch (zip_input_next(z)) {
+			case 'done':
+				z->st = I_PROC;
+				continue;
+			case 'erro': goto end;
+			}
+			z->st = I_INFO;
+			// fallthrough
+
+		case I_INFO:
+			switch (zip_input_info(z)) {
+			case 'erro': goto end;
+			case 'next':
+				z->st = I_IN;
+				continue;
+			}
+			z->st = I_ADD;
+			continue;
+
+		case I_ADD:
+			if (0 != (r = zip_file_add(z))) {
+				if (r == -2) {
+					z->st = I_IN;
+					continue;
+				}
+				goto end;
+			}
+
+			if (fffile_isdir(fffileinfo_attr(&z->fi))) {
+				ffzipwrite_filefinish(&z->wzip);
+				z->st = I_PROC;
+				continue;
+			}
+
+			z->st = I_FILEREAD;
+			// fallthrough
+
+		case I_FILEREAD:
+			switch (zip_read(z, &z->plain)) {
+			case 'erro': goto end;
+			case 'asyn':
+				core->com->async(z->cmd);
+				return;
+			}
+			z->st = I_PROC;
+			// fallthrough
+
+		case I_PROC:
+			switch (zip_write(z, &z->plain, &z->zipdata)) {
+			case FFZIPWRITE_MORE:
+				z->st = I_FILEREAD; break;
+
+			case FFZIPWRITE_DATA:
+				z->st = I_WRITE; break;
+
+			case FFZIPWRITE_FILEDONE:
+				z->st = I_IN; break;
+
+			case FFZIPWRITE_DONE:
+				z->st = I_DONE; break;
+
+			case FFZIPWRITE_ERROR:
+				goto end;
+			}
+			continue;
+
+		case I_WRITE:
+			switch (zip_file_write(z, z->zipdata)) {
+			case 'erro': goto end;
+			case 'asyn':
+				core->com->async(z->cmd);
+				return;
+			}
 			z->st = I_PROC;
 			continue;
 

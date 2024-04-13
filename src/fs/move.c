@@ -15,7 +15,8 @@ OPTIONS:\n\
         `--unbranch-flat` Move a file out of its directory structure, e.g.\n\
                             fcom move --unbranch-flat ./a\n\
                           moves \"./a/b/file\" -> \"./file\"\n\
-    `-r`, `--replace` 'SEARCH/REPLACE'\n\
+    `-s`, `--search` 'SEARCH'\n\
+    `-r`, `--replace` 'REPLACE'\n\
                         Replace SEARCH text in file name with REPLACE\n\
         `--replace-once`  Replace only the first occurrence\n\
     `-t`, `--tree`          Preserve directory tree, e.g.\n\
@@ -44,7 +45,7 @@ struct move {
 	byte replace_once;
 	byte tree;
 	byte skip_errors;
-	ffstr replace_pair, search, replace;
+	ffstr search, replace;
 };
 
 /** --unbranch: prepare output file name.
@@ -192,30 +193,21 @@ static int move_process(struct move *m, ffstr in, ffstr out)
 }
 
 
-static int args_replace(struct move *m, ffstr val)
-{
-	ffstr_dupstr(&m->replace_pair, &val);
-	int r = ffstr_splitby(&m->replace_pair, '/', &m->search, &m->replace);
-	if (r < 0 || m->search.len == 0) {
-		fcom_fatlog("Invalid search-replace pattern. Expecting 'SEARCH/REPLACE'.");
-		return 0xbad;
-	}
-	return 0;
-}
-
 #define O(member)  (void*)FF_OFF(struct move, member)
 
 static int args_parse(struct move *m, fcom_cominfo *cmd)
 {
 	static const struct ffarg args[] = {
-		{ "--replace",			'S',	args_replace },
+		{ "--replace",			'S',	O(replace) },
 		{ "--replace-once",		'1',	O(replace_once) },
+		{ "--search",			'S',	O(search) },
 		{ "--skip-errors",		'1',	O(skip_errors) },
 		{ "--tree",				'1',	O(tree) },
 		{ "--unbranch",			'1',	O(unbranch) },
 		{ "--unbranch-flat",	'1',	O(unbranch_flat) },
 		{ "-k",					'1',	O(skip_errors) },
-		{ "-r",					'S',	args_replace },
+		{ "-r",					'S',	O(replace) },
+		{ "-s",					'S',	O(search) },
 		{ "-t",					'1',	O(tree) },
 		{ "-u",					'1',	O(unbranch) },
 		{}
@@ -231,7 +223,8 @@ static int args_parse(struct move *m, fcom_cominfo *cmd)
 		fcom_fatlog("Please use --tree with --chdir");
 		return -1;
 
-	} else if (!(cmd->chdir.len || m->unbranch || m->unbranch_flat || m->replace_pair.len)) {
+	} else if (!(cmd->chdir.len || m->unbranch || m->unbranch_flat
+		|| (m->search.len && m->replace.len))) {
 		fcom_fatlog("Please use --chdir / --unbranch / --replace");
 		return -1;
 	}
@@ -244,7 +237,6 @@ static int args_parse(struct move *m, fcom_cominfo *cmd)
 static void move_close(fcom_op *op)
 {
 	struct move *m = op;
-	ffstr_free(&m->replace_pair);
 	core->file->destroy(m->in);
 	ffvec_free(&m->oname);
 	ffvec_free(&m->replace_buf);

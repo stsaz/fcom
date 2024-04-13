@@ -2,6 +2,7 @@
 2022, Simon Zolin */
 
 #include <ffsys/std.h>
+#include <ffbase/murmurhash3.h>
 
 struct fntree_cmp_ent {
 	uint status; // enum FNTREE_CMP | enum FCOM_SYNC

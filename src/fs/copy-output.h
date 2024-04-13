@@ -111,7 +111,9 @@ static char* out_name(struct copy *c, ffstr in, ffstr base)
 #ifdef FF_WIN
 	f = FFPATH_FORCE_BACKSLASH;
 #endif
-	ffpath_normalize(s, -1, s, ffsz_len(s), f);
+	int r = ffpath_normalize(s, -1, s, ffsz_len(s), f);
+	FF_ASSERT(r >= 0);
+	s[r] = '\0';
 
 	fcom_dbglog("output file name: %s", s);
 	return s;

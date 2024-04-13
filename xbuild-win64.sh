@@ -15,7 +15,8 @@ if ! podman container exists fcom_win64_build ; then
 FROM debian:bookworm-slim
 RUN apt update && \
  apt install -y \
-  make \
+  make
+RUN apt install -y \
   gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
 RUN apt install -y \
  yasm nasm \

@@ -504,7 +504,7 @@ static void sync_run(fcom_op *op)
 
 		case I_IN:
 			switch (s->src->scan_next(&s->ent)) {
-			case 'dir ':
+			case 'nblk':
 				if (s->hdr)
 					s->sw.bftr = 1;
 				s->sw.bhdr = 1;
@@ -524,8 +524,10 @@ static void sync_run(fcom_op *op)
 			}
 
 			s->ent_ready = 1;
-			if (s->hdr)
-				ffpath_splitpath(s->ent.name.ptr, s->ent.name.len, &s->dir, &s->ent.name);
+			if (s->hdr) {
+				s->dir = s->src->path;
+				s->ent.name = s->src->name_segment;
+			}
 			if (s->write_snapshot)
 				s->st = I_SNAP_WR;
 			continue;
