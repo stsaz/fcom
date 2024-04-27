@@ -224,7 +224,7 @@ static int args_parse(struct move *m, fcom_cominfo *cmd)
 		return -1;
 
 	} else if (!(cmd->chdir.len || m->unbranch || m->unbranch_flat
-		|| (m->search.len && m->replace.len))) {
+		|| m->search.len)) {
 		fcom_fatlog("Please use --chdir / --unbranch / --replace");
 		return -1;
 	}
