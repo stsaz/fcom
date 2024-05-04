@@ -612,6 +612,7 @@ static int cmd_args_parse(fcom_cominfo *cmd, const struct ffarg *args, void *obj
 	if (ffstr_eqz(&cmd->output, "STDOUT")) {
 		ffstr_free(&cmd->output);
 		cmd->stdout = 1;
+		core->stdout_busy = 1;
 	}
 
 end:

@@ -39,7 +39,11 @@ static void stdlogv(uint flags, const char *fmt, va_list args)
 	}
 
 	d.ptr[d.len++] = '\n';
-	ffstderr_write(d.ptr, d.len);
+
+	if (!m->core->stdout_busy)
+		ffstdout_write(d.ptr, d.len);
+	else
+		ffstderr_write(d.ptr, d.len);
 }
 
 void stdlog(uint flags, const char *fmt, ...)

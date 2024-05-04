@@ -9,10 +9,12 @@ Usage:\n\
   `fcom unzip` INPUT... [-C OUTPUT_DIR]\n\
 \n\
 OPTIONS:\n\
-    `-m`, `--members-from-file` FILE\n\
-                    Read archive member names from file:\n\
+    `-m`, `--member` STRING\n\
+                    Archive member names:\n\
                     . full name (e.g. 'zipdir/file.ext');\n\
                     . wildcard (e.g. '*/file.ext').\n\
+    `-M`, `--members-from-file` FILE\n\
+                    Read archive member names from file\n\
     `-l`, `--list`      Just show the file list\n\
         `--plain`     Plain file names\n\
         `--autodir`   Add to OUTPUT_DIR a directory with name = input archive name.\n\
@@ -106,31 +108,42 @@ static int members_find(struct unzip *z, ffstr name)
 	return 0;
 }
 
+static int unzip_args_members(void *obj, ffstr fn)
+{
+	struct unzip *z = obj;
+	ffvec_addfmt(&z->members_data, "%S\n", &fn);
+	return 0;
+}
+
 static int unzip_args_members_from_file(void *obj, char *fn)
 {
 	struct unzip *z = obj;
-
-	if (0 != fffile_readwhole(fn, &z->members_data, 100*1024*1024))
+	if (fffile_readwhole(fn, &z->members_data, 100*1024*1024))
 		return 1;
 	ffvec_addchar(&z->members_data, '\n');
+	return 0;
+}
 
-	ffmap_init(&z->members, members_keyeq);
+static int unzip_members_prepare(struct unzip *z)
+{
+	if (!z->members_data.len) return 0;
 
 	ffstr d = FFSTR_INITSTR(&z->members_data);
-	while (d.len != 0) {
+	while (d.len) {
 		ffstr ln;
 		ffstr_splitby(&d, '\n', &ln, &d);
-		if (ln.len == 0)
+		if (!ln.len)
 			continue;
 
 		if (ffstr_findany(&ln, "*?", 2) >= 0) {
 			ffstr *wc = ffvec_pushT(&z->members_wildcard, ffstr);
 			*wc = ln;
 		} else {
+			if (!z->members.len)
+				ffmap_init(&z->members, members_keyeq);
 			ffmap_add(&z->members, ln.ptr, ln.len, ln.ptr);
 		}
 	}
-
 	return 0;
 }
 
@@ -141,12 +154,14 @@ static int unzip_args_parse(struct unzip *z, fcom_cominfo *cmd)
 	static const struct ffarg args[] = {
 		{ "--autodir",				'1',	O(autodir) },
 		{ "--list",					'1',	O(list) },
+		{ "--member",				'+S',	unzip_args_members },
 		{ "--members-from-file",	's',	unzip_args_members_from_file },
 		{ "--plain",				'1',	O(list_plain) },
 		{ "--recovery",				'1',	O(recovery) },
 		{ "--skip",					'1',	O(skip) },
+		{ "-M",						's',	unzip_args_members_from_file },
 		{ "-l",						'1',	O(list) },
-		{ "-m",						's',	unzip_args_members_from_file },
+		{ "-m",						'+S',	unzip_args_members },
 		{}
 	};
 	int r = core->com->args_parse(cmd, args, z, FCOM_COM_AP_INOUT);
@@ -161,6 +176,7 @@ static int unzip_args_parse(struct unzip *z, fcom_cominfo *cmd)
 	if (cmd->chdir.len == 0)
 		ffstr_dupz(&cmd->chdir, ".");
 
+	unzip_members_prepare(z);
 	return 0;
 }
 

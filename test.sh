@@ -33,11 +33,11 @@ test_copy_update() {
 	echo hello >file
 
 	../fcom -V copy --update "file" -o "file-u" ; diff file file-u
-	../fcom -D copy --update "file" -o "file-u" 2>&1 | grep -E 'update.*skipping' ; diff file file-u
+	../fcom -D copy --update "file" -o "file-u" | grep -E 'update.*skipping' ; diff file file-u
 
 	echo hellohello >file-rd
 	touch "file-rd" -t 12310000
-	../fcom -V copy --update --replace-date "file" -o "file-rd" 2>&1 | grep 'replace date'
+	../fcom -V copy --update --replace-date "file" -o "file-rd" | grep 'replace date'
 	../fcom list -l "file" "file-rd"
 
 	cd ..
@@ -471,10 +471,19 @@ test_zip() {
 	echo file1 >fcomtest/zipdir/file1
 	echo file2 >fcomtest/zipdir/file2
 	echo file3 >fcomtest/zipdir/file3
+
 	echo fcomtest/zipdir/file1 >fcomtest/LIST
 	echo '*/file3' >>fcomtest/LIST
 	./fcom zip "fcomtest/zipdir" -o "fcomtest/zip.zip" -f
-	./fcom unzip "fcomtest/zip.zip" -l --members-from-file "fcomtest/LIST"
+	local list=$(./fcom unzip "fcomtest/zip.zip" -l --members-from-file "fcomtest/LIST")
+	grep file1 <<< $list
+	grep file2 <<< $list && false
+	grep file3 <<< $list
+
+	local list=$(./fcom unzip "fcomtest/zip.zip" -l -m "fcomtest/zipdir/file1" -m "fcomtest/zipdir/file3")
+	grep file1 <<< $list
+	grep file2 <<< $list && false
+	grep file3 <<< $list
 
 	# --autodir
 	./fcom unzip "fcomtest/zip.zip" -C "fcomtest" --autodir
@@ -574,7 +583,7 @@ test_unpack() {
 	./fcom -V unpack "fcomtest/targz.tgz" -C "fcomtest/targz"
 	diff fcomtest/file fcomtest/targz/fcomtest/file
 
-	./fcom unpack "fcomtest/tartargz.tar.gz" -l 2>&1 | grep fcomtest/file
+	./fcom unpack "fcomtest/tartargz.tar.gz" -l | grep fcomtest/file
 
 	# xz "fcomtest/tar.tar" -o "fcomtest/tarxz.tar.xz"
 	# ./fcom unpack "fcomtest/tarxz.tar.xz" -C "fcomtest/tarxz"

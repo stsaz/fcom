@@ -134,6 +134,7 @@ struct fcom_core {
 	uint debug :1;
 	uint verbose :1;
 	uint stdout_color :1;
+	uint stdout_busy :1;
 };
 
 #define fcom_sysfatlog(fmt, ...)  (core)->log(FCOM_LOG_FATAL | FCOM_LOG_SYSERR, fmt, ##__VA_ARGS__)
