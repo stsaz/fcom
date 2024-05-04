@@ -169,7 +169,13 @@ test_md5() {
 
 	echo 1234567890123456789012345678901234567890 >fcomtest/file
 	echo qwerqwerqwerqwerqwerqwerqwerqwer >fcomtest/file2
-	./fcom md5 "fcomtest/file" "fcomtest/file2"
+	local rr='21740c1ad4d727f1a0f6159fc84c44d8 *fcomtest/file
+fd25ea23edc3df0d9c8ecd50a808c014 *fcomtest/file2'
+
+	local r=$(./fcom md5 "fcomtest/file" "fcomtest/file2")
+	test "$r" == "$rr"
+	./fcom md5 "fcomtest/file" "fcomtest/file2" -o "fcomtest/md5"
+	test "$(cat fcomtest/md5)" == "$rr"
 }
 
 test_move() {

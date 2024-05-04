@@ -74,6 +74,7 @@ static int md5_process(struct md5 *m)
 	if (!m->opened) {
 		m->opened = 1;
 		uint f = fcom_file_cominfo_flags_o(m->cmd);
+		f |= FCOM_FILE_WRITE;
 		r = core->file->open(m->out, m->cmd->output.ptr, f);
 		if (r == FCOM_FILE_ERR) return 'erro';
 	}
