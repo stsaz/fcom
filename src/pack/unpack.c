@@ -9,7 +9,7 @@ Usage:\n\
   `fcom unpack` INPUT... [-C OUTPUT_DIR]\n\
 \n\
 OPTIONS:\n\
-    `-l, `--list`      Just show the file list\n\
+    `-l`, `--list`      Just show the file list\n\
         `--plain`     Plain file names\n\
         `--autodir`   Add to OUTPUT_DIR a directory with name = input archive name.\n\
                      Same as manual 'unpack arc.xxx -C odir/arc'.\n\

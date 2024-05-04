@@ -9,9 +9,9 @@ Usage:\n\
   `fcom untar` INPUT... [-C OUTPUT_DIR]\n\
 \n\
 OPTIONS:\n\
-    `-m, `--members-from-file` FILE\n\
+    `-m`, `--members-from-file` FILE\n\
                     Read archive member names from file\n\
-    `-l, `--list`      Just show the file list\n\
+    `-l`, `--list`      Just show the file list\n\
         `--plain`     Plain file names\n\
         `--autodir`   Add to OUTPUT_DIR a directory with name = input archive name.\n\
                      Same as manual 'untar arc.tar -C odir/arc'.\n\
