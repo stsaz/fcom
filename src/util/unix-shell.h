@@ -15,8 +15,15 @@ ffui_openfolder1
 #include <ffsys/process.h>
 #include <ffsys/dylib.h>
 
-#define LIBGIO_PATH  "/lib64/libgio-2.0.so"
-#define LIBGOBJECT_PATH  "/lib64/libgobject-2.0.so"
+#define LIBGIO_PATH  "/lib64/libgio-2.0.so.0"
+#define LIBGOBJECT_PATH  "/lib64/libgobject-2.0.so.0"
+#ifdef FF_ARM64
+	#define LIBGIO_PATH_ALT  "/usr/lib/aarch64-linux-gnu/libgio-2.0.so.0"
+	#define LIBGOBJECT_PATH_ALT  "/usr/lib/aarch64-linux-gnu/libgobject-2.0.so.0"
+#else
+	#define LIBGIO_PATH_ALT  "/usr/lib/x86_64-linux-gnu/libgio-2.0.so.0"
+	#define LIBGOBJECT_PATH_ALT  "/usr/lib/x86_64-linux-gnu/libgobject-2.0.so.0"
+#endif
 
 /** Move file to Trash via libgio.
 error: (Optional) Error message
@@ -35,8 +42,10 @@ static inline int ffui_glib_trash(const char *path, const char **error)
 	if (_g_object_unref == NULL) {
 		if (gio == FFDL_NULL) {
 			if (FFDL_NULL == (gio = ffdl_open(LIBGIO_PATH, 0))) {
-				e = "can't open " LIBGIO_PATH;
-				goto err;
+				if (FFDL_NULL == (gio = ffdl_open(LIBGIO_PATH_ALT, 0))) {
+					e = "can't open " LIBGIO_PATH;
+					goto err;
+				}
 			}
 		}
 
@@ -49,8 +58,10 @@ static inline int ffui_glib_trash(const char *path, const char **error)
 
 		if (gobject == FFDL_NULL) {
 			if (FFDL_NULL == (gobject = ffdl_open(LIBGOBJECT_PATH, 0))) {
-				e = "can't open " LIBGOBJECT_PATH;
-				goto err;
+				if (FFDL_NULL == (gobject = ffdl_open(LIBGOBJECT_PATH_ALT, 0))) {
+					e = "can't open " LIBGOBJECT_PATH;
+					goto err;
+				}
 			}
 		}
 
