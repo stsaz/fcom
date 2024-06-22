@@ -117,6 +117,7 @@ static void md5_close(fcom_op *op)
 	struct md5 *m = op;
 	fcom_md5.close(m->hash);
 	core->file->destroy(m->in);
+	core->file->close(m->out);
 	core->file->destroy(m->out);
 	ffmem_free(m);
 }
