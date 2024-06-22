@@ -17,6 +17,8 @@ OPTIONS:\n\
                         Set JPEG quality: 1..100 (default: 85)\n\
         `--png-compression` INT\n\
                         Set PNG compression level: 0..9 (default: 9)\n\
+    `-k`, `--skip-errors`\n\
+                        Skip errors\n\
 ";
 }
 
@@ -73,6 +75,9 @@ struct pic {
 
 	uint jpeg_quality;
 	uint png_comp;
+	struct {
+		u_char skip_errors;
+	} conf;
 };
 
 #include <pic/bmp.h>
@@ -119,6 +124,8 @@ static int args_parse(struct pic *p, fcom_cominfo *cmd)
 	static const struct ffarg args[] = {
 		{ "--jpeg-quality",		'u',	O(jpeg_quality) },
 		{ "--png-compression",	'u',	O(png_comp) },
+		{ "--skip-errors",		'1',	O(conf.skip_errors) },
+		{ "-k",					'1',	O(conf.skip_errors) },
 		{ "-q",					'u',	O(jpeg_quality) },
 		{}
 	};
@@ -336,7 +343,13 @@ static void pic_run(fcom_op *op)
 				p->st = I_READ;
 				continue;
 
-			case 'erro': goto end;
+			case 'erro':
+				if (p->conf.skip_errors) {
+					pic_reset(p);
+					p->st = I_IN;
+					continue;
+				}
+				goto end;
 			}
 
 			p->st = I_OUTPUT;
@@ -385,7 +398,14 @@ static void pic_run(fcom_op *op)
 			ffmem_free(p->oname);
 			p->oname = pic_oname(p, p->name, p->basepath);
 			r = core->file->open(p->out, p->oname, oflags);
-			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ERR) {
+				if (p->conf.skip_errors) {
+					pic_reset(p);
+					p->st = I_IN;
+					continue;
+				}
+				goto end;
+			}
 			p->st = I_WRITE;
 		}
 			// fallthrough
