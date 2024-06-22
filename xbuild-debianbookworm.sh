@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# fcom: cross-build on Linux for Debian-buster
+# fcom: cross-build on Linux for Debian-bookworm
 
 set -xe
 
@@ -8,30 +8,30 @@ if ! test -d "../fcom" ; then
 	exit 1
 fi
 
-if ! podman container exists fcom_debianbuster_build ; then
-	if ! podman image exists fcom-debianbuster-builder ; then
+if ! podman container exists fcom_debianbookworm_build ; then
+	if ! podman image exists fcom-debianbookworm-builder ; then
 		# Create builder image
-		cat <<EOF | podman build -t fcom-debianbuster-builder -f - .
-FROM debian:buster-slim
+		cat <<EOF | podman build -t fcom-debianbookworm-builder -f - .
+FROM debian:bookworm-slim
 RUN apt update && \
  apt install -y \
- make
+  make
+RUN apt install -y \
+ zstd zip unzip p7zip bzip2 xz-utils \
+ yasm nasm \
+ cmake patch dos2unix curl
 RUN apt install -y \
  gcc g++
 RUN apt install -y \
  libgtk-3-dev
-RUN apt install -y \
- zstd unzip p7zip \
- yasm nasm \
- cmake patch dos2unix curl
 EOF
 	fi
 
 	# Create builder container
 	podman create --attach --tty \
 	 -v `pwd`/..:/src \
-	 --name fcom_debianbuster_build \
-	 fcom-debianbuster-builder \
+	 --name fcom_debianbookworm_build \
+	 fcom-debianbookworm-builder \
 	 bash -c 'cd /src/fcom && source ./build_linux.sh'
 fi
 
@@ -71,4 +71,4 @@ bash ../../test.sh all
 EOF
 
 # Build inside the container
-podman start --attach fcom_debianbuster_build
+podman start --attach fcom_debianbookworm_build

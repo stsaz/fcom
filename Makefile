@@ -16,7 +16,9 @@ CFLAGS := -MMD -MP \
 	-Wall -Wextra -Wno-unused-parameter -Wno-multichar \
 	-fPIC \
 	-g
-CFLAGS += -march=nehalem
+ifeq "$(CPU)" "amd64"
+	CFLAGS += -march=nehalem
+endif
 ifeq "$(DEBUG)" "1"
 	CFLAGS += -O0 -DFF_DEBUG -Werror
 else
@@ -107,7 +109,9 @@ app:
 	$(MKDIR) $(APP_DIR)/ops
 	chmod 0755 $(APP_DIR)/ops
 	$(CP) $(MODS) $(APP_DIR)/ops
+ifneq "$(LIBS3)" ""
 	$(CP) $(LIBS3) $(APP_DIR)/ops
+endif
 	chmod 0644 $(APP_DIR)/ops/*.$(SO)
 
 	$(SUBMAKE) app-gsync

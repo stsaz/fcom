@@ -17,11 +17,11 @@ RUN apt update && \
  apt install -y \
   make
 RUN apt install -y \
-  gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
-RUN apt install -y \
+ zstd zip unzip p7zip bzip2 xz-utils \
  yasm nasm \
- zstd zip unzip bzip2 xz-utils \
  cmake patch dos2unix curl
+RUN apt install -y \
+  gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
 EOF
 	fi
 

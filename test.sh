@@ -324,12 +324,12 @@ test_sync() {
 
 	# write snapshot, diff snapshot and dir
 	../fcom -V sync --snapshot "left" -o "fcomtest.snap" -f
-	../fcom -V sync --diff "" --source-snap "fcomtest.snap" -o "right" 2>LOG
+	../fcom -V sync --diff "" --source-snap "fcomtest.snap" -o "right" >LOG
 	grep 'moved:1  add:1  del:1  upd:3  eq:1  total:6/6' LOG
 
 	# diff 2 snapshots
 	../fcom -V sync --snapshot "right" -o "fcomtest-right.snap" -f
-	../fcom -V sync --diff "" --source-snap "fcomtest.snap" --target-snap -o "fcomtest-right.snap" 2>LOG
+	../fcom -V sync --diff "" --source-snap "fcomtest.snap" --target-snap -o "fcomtest-right.snap" >LOG
 	grep 'moved:1  add:1  del:1  upd:3  eq:1  total:6/6' LOG
 
 	# snapshot 2 dirs
