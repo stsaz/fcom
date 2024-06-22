@@ -15,6 +15,7 @@ menu mfile {
 	}
 	item "Replace Date" {
 		action A_SYNC_DATE
+		hotkey "Ctrl+D"
 	}
 	item "Swap Source and Target" {
 		action A_SWAP
@@ -138,7 +139,19 @@ window wmain {
 
 	checkbox show_dir {
 		text	"DIR"
+		style	horizontal
 		action	A_SHOW_DIR
+	}
+
+	checkbox show_done {
+		text	"DONE"
+		style	horizontal
+		action	A_SHOW_DONE
+	}
+
+	checkbox show_neq_date {
+		text	"NEQ DATE"
+		action	A_SHOW_NEQ_DATE
 	}
 
 	listview view {

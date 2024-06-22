@@ -298,6 +298,9 @@ static uint sync_view(fcom_sync_diff *sd, struct fcom_sync_props *props, uint fl
 		if (ce->status & _FCOM_SYNC_SKIP)
 			continue;
 
+		if (!(flags & FCOM_SYNC_DONE) && (ce->status & FCOM_SYNC_DONE))
+			continue;
+
 		uint st = ce->status;
 		if (flags & FCOM_SYNC_SWAP)
 			st = status_swap(ce->status);
@@ -315,6 +318,9 @@ static uint sync_view(fcom_sync_diff *sd, struct fcom_sync_props *props, uint fl
 
 		case FCOM_SYNC_NEQ:
 			if (!(flags & FCOM_SYNC_NEQ))
+				continue;
+			if (!(flags & (FCOM_SYNC_NEWER | FCOM_SYNC_OLDER))
+				&& !(st & (FCOM_SYNC_LARGER | FCOM_SYNC_SMALLER | FCOM_SYNC_ATTR)))
 				continue;
 			break;
 

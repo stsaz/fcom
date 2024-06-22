@@ -47,6 +47,8 @@ static void gsync_signal(fcom_op *op, uint signal);
 	_(A_SHOW_MOV), \
 	_(A_SHOW_RIGHT), \
 	_(A_SHOW_DIR), \
+	_(A_SHOW_DONE), \
+	_(A_SHOW_NEQ_DATE), \
 	_(A_SRC_EXEC), \
 	_(A_DST_EXEC), \
 	_(A_SRC_SHOW_DIR), \
@@ -104,6 +106,11 @@ static ffslice str_split_array(ffstr s, char by, xxvec *dst)
 	return dst->slice();
 }
 
+struct sync_el {
+	void *id;
+	uint i;
+};
+
 struct gsync {
 	fcom_cominfo	cominfo;
 
@@ -117,7 +124,7 @@ struct gsync {
 	xxvec		include, exclude; // ffstr[]
 	xxvec		include_str, exclude_str;
 	fcom_timer	timer;
-	xxvec		sync_items; // void*[]
+	xxvec		sync_items; // struct sync_el[]
 	uint		sync_item_i;
 	fcom_task	core_task;
 	uint		sync_flags;
@@ -131,7 +138,7 @@ struct gsync {
 		ffui_editxx		lpath, rpath;
 		ffui_labelxx	linclude, lexclude, ldays;
 		ffui_editxx		include, exclude, recent_days;
-		ffui_checkboxxx	show_left, show_eq, show_neq, show_mov, show_right, show_dir;
+		ffui_checkboxxx	show_left, show_eq, show_neq, show_mov, show_right, show_dir, show_done, show_neq_date;
 		ffui_viewxx		view;
 		ffui_statusbarxx stbar;
 	} wmain;
@@ -205,16 +212,19 @@ struct gsync {
 		gsync *g = (gsync*)param;
 		g->diff_reset();
 
+		ffui_thd_post(scan_status_update, g);
 		if (!(g->lsnap = g->sync_if->scan(xxvec(g->wmain.lpath.text()).str(), 0))) {
 			g->error("ERROR scanning Source tree");
 			return;
 		}
 
+		ffui_thd_post(scan_status_update, g);
 		if (!(g->rsnap = g->sync_if->scan(xxvec(g->wmain.rpath.text()).str(), 0))) {
 			g->error("ERROR scanning Target tree");
 			return;
 		}
 
+		ffui_thd_post(scan_status_update, g);
 		uint f = FCOM_SYNC_DIFF_LEFT_PATH_STRIP
 			| FCOM_SYNC_DIFF_RIGHT_PATH_STRIP
 			| FCOM_SYNC_DIFF_NO_ATTR
@@ -361,10 +371,25 @@ struct gsync {
 		uint *it;
 		FFSLICE_WALK(&indices, it) {
 			const fcom_sync_diff_entry *de = this->entry_at(*it);
-			if (!(de->status & FCOM_SYNC_DONE))
-				*this->sync_items.push<void*>() = de->id;
+			if (!(de->status & FCOM_SYNC_DONE)) {
+				struct sync_el *el = this->sync_items.push<struct sync_el>();
+				el->id = de->id;
+				el->i = *it;
+			}
 		}
 		this->sync_item_i = 0;
+	}
+
+	static void scan_status_update(void *param)
+	{
+		struct gsync *g = (gsync*)param;
+		const char *s = (!g->lsnap) ? "Scanning Source..."
+			: (!g->rsnap) ? "Scanning Target..."
+			: (!g->diff) ? "Comparing..."
+			: NULL;
+		if (!s)
+			return;
+		g->wmain.stbar.text(s);
 	}
 
 	static void sync_status_update(void *param)
@@ -375,9 +400,11 @@ struct gsync {
 		g->stats_redraw();
 	}
 
-	void sync_entry_status_update__worker(void *id, uint st)
+	void sync_entry_status_update__worker(const struct sync_el *el, uint st)
 	{
-		uint status = this->sync_if->status(this->diff, id
+		this->wmain.view.update(el->i, 0);
+
+		uint status = this->sync_if->status(this->diff, el->id
 			, FCOM_SYNC_SYNCING | FCOM_SYNC_ERROR | FCOM_SYNC_DONE, st);
 
 		if (status & FCOM_SYNC_LEFT) {
@@ -395,8 +422,8 @@ struct gsync {
 	static void sync_entry_complete__worker(void *param, int result)
 	{
 		struct gsync *g = (gsync*)param;
-		void *id = g->sync_items.at<void*>(g->sync_item_i);
-		g->sync_entry_status_update__worker(id, (!result) ? FCOM_SYNC_DONE : FCOM_SYNC_ERROR);
+		const struct sync_el *el = g->sync_items.at<struct sync_el>(g->sync_item_i);
+		g->sync_entry_status_update__worker(el, (!result) ? FCOM_SYNC_DONE : FCOM_SYNC_ERROR);
 		g->sync_item_i++;
 		ffui_thd_post(sync_status_update, g);
 		sync__worker(g);
@@ -405,22 +432,23 @@ struct gsync {
 	static void sync__worker(void *param)
 	{
 		struct gsync *g = (gsync*)param;
-		for (;  g->sync_item_i < g->sync_items.len;  g->sync_item_i++) {
-			void *id = g->sync_items.at<void*>(g->sync_item_i);
+		for (;  g->sync_item_i < g->sync_items.len;) {
+			const struct sync_el *el = g->sync_items.at<struct sync_el>(g->sync_item_i);
 			uint f = g->sync_flags
 				| (g->show_flags & FCOM_SYNC_SWAP);
-			int r = g->sync_if->sync(g->diff, id, f, sync_entry_complete__worker, g);
+			int r = g->sync_if->sync(g->diff, el->id, f, sync_entry_complete__worker, g);
 			uint st = 0;
 			switch (r) {
 			case 1:
-				g->sync_if->status(g->diff, id, FCOM_SYNC_SYNCING, FCOM_SYNC_SYNCING);
+				g->sync_if->status(g->diff, el->id, FCOM_SYNC_SYNCING, FCOM_SYNC_SYNCING);
 				return; // wait for on_complete() to be called
 			case 0:
 				st = FCOM_SYNC_DONE; break;
 			case -1:
 				st = FCOM_SYNC_ERROR; break;
 			}
-			g->sync_entry_status_update__worker(id, st);
+			g->sync_entry_status_update__worker(el, st);
+			g->sync_item_i++;
 			ffui_thd_post(sync_status_update, g);
 		}
 
@@ -556,6 +584,10 @@ struct gsync {
 			g->show_x(g->wmain.show_right, FCOM_SYNC_RIGHT); break;
 		case A_SHOW_DIR:
 			g->show_x(g->wmain.show_dir, FCOM_SYNC_DIR); break;
+		case A_SHOW_DONE:
+			g->show_x(g->wmain.show_done, FCOM_SYNC_DONE); break;
+		case A_SHOW_NEQ_DATE:
+			g->show_x(g->wmain.show_neq_date, FCOM_SYNC_NEWER | FCOM_SYNC_OLDER); break;
 
 		case A_SRC_EXEC:
 		case A_DST_EXEC:
@@ -590,7 +622,7 @@ struct gsync {
 			_(linclude), _(include),
 			_(lexclude), _(exclude),
 			_(ldays), _(recent_days),
-			_(show_left), _(show_eq), _(show_neq), _(show_mov), _(show_right), _(show_dir),
+			_(show_left), _(show_eq), _(show_neq), _(show_mov), _(show_right), _(show_dir), _(show_done), _(show_neq_date),
 			_(view),
 			_(stbar),
 			FFUI_LDR_CTL_END
@@ -661,6 +693,8 @@ struct gsync {
 			| FCOM_SYNC_MOVE
 			// | FCOM_SYNC_EQ
 			// | FCOM_SYNC_DIR
+			// | FCOM_SYNC_DONE
+			| FCOM_SYNC_NEWER | FCOM_SYNC_OLDER
 			;
 		g->wmain.show_left.check(1);
 		// g->wmain.show_eq.check(1);
@@ -668,6 +702,8 @@ struct gsync {
 		g->wmain.show_mov.check(1);
 		g->wmain.show_right.check(1);
 		// g->wmain.show_dir.check(1);
+		// g->wmain.show_done.check(1);
+		g->wmain.show_neq_date.check(1);
 
 		g->wmain.wnd.show(1);
 	}
