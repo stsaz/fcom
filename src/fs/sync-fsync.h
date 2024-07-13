@@ -174,6 +174,10 @@ int sync_sync(fcom_sync_diff *sd, void *diff_entry_id, uint flags
 	, void(*on_complete)(void*, int), void *param)
 {
 	const fcom_sync_diff_entry *de = sync_info_id(sd, diff_entry_id, flags);
+	fcom_sync_snapshot *l = sd->left, *r = sd->right;
+	if (flags & FCOM_SYNC_SWAP) {
+		FF_SWAP2(l, r);
+	}
 
 	switch (de->status & FCOM_SYNC_MASK) {
 	case FCOM_SYNC_LEFT:
@@ -197,7 +201,7 @@ int sync_sync(fcom_sync_diff *sd, void *diff_entry_id, uint flags
 		char *sz = ffsz_dupstr(&de->lname);
 		ffstr_setz(p, sz);
 
-		c->output = out_name(de->lname, sd->left->root_dir, sd->right->root_dir);
+		c->output = out_name(de->lname, l->root_dir, r->root_dir);
 
 		c->recursive = 0xff; // disable auto-recursive mode
 		c->overwrite = !!(de->status & FCOM_SYNC_NEQ);
@@ -234,10 +238,10 @@ int sync_sync(fcom_sync_diff *sd, void *diff_entry_id, uint flags
 		ffstr lname = de->lname;
 		if (lname.len && ffpath_slash(lname.ptr[0]))
 			ffstr_shift(&lname, 1);
-		ffstr_shift(&lname, sd->left->root_dir.len);
+		ffstr_shift(&lname, l->root_dir.len);
 		xxvec v;
 		v.add_f("%S%c%S"
-			, &sd->right->root_dir, FFPATH_SLASH, &lname);
+			, &r->root_dir, FFPATH_SLASH, &lname);
 		if (core->file->move(de->rname, v.str(), FCOM_FILE_MOVE_SAFE))
 			return -1;
 		break;
