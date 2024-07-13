@@ -15,6 +15,7 @@ struct snapshot {
 	ffstr		path, name_segment;
 	uint64		total;
 	uint		zip_block;
+	uint		zip_expand :1;
 
 	~snapshot() {
 		fntree_free_all(this->root);
@@ -60,11 +61,13 @@ struct snapshot {
 		if (this->parent_blk != b) {
 			this->parent_blk = b;
 
-			ffstr ext;
-			ffpath_splitpath_str(this->path, NULL, &ext);
-			ffpath_splitname_str(ext, NULL, &ext);
-			this->zip_block = (ffstr_ieqz(&ext, "zip")
-				|| ffstr_ieqz(&ext, "zipx"));
+			if (this->zip_expand) {
+				ffstr ext;
+				ffpath_splitpath_str(this->path, NULL, &ext);
+				ffpath_splitname_str(ext, NULL, &ext);
+				this->zip_block = (ffstr_ieqz(&ext, "zip")
+					|| ffstr_ieqz(&ext, "zipx"));
+			}
 
 			return 'nblk';
 		}
@@ -157,39 +160,6 @@ struct snapshot {
 		return rc;
 	}
 
-	/** Get file attributes */
-	static int f_info(const char *name, struct fcom_sync_entry *d, fffd f)
-	{
-		int rc = 'erro';
-
-		xxfileinfo fi;
-		if (fffile_info(f, &fi.info)) {
-			fcom_syserrlog("fffile_info: %s", name);
-			return 'erro';
-		}
-
-		rc = 'file';
-		if (fi.dir())
-			rc = 'dir ';
-
-		d->size = fi.size();
-		d->mtime = fi.mtime1();
-		d->mtime.nsec = (d->mtime.nsec / 1000000) * 1000000;
-
-#ifdef FF_UNIX
-		d->unix_attr = fi.attr();
-		d->win_attr = (fi.dir()) ? FFFILE_WIN_DIR : 0;
-		d->uid = fi.info.st_uid;
-		d->gid = fi.info.st_gid;
-#else
-		d->win_attr = fi.attr();
-		d->unix_attr = (fi.dir()) ? FFFILE_UNIX_DIR : 0;
-#endif
-
-		// d->crc32 = ;
-		return rc;
-	}
-
 	int scan_next(struct ent *dst)
 	{
 		fntree_entry *e;
@@ -230,20 +200,22 @@ struct snapshot {
 			break;
 
 		case 'file':
-			ffpath_splitpath_str(name, NULL, &ext);
-			ffpath_splitname_str(ext, NULL, &ext);
-			if (ffstr_ieqz(&ext, "zip")
-				|| ffstr_ieqz(&ext, "zipx")) {
+			if (this->zip_expand) {
+				ffpath_splitpath_str(name, NULL, &ext);
+				ffpath_splitname_str(ext, NULL, &ext);
+				if (ffstr_ieqz(&ext, "zip")
+					|| ffstr_ieqz(&ext, "zipx")) {
 
-				fd = fffile_open(name.ptr, FFFILE_READONLY | FFFILE_NOATIME);
-				if (fd == FFFILE_NULL) {
-					fcom_syswarnlog("fffile_open: %s", name.ptr);
-					goto fin;
-				}
+					fd = fffile_open(name.ptr, FFFILE_READONLY | FFFILE_NOATIME);
+					if (fd == FFFILE_NULL) {
+						fcom_syswarnlog("fffile_open: %s", name.ptr);
+						goto fin;
+					}
 
-				if (this->add_zip(fd, name)) {
-					r = 'erro';
-					goto end;
+					if (this->add_zip(fd, name)) {
+						r = 'erro';
+						goto end;
+					}
 				}
 			}
 			break;

@@ -349,7 +349,7 @@ test_sync_zip() {
 	./fcom touch "fcomtest/dir/file2"
 	./fcom touch "fcomtest/dir2/file3"
 	./fcom zip "fcomtest/dir" "fcomtest/dir2" -o "fcomtest/sync.zip"
-	./fcom -D sync --snapshot "fcomtest" -o "fcomtest/snap.txt"
+	./fcom -D sync --snapshot "fcomtest" --zip-expand -o "fcomtest/snap.txt"
 	cat fcomtest/snap.txt
 }
 

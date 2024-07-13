@@ -54,6 +54,10 @@ static void sync_copy_async(struct sync *s, ffstr src, ffstr dst, uint status)
 		*ffvec_pushT(&a, char*) = ffsz_dup("--update");
 		*ffvec_pushT(&a, char*) = ffsz_dup("--replace-date");
 	}
+
+	if (s->write_into)
+		*ffvec_pushT(&a, char*) = ffsz_dup("--write-into");
+
 	ffvec_zpushT(&a, char*);
 	c->argv = (char**)a.ptr;
 	c->argc = a.len - 1;

@@ -11,6 +11,7 @@ Usage:\n\
 \n\
 OPTIONS:\n\
     `-s`, `--snapshot`      Create an INPUT_DIR tree snapshot\n\
+          `--zip-expand`  Treat .zip files as directories\n\
         `--source-snap`   Use snapshot file for input file tree\n\
         `--target-snap`   Use snapshot file for output file tree\n\
 \n\
@@ -29,6 +30,7 @@ OPTIONS:\n\
         `--update`        Overwrite modified files\n\
         `--move`          Move files\n\
         `--replace-date`  Just copy file date (don't overwrite content).  Use with `--update`.\n\
+        `--write-into`    Pass option to `copy`\n\
 \n\
 Examples:\n\
 \n\
@@ -119,6 +121,8 @@ struct sync {
 	u_char	diff_no_dir, diff_no_attr, diff_no_time, diff_time_2sec;
 	u_char	diff_full_name;
 	u_char	replace_date;
+	u_char	zip_expand;
+	u_char	write_into;
 	uint	recent_days;
 	fftime	since_time;
 
@@ -133,6 +137,7 @@ struct sync {
 	int left_tree_init()
 	{
 		this->src = ffmem_new(struct snapshot);
+		this->src->zip_expand = this->zip_expand;
 		ffstr rtpath = {};
 		this->src->root = fntree_create(rtpath);
 		ffstr *it;
@@ -154,6 +159,7 @@ struct sync {
 	int right_tree_init()
 	{
 		this->dst = ffmem_new(struct snapshot);
+		this->dst->zip_expand = this->zip_expand;
 		ffstr rtpath = {};
 		this->dst->root = fntree_create(rtpath);
 		if (NULL == fntree_add(&this->dst->root, this->cmd->output, sizeof(struct fcom_sync_entry)))
@@ -377,6 +383,8 @@ static int args_parse(struct sync *s, fcom_cominfo *cmd)
 		{ "--source-snap",		'1',	O(left_snapshot) },
 		{ "--target-snap",		'1',	O(right_snapshot) },
 		{ "--update",			'1',	O(sync_update) },
+		{ "--write-into",		'1',	O(write_into) },
+		{ "--zip-expand",		'1',	O(zip_expand) },
 		{ "-d",					's',	O(diff_flags_str) },
 		{ "-p",					'1',	O(plain_list) },
 		{ "-s",					'1',	O(write_snapshot) },
