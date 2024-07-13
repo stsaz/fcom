@@ -77,12 +77,14 @@ struct snapshot {
 		ffdirscan ds = {};
 		uint flags = 0;
 
+		if (fd != FFFILE_NULL) {
 #ifdef FF_LINUX
-		ds.fd = fd;
-		flags = FFDIRSCAN_USEFD;
+			ds.fd = fd;
+			flags = FFDIRSCAN_USEFD;
 #else
-		fffile_close(fd);
+			fffile_close(fd);
 #endif
+		}
 
 		if (ffdirscan_open(&ds, (char*)this->name.ptr, flags)) {
 			fcom_syserrlog("ffdirscan_open: %s", this->name.ptr);
@@ -127,6 +129,31 @@ struct snapshot {
 	end:
 		if (ux)
 			uif->close(ux);
+		return rc;
+	}
+
+	/** Get file attributes */
+	static int f_info(struct fcom_sync_entry *d, const xxfileinfo& fi)
+	{
+		int rc = 'file';
+		if (fi.dir())
+			rc = 'dir ';
+
+		d->size = fi.size();
+		d->mtime = fi.mtime1();
+		d->mtime.nsec = (d->mtime.nsec / 1000000) * 1000000;
+
+#ifdef FF_UNIX
+		d->unix_attr = fi.attr();
+		d->win_attr = (fi.dir()) ? FFFILE_WIN_DIR : 0;
+		d->uid = fi.info.st_uid;
+		d->gid = fi.info.st_gid;
+#else
+		d->win_attr = fi.attr();
+		d->unix_attr = (fi.dir()) ? FFFILE_UNIX_DIR : 0;
+#endif
+
+		// d->crc32 = ;
 		return rc;
 	}
 
@@ -184,39 +211,45 @@ struct snapshot {
 		}
 
 		int r2 = 0;
-		fffd fd = fffile_open(name.ptr, FFFILE_READONLY | FFFILE_NOATIME);
-		if (fd == FFFILE_NULL) {
-			fcom_syswarnlog("fffile_open: %s", name.ptr);
-		} else {
-			r2 = this->f_info(name.ptr, d, fd);
-			switch (r2) {
-			case 'erro':
+		fffd fd = FFFILE_NULL;
+		xxfileinfo fi;
+		if (fffile_info_path(name.ptr, &fi.info)) {
+			fcom_syswarnlog("fffile_info_path: %s", name.ptr);
+			goto fin;
+		}
+
+		r2 = this->f_info(d, fi);
+		switch (r2) {
+		case 'dir ':
+			if (this->add_dir(fd)) {
+				fd = FFFILE_NULL;
 				r = 'erro';
 				goto end;
+			}
+			fd = FFFILE_NULL;
+			break;
 
-			case 'dir ':
-				if (this->add_dir(fd)) {
-					fd = FFFILE_NULL;
+		case 'file':
+			ffpath_splitpath_str(name, NULL, &ext);
+			ffpath_splitname_str(ext, NULL, &ext);
+			if (ffstr_ieqz(&ext, "zip")
+				|| ffstr_ieqz(&ext, "zipx")) {
+
+				fd = fffile_open(name.ptr, FFFILE_READONLY | FFFILE_NOATIME);
+				if (fd == FFFILE_NULL) {
+					fcom_syswarnlog("fffile_open: %s", name.ptr);
+					goto fin;
+				}
+
+				if (this->add_zip(fd, name)) {
 					r = 'erro';
 					goto end;
 				}
-				fd = FFFILE_NULL;
-				break;
-
-			case 'file':
-				ffpath_splitpath_str(name, NULL, &ext);
-				ffpath_splitname_str(ext, NULL, &ext);
-				if (ffstr_ieqz(&ext, "zip")
-					|| ffstr_ieqz(&ext, "zipx")) {
-					if (this->add_zip(fd, name)) {
-						r = 'erro';
-						goto end;
-					}
-				}
-				break;
 			}
+			break;
 		}
 
+	fin:
 		if (dst) {
 			dst->type = (r2 == 'dir ') ? 'd' : 'f';
 			dst->name = name;
