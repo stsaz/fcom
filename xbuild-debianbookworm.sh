@@ -2,16 +2,21 @@
 
 # fcom: cross-build on Linux for Debian-bookworm
 
+IMAGE_NAME=fcom-debianbookworm-builder
+CONTAINER_NAME=fcom_debianbookworm_build
+ARGS=${@@Q}
+
 set -xe
 
 if ! test -d "../fcom" ; then
 	exit 1
 fi
 
-if ! podman container exists fcom_debianbookworm_build ; then
-	if ! podman image exists fcom-debianbookworm-builder ; then
+if ! podman container exists $CONTAINER_NAME ; then
+	if ! podman image exists $IMAGE_NAME ; then
+
 		# Create builder image
-		cat <<EOF | podman build -t fcom-debianbookworm-builder -f - .
+		cat <<EOF | podman build -t $IMAGE_NAME -f - .
 FROM debian:bookworm-slim
 RUN apt update && \
  apt install -y \
@@ -30,8 +35,8 @@ EOF
 	# Create builder container
 	podman create --attach --tty \
 	 -v `pwd`/..:/src \
-	 --name fcom_debianbookworm_build \
-	 fcom-debianbookworm-builder \
+	 --name $CONTAINER_NAME \
+	 $IMAGE_NAME \
 	 bash -c 'cd /src/fcom && source ./build_linux.sh'
 fi
 
@@ -39,36 +44,30 @@ fi
 cat >build_linux.sh <<EOF
 set -xe
 
-cd ../ffpack
-make -j8
-make md5check
-cd ../fcom
+make -j8 \
+ -C ../ffpack
+make md5check \
+ -C ../ffpack
 
-cd 3pt
-make -j8
+make -j8 \
+ -C 3pt
 # make md5check
-make install
-cd ..
 
-cd 3pt-pic
-make -j8
-make md5check
-cd ..
+make -j8 \
+ -C 3pt-pic
+make md5check \
+ -C 3pt-pic
 
 mkdir -p _linux-amd64
 make -j8 \
  -C _linux-amd64 \
  -f ../Makefile \
  ROOT=../.. \
- $@
-make -j8 app \
- -C _linux-amd64 \
- -f ../Makefile \
- ROOT=../..
+ $ARGS
 
 cd _linux-amd64/fcom-1
 bash ../../test.sh all
 EOF
 
 # Build inside the container
-podman start --attach fcom_debianbookworm_build
+podman start --attach $CONTAINER_NAME

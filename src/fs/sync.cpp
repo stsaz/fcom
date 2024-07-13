@@ -11,7 +11,7 @@ Usage:\n\
 \n\
 OPTIONS:\n\
     `-s`, `--snapshot`      Create an INPUT_DIR tree snapshot\n\
-          `--zip-expand`  Treat .zip files as directories\n\
+        `--zip-expand`    Treat .zip files as directories\n\
         `--source-snap`   Use snapshot file for input file tree\n\
         `--target-snap`   Use snapshot file for output file tree\n\
 \n\

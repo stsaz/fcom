@@ -60,6 +60,7 @@ static int output_fin(struct copy *c)
 
 	case 1:
 		if (!c->cmd->stdout
+			&& !c->write_into
 			&& 0 != fffile_rename(c->o.name_tmp, c->o.name)) {
 			fcom_syserrlog("fffile_rename: %s -> %s", c->o.name_tmp, c->o.name);
 			return 0xbad;
@@ -126,7 +127,8 @@ static int output_open(struct copy *c)
 		ffmem_free0(c->o.name_tmp);
 		if (!(c->o.name = out_name(c, c->name, c->basename)))
 			return 0xbad;
-		c->o.name_tmp = ffsz_allocfmt("%s.fcomtmp", c->o.name);
+		if (!c->write_into)
+			c->o.name_tmp = ffsz_allocfmt("%s.fcomtmp", c->o.name);
 	}
 
 	if (c->fi.dir()) {

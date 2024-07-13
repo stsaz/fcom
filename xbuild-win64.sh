@@ -2,16 +2,21 @@
 
 # fcom: cross-build on Linux for Windows/AMD64
 
+IMAGE_NAME=fcom-win64-builder
+CONTAINER_NAME=fcom_win64_build
+ARGS=${@@Q}
+
 set -xe
 
 if ! test -d "../fcom" ; then
 	exit 1
 fi
 
-if ! podman container exists fcom_win64_build ; then
-	if ! podman image exists fcom-win64-builder ; then
+if ! podman container exists $CONTAINER_NAME ; then
+	if ! podman image exists $IMAGE_NAME ; then
+
 		# Create builder image
-		cat <<EOF | podman build -t fcom-win64-builder -f - .
+		cat <<EOF | podman build -t $IMAGE_NAME -f - .
 FROM debian:bookworm-slim
 RUN apt update && \
  apt install -y \
@@ -28,42 +33,37 @@ EOF
 	# Create builder container
 	podman create --attach --tty \
 	 -v `pwd`/..:/src \
-	 --name fcom_win64_build \
-	 fcom-win64-builder \
-	 bash -c 'cd /src/fcom && source ./build_mingw64.sh'
+	 --name $CONTAINER_NAME \
+	 $IMAGE_NAME \
+	 bash -c 'cd /src/fcom && source ./build_win64.sh'
 fi
 
 # Prepare build script
-cat >build_mingw64.sh <<EOF
+cat >build_win64.sh <<EOF
 set -xe
 
-cd ../ffpack
 make -j8 \
+ -C ../ffpack \
  OS=windows \
  COMPILER=gcc \
  CROSS_PREFIX=x86_64-w64-mingw32-
-make md5check
-cd ../fcom
+make md5check \
+ -C ../ffpack
 
-cd 3pt
 make -j8 \
+ -C 3pt \
  OS=windows \
  COMPILER=gcc \
  CROSS_PREFIX=x86_64-w64-mingw32-
 # make md5check
-make install \
- OS=windows \
- COMPILER=gcc \
- CROSS_PREFIX=x86_64-w64-mingw32-
-cd ..
 
-cd 3pt-pic
 make -j8 \
+ -C 3pt-pic \
  OS=windows \
  COMPILER=gcc \
  CROSS_PREFIX=x86_64-w64-mingw32-
-make md5check
-cd ..
+make md5check \
+ -C 3pt-pic
 
 mkdir -p _windows-amd64
 make -j8 \
@@ -73,15 +73,8 @@ make -j8 \
  OS=windows \
  COMPILER=gcc \
  CROSS_PREFIX=x86_64-w64-mingw32- \
- $@
-make -j8 app \
- -C _windows-amd64 \
- -f ../Makefile \
- ROOT=../.. \
- OS=windows \
- COMPILER=gcc \
- CROSS_PREFIX=x86_64-w64-mingw32-
+ $ARGS
 EOF
 
 # Build inside the container
-podman start --attach fcom_win64_build
+podman start --attach $CONTAINER_NAME

@@ -63,7 +63,7 @@ Contents:
 
 	```sh
 	mkdir -p ~/bin
-	tar xf fcom-v1.0-beta1-linux-amd64.tar.zst -C ~/bin
+	tar xf fcom-v1.0-linux-amd64.tar.zst -C ~/bin
 	```
 
 2. Optionally, create a symbolic link:

@@ -10,16 +10,18 @@ struct xxstr : ffstr {
 	xxstr() { ptr = NULL;  len = 0; }
 	xxstr(ffstr s) { ptr = s.ptr;  len = s.len; }
 	xxstr(const char *sz) { ptr = (char*)sz;  len = ffsz_len(sz); }
-	void operator=(const char *sz) { ptr = (char*)sz, len = ffsz_len(sz); }
-	bool equals(xxstr s) const { return ffstr_eq2(this, &s); }
-	void reset() { ptr = NULL;  len = 0; }
-	void free() { ffmem_free(ptr);  ptr = NULL;  len = 0; }
-	xxstr shift(ffsize n) { ffstr_shift(this, n); return *this; }
-	ffssize split_by(char by, xxstr *left, xxstr *right) const { return ffstr_splitby(this, by, left, right); }
-	ffssize split_at(ffssize index, xxstr *left, xxstr *right) const { return ffstr_split(this, index, left, right); }
-	ffssize find_char(char c) const { return ffstr_findchar(this, c); }
-	ffssize find_str(xxstr s) const { return ffstr_findstr(this, &s); }
-	ffssize match_f(const char *fmt, ...) const {
+	void	operator=(const char *sz) { ptr = (char*)sz, len = ffsz_len(sz); }
+	bool	equals(xxstr s) const { return ffstr_eq2(this, &s); }
+	bool	equals_i(const char *sz) const { return ffstr_ieqz(this, sz); }
+	char	at(size_t i) const { FF_ASSERT(i < len); return ptr[i]; }
+	void	reset() { ptr = NULL;  len = 0; }
+	void	free() { ffmem_free(ptr);  ptr = NULL;  len = 0; }
+	xxstr&	shift(ffsize n) { ffstr_shift(this, n); return *this; }
+	ffssize	split_by(char by, xxstr *left, xxstr *right) const { return ffstr_splitby(this, by, left, right); }
+	ffssize	split_at(ffssize index, xxstr *left, xxstr *right) const { return ffstr_split(this, index, left, right); }
+	ffssize	find_char(char c) const { return ffstr_findchar(this, c); }
+	ffssize	find_str(xxstr s) const { return ffstr_findstr(this, &s); }
+	ffssize	match_f(const char *fmt, ...) const {
 		va_list va;
 		va_start(va, fmt);
 		ffssize r = ffstr_matchfmtv(this, fmt, va);
@@ -61,6 +63,10 @@ template<uint N> struct xxstr_buf : ffstr {
 		va_start(va, fmt);
 		len = ffs_formatv(ptr, N, fmt, va);
 		va_end(va);
+		return *this;
+	}
+	xxstr_buf<N>& add_char(char ch) {
+		ffstr_addchar(this, N - len, ch);
 		return *this;
 	}
 };

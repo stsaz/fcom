@@ -1,5 +1,5 @@
-/** ff: task queue: First in, first out.  One reader/deleter, multiple writers.
-2013, 2022 Simon Zolin
+/** task queue: First in, first out.  One reader/deleter, multiple writers.
+2013, 2022, Simon Zolin
 */
 
 /*
@@ -26,7 +26,32 @@ typedef struct fftask {
 #define fftask_set(t, func, udata) \
 	(t)->handler = (func),  (t)->param = (udata)
 
+
+// User must define these values:
+// #define FFTASKQUEUE_LOG_DEBUG  ?
+// Optional:
+// #define FFTASKQUEUE_LOG_EXTRA  ?
+
+struct fftaskqueue_conf_log {
+	ffuint level;
+	void (*func)(void *obj, ffuint flags, const char *ctx, const char *id, const char *fmt, ...);
+	void *obj;
+	const char *ctx;
+};
+
+#define fftaskqueue_extralog(tq, ...)
+#ifdef FFTASKQUEUE_LOG_EXTRA
+	#undef fftaskqueue_extralog
+	#define fftaskqueue_extralog(tq, ...) \
+	do { \
+		if (ff_unlikely(tq->log.level >= FFTASKQUEUE_LOG_DEBUG)) \
+			tq->log.func(tq->log.obj, FFTASKQUEUE_LOG_EXTRA, tq->log.ctx, NULL, __VA_ARGS__); \
+	} while (0)
+#endif
+
+
 typedef struct fftaskqueue {
+	struct fftaskqueue_conf_log log;
 	fflist tasks; //fftask[]
 	fflock lk;
 } fftaskqueue;
@@ -93,7 +118,8 @@ static inline ffuint fftaskqueue_run(fftaskqueue *tq)
 		fflist_rm(&tq->tasks, it);
 		fflock_unlock(&tq->lk);
 
-		fftask *t = FF_STRUCTPTR(fftask, sib, it);
+		fftask *t = FF_CONTAINER(fftask, sib, it);
+		fftaskqueue_extralog(tq, "task:%p  handler:%p  param:%p", t, t->handler, t->param);
 		t->handler(t->param);
 
 		n++;

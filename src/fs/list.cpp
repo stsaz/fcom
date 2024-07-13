@@ -33,7 +33,6 @@ struct list {
 	uint st;
 	fcom_cominfo *cmd;
 	xxstr			name, base;
-	fcom_filexx		input;
 	xxfileinfo		fi;
 	xxvec			buf;
 	uint stop;
@@ -42,7 +41,7 @@ struct list {
 	u_char	long_fmt;
 	u_char	one_line;
 
-	list() : input(core) {}
+	list() {}
 
 	int read_input()
 	{
@@ -54,24 +53,20 @@ struct list {
 			return 'erro';
 		}
 
-		r = this->input.open(this->name.ptr, FCOM_FILE_READ | fcom_file_cominfo_flags_i(this->cmd));
-		if (r == FCOM_FILE_ERR) return 'next';
-
-		r = this->input.info(&this->fi);
-		if (r == FCOM_FILE_ERR) return 'next';
+		if (fffile_info_path(this->name.ptr, &this->fi.info))
+			return 'next';
 
 		if (core->com->input_allowed(this->cmd, this->name, this->fi.dir()))
 			return 'next';
 
 		if ((this->base.len == 0 || this->cmd->recursive)
 			&& this->fi.dir()) {
-			core->com->input_dir(this->cmd, this->input.acquire_fd());
+			core->com->input_dir(this->cmd, FFFILE_NULL);
 
 			if (!this->base.len)
 				return 'next'; // skip directory itself (e.g. skip "." for "fcom list .")
 		}
 
-		this->input.close();
 		return 0;
 	}
 
@@ -142,14 +137,10 @@ static fcom_op* list_create(fcom_cominfo *cmd)
 {
 	struct list *l = new(ffmem_new(struct list)) struct list;
 	l->cmd = cmd;
-	struct fcom_file_conf fc = {};
 	ffsize cap;
 
 	if (0 != args_parse(l, cmd))
 		goto end;
-
-	fc.buffer_size = cmd->buffer_size;
-	l->input.create(&fc);
 
 	cap = (cmd->buffer_size != 0) ? cmd->buffer_size : 64*1024;
 	l->buf.alloc<char>(cap);
