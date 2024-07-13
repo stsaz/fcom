@@ -579,7 +579,8 @@ struct fcom_sync_if {
 	const struct fcom_sync_diff_entry* (*info)(fcom_sync_diff *sd, uint i, uint flags);
 	const struct fcom_sync_diff_entry* (*info_id)(fcom_sync_diff *sd, void *id, uint flags);
 
-	/** Update diff entry's status. */
+	/** Update diff entry's status.
+	Return the resulting status. */
 	uint (*status)(fcom_sync_diff *sd, void *id, uint mask, uint val);
 
 	/** Synchronize files.

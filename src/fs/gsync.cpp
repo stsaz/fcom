@@ -369,8 +369,10 @@ struct gsync {
 
 		this->sync_flags = flags;
 		this->sync_prepare();
-		if (this->sync_items.len)
+		if (this->sync_items.len) {
+			sync_status_update(this);
 			this->core_task_add(sync__worker);
+		}
 	}
 
 	void sync_prepare()
@@ -410,21 +412,23 @@ struct gsync {
 
 	void sync_entry_status_update__worker(const struct sync_el *el, uint st)
 	{
-		this->wmain.view.update(el->i, 0);
-
 		uint status = this->sync_if->status(this->diff, el->id
 			, FCOM_SYNC_SYNCING | FCOM_SYNC_ERROR | FCOM_SYNC_DONE, st);
 
-		if (status & FCOM_SYNC_LEFT) {
-			if (this->show_flags & FCOM_SYNC_SWAP)
-				this->props.stats.right--;
-			else
-				this->props.stats.left--;
+		if (status & FCOM_SYNC_DONE) {
+			if (status & FCOM_SYNC_LEFT) {
+				if (this->show_flags & FCOM_SYNC_SWAP)
+					this->props.stats.right--;
+				else
+					this->props.stats.left--;
+			}
+			if (status & FCOM_SYNC_NEQ)
+				this->props.stats.neq--;
+			else if (status & FCOM_SYNC_MOVE)
+				this->props.stats.moved--;
 		}
-		if (status & FCOM_SYNC_NEQ)
-			this->props.stats.neq--;
-		else if (status & FCOM_SYNC_MOVE)
-			this->props.stats.moved--;
+
+		this->wmain.view.update(el->i, 0);
 	}
 
 	static void sync_entry_complete__worker(void *param, int result)
@@ -448,7 +452,7 @@ struct gsync {
 			uint st = 0;
 			switch (r) {
 			case 1:
-				g->sync_if->status(g->diff, el->id, FCOM_SYNC_SYNCING, FCOM_SYNC_SYNCING);
+				g->sync_entry_status_update__worker(el, FCOM_SYNC_SYNCING);
 				return; // wait for on_complete() to be called
 			case 0:
 				st = FCOM_SYNC_DONE; break;
