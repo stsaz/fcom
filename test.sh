@@ -356,7 +356,10 @@ test_sync_zip() {
 test_gsync() {
 	test_sync_prepare
 	cd fcomtest
-	../fcom gsync left right
+	mkdir -p left-a left-b
+	touch left-a/a
+	touch left-b/b
+	../fcom gsync "./left*" "./right"
 }
 
 test_textcount() {

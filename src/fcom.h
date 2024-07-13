@@ -559,6 +559,9 @@ struct fcom_sync_if {
 	/** Create snapshot from directory. */
 	fcom_sync_snapshot* (*scan)(ffstr path, uint flags);
 
+	/** Create snapshot from the directories found by wildcard. */
+	fcom_sync_snapshot* (*scan_wc)(ffstr wc, uint flags);
+
 	void (*snapshot_free)(fcom_sync_snapshot *ss);
 
 	/** Compare two snapshots.

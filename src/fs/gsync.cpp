@@ -207,19 +207,27 @@ struct gsync {
 			, "RIGHT", r));
 	}
 
+	fcom_sync_snapshot* scan(xxstr path)
+	{
+		uint flags = 0;
+		if (path.find_char('*') >= 0)
+			return this->sync_if->scan_wc(path, flags);
+		return this->sync_if->scan(path, flags);
+	}
+
 	static void scan_and_compare__worker(void *param)
 	{
 		gsync *g = (gsync*)param;
 		g->diff_reset();
 
 		ffui_thd_post(scan_status_update, g);
-		if (!(g->lsnap = g->sync_if->scan(xxvec(g->wmain.lpath.text()).str(), 0))) {
+		if (!(g->lsnap = g->scan(xxvec(g->wmain.lpath.text()).str()))) {
 			g->error("ERROR scanning Source tree");
 			return;
 		}
 
 		ffui_thd_post(scan_status_update, g);
-		if (!(g->rsnap = g->sync_if->scan(xxvec(g->wmain.rpath.text()).str(), 0))) {
+		if (!(g->rsnap = g->scan(xxvec(g->wmain.rpath.text()).str()))) {
 			g->error("ERROR scanning Target tree");
 			return;
 		}

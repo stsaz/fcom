@@ -1,6 +1,8 @@
 /** fcom: sync: scan file tree
 2022, Simon Zolin */
 
+#include <util/util.h>
+
 struct ent {
 	char type; // 'f', 'd'
 	ffstr name;
@@ -240,6 +242,7 @@ static void sync_snapshot_free(fcom_sync_snapshot *ss)
 	ffmem_free(ss);
 }
 
+// ""->["/"]
 static fcom_sync_snapshot* sync_scan(ffstr path, uint flags)
 {
 	fcom_sync_snapshot *ss = ffmem_new(fcom_sync_snapshot);
@@ -262,4 +265,101 @@ static fcom_sync_snapshot* sync_scan(ffstr path, uint flags)
 end:
 	sync_snapshot_free(ss);
 	return NULL;
+}
+
+static void fntree_entry_set(fntree_entry *dst, const fntree_entry *src, size_t data_len)
+{
+	fntree_attach(dst, src->children);
+	ffmem_copy(fntree_data(dst), fntree_data(src), data_len);
+}
+
+/** Combine two directories.
+Example:
+	1. ""->["/path/a"]      | "/path/b" => ""->["/path"->[a,b]]
+	2. ""->["/path"->[a,b]] | "/path/c" => ""->["/path"->[a,b,c]]
+*/
+static void sync_combine(struct snapshot *s, fntree_entry *e2)
+{
+	xxstr p1 = s->root_dir, p2 = fntree_path(e2->children), parent, name1, name2;
+	fcom_dbglog("sync: combine: %S + %S", &p1, &p2);
+	if (ffpath_parent(p1, p2, &parent))
+		return;
+	ffpath_splitpath_str(p2, NULL, &name2);
+
+	const uint data_len = sizeof(struct fcom_sync_entry);
+	if (!parent.equals(p1)) {
+		// 1.
+		fntree_block *first = fntree_create(parent);
+
+		ffpath_splitpath_str(p1, NULL, &name1);
+		fntree_entry *e = fntree_add(&first, name1, data_len);
+		fntree_entry_set(e, _fntr_ent_first(s->root), data_len);
+
+		e = fntree_add(&first, name2, data_len);
+		fntree_entry_set(e, e2, data_len);
+
+		fntree_block *newroot = fntree_create(FFSTR_Z(""));
+		e = fntree_add(&newroot, parent, data_len);
+		fntree_attach(e, first);
+
+		s->root = newroot;
+		s->root_dir.len = parent.len;
+
+	} else {
+		// 2.
+		fntree_block **root = &_fntr_ent_first(s->root)->children;
+		fntree_entry *e = fntree_add(root, name2, data_len);
+		fntree_entry_set(e, e2, data_len);
+	}
+
+	e2->children = NULL;
+}
+
+static struct snapshot* sync_scan_wc(ffstr path, uint flags)
+{
+	ffdirscan ds = {};
+	const char *fn;
+	char *fullname = NULL, *dirz = NULL;
+	struct snapshot *r = NULL, *d = NULL, *parent = NULL;
+
+	ffstr dir, name;
+	ffpath_splitpath_str(path, &dir, &name);
+	dirz = ffsz_dupstr(&dir);
+	ds.wildcard = name.ptr;
+	if (ffdirscan_open(&ds, dirz, FFDIRSCAN_USEWILDCARD)) {
+		fcom_syserrlog("ffdirscan_open: '%s'  wc: '%s'", dirz, name.ptr);
+		goto end;
+	}
+
+	while ((fn = ffdirscan_next(&ds))) {
+
+		ffmem_free(fullname);
+		fullname = ffsz_allocfmt("%s%c%s", dirz, FFPATH_SLASH, fn);
+
+		xxfileinfo fi;
+		if (!(!fffile_info_path(fullname, &fi.info) && fi.dir()))
+			continue;
+
+		if (!(d = sync_scan(FFSTR_Z(fullname), flags)))
+			goto end;
+
+		if (!parent) {
+			parent = d;
+		} else {
+			sync_combine(parent, _fntr_ent_first(d->root));
+			sync_snapshot_free(d);
+		}
+		d = NULL;
+	}
+
+	r = parent;
+	parent = NULL;
+
+end:
+	ffmem_free(dirz);
+	ffmem_free(fullname);
+	ffdirscan_close(&ds);
+	sync_snapshot_free(d);
+	sync_snapshot_free(parent);
+	return r;
 }
