@@ -19,11 +19,25 @@ struct file {
 	fftime mtime;
 	fffd fd_stdin, fd_stdout;
 
-	struct fbufset fbuf;
-	struct fbuf wbuf;
+	struct fbufset bufset;
 	uint64 size;
 	uint64 cur_off;
-	uint64 prealloc;
+
+	uint w_write :1;
+
+	struct {
+		struct fbuf buf;
+		ffstr user_data;
+		uint continued :1;
+	} wcache;
+
+	struct {
+		ffstr buf;
+		uint64 off;
+		uint64 prealloc;
+		uint pipe_buf_cap;
+		uint async :1;
+	} w;
 
 	struct {
 		fftime t_read, t_write;
@@ -52,10 +66,8 @@ static fcom_file_obj* file_create(struct fcom_file_conf *conf)
 		f->fd_stdout = conf->fd_stdout;
 
 	f->buffer_size = ffmax(f->buffer_size, ALIGN);
-	fbufset_init(&f->fbuf, conf->n_buffers, f->buffer_size, ALIGN);
-	f->wbuf.ptr = ffmem_align(f->buffer_size, ALIGN);
-	f->wbuf.len = 0;
-	f->wbuf.off = 0;
+	fbufset_init(&f->bufset, conf->n_buffers, f->buffer_size, ALIGN);
+	f->wcache.buf.ptr = ffmem_align(f->buffer_size, ALIGN);
 	return f;
 }
 
@@ -81,9 +93,9 @@ static void mtime_set(struct file *f)
 
 static void prealloc_trunc(struct file *f)
 {
-	if (f->prealloc <= f->size) return;
+	if (f->w.prealloc <= f->size) return;
 
-	fcom_dbglog("%s: truncate: %U/%U", f->name, f->size, f->prealloc);
+	fcom_dbglog("%s: truncate: %U/%U", f->name, f->size, f->w.prealloc);
 
 	fffd fd = f->fd;
 
@@ -102,7 +114,7 @@ static void prealloc_trunc(struct file *f)
 		fcom_syserrlog("%s: fffile_trunc", f->name);
 		goto end;
 	}
-	f->prealloc = f->size;
+	f->w.prealloc = f->size;
 
 end:
 	if (fd != f->fd)
@@ -154,8 +166,8 @@ static void file_destroy(fcom_file_obj *_f)
 		return;
 
 	file_close(f);
-	ffmem_alignfree(f->wbuf.ptr);
-	fbufset_destroy(&f->fbuf);
+	ffmem_alignfree(f->wcache.buf.ptr);
+	fbufset_destroy(&f->bufset);
 	ffmem_free(f->name);
 	ffmem_free(f);
 }
@@ -166,9 +178,9 @@ static int file_open(fcom_file_obj *_f, const char *name, uint how)
 	file_close(f);
 	f->open_flags = how;
 
-	fbufset_reset(&f->fbuf);
+	fbufset_reset(&f->bufset);
 	f->size = 0;
-	f->prealloc = 0;
+	f->w.prealloc = 0;
 	f->cur_off = 0;
 	ffmem_zero_obj(&f->mtime);
 
@@ -181,6 +193,15 @@ static int file_open(fcom_file_obj *_f, const char *name, uint how)
 		fcom_dbglog("file: using stdout");
 		f->open_flags |= FCOM_FILE_WRITE | FCOM_FILE_NO_PREALLOC;
 		f->fd = f->fd_stdout;
+
+#ifdef FF_WIN
+		DWORD ocap;
+		if (GetNamedPipeInfo(f->fd, NULL, &ocap, NULL, NULL)) {
+			f->w.pipe_buf_cap = ocap;
+			f->buffer_size = ffint_align_floor2(ocap, 512); // otherwise file_flush() may return ASYNC which is not supported
+		}
+#endif
+
 		return FCOM_FILE_OK;
 	}
 
@@ -266,12 +287,12 @@ static int file_read(fcom_file_obj *_f, ffstr *d, int64 off)
 	if (off == -1)
 		off = f->cur_off;
 
-	if (NULL != (b = fbufset_find(&f->fbuf, off))) {
+	if (NULL != (b = fbufset_find(&f->bufset, off))) {
 		fcom_dbglog("%s: @%U: cache hit: %L @%U", f->name, off, b->len, b->off);
 		goto done;
 	}
 
-	b = fbufset_nextbuf(&f->fbuf);
+	b = fbufset_nextbuf(&f->bufset);
 
 	fftime t1, t2 = {};
 	f_benchmark(&t1);
@@ -330,54 +351,141 @@ static int f_write(struct file *f, ffstr d, uint64 off)
 
 	if (f->open_flags & FCOM_FILE_STDOUT) {
 		if (off != f->size) {
-			fcom_errlog("invalid seeking on stdout");
-			return FCOM_FILE_ERR;
+			fcom_errlog("detected seeking attempt on output stream: %U  fsize:%U", off, f->size);
+			return -FCOM_FILE_ERR;
 		}
 
+#ifdef FF_WIN
+		if (f->w.pipe_buf_cap != 0 && d.len > f->w.pipe_buf_cap)
+			d.len = f->w.pipe_buf_cap; // shrink the data chunk so it fits inside the kernel buffer
+#endif
+
 		r = ffpipe_write(f->fd, d.ptr, d.len);
+		len = r;
 	} else {
 		if (f->open_flags & FCOM_FILE_DIRECTIO) {
 			len = ffint_align_ceil2(d.len, ALIGN);
 			ffmem_fill(d.ptr + d.len, 0x00, len - d.len); // zero the trailer
 		}
 		r = fffile_writeat(f->fd, d.ptr, len, off);
+		if (r > (ssize_t)d.len)
+			r = d.len;
 	}
 
 	if (r < 0 && fferr_again(fferr_last()))
-		return FCOM_FILE_ASYNC;
+		return -FCOM_FILE_ASYNC;
 
 	if (r < 0) {
 		fcom_syserrlog("file write: %s %L @%U", f->name, len, off);
-		return FCOM_FILE_ERR;
+		return -FCOM_FILE_ERR;
 	}
 
 	if (f_benchmark(&t2)) {
 		fftime_sub(&t2, &t1);
 		fftime_add(&f->stats.t_write, &t2);
-		f->stats.total_write += len;
+		f->stats.total_write += r;
 	}
 
-	fcom_dbglog("%s: written %L @%U", f->name, len, off);
-	if (off + d.len > f->size)
-		f->size = off + d.len;
-	if (f->prealloc < off + len)
-		f->prealloc = off + len;
-	return 0;
+	fcom_dbglog("%s: written %L @%U", f->name, r, off);
+	if (off + r > f->size)
+		f->size = off + r;
+	if (f->w.prealloc < off + len)
+		f->w.prealloc = off + len;
+	return r;
 }
 
 static int file_flush(fcom_file_obj *_f, uint flags)
 {
 	struct file *f = _f;
-	ffstr d;
-	ffstr_set(&d, f->wbuf.ptr, f->wbuf.len);
-	if (d.len != 0) {
-		int r = f_write(f, d, f->wbuf.off);
-		if (r != 0)
-			return r;
-		f->wbuf.len = 0;
-		f->wbuf.off = 0;
+	ffstr d = FFSTR_INITN(f->wcache.buf.ptr, f->wcache.buf.len);
+	uint64 off = f->wcache.buf.off;
+	while (d.len) {
+		ffssize r = f_write(f, d, off);
+		if (r < 0)
+			return -r;
+		off += r;
+		ffstr_shift(&d, r);
 	}
+	f->wcache.buf.len = 0;
+	f->wcache.buf.off = 0;
 	return 0;
+}
+
+static int fw_cache(struct file *f, ffstr *io_data, int64 *io_off)
+{
+	ffstr d = *io_data;
+	int64 off = *io_off;
+	if (off == -1)
+		off = f->cur_off;
+	if (f->wcache.continued) {
+		f->wcache.continued = 0;
+		d = f->wcache.user_data;
+		f->wcache.user_data.len = 0;
+		off = f->cur_off;
+	}
+	size_t n = d.len;
+	ffstr out;
+	int64 woff = fbuf_write(&f->wcache.buf, f->buffer_size, &d, off, &out);
+	size_t rd = n - d.len;
+	if (rd && f->wcache.buf.len) {
+		fcom_dbglog("%s: write: cached %L bytes @%U+%L"
+			, f->name, rd, f->wcache.buf.off, f->wcache.buf.len);
+	}
+	f->cur_off = off + rd;
+	if (woff < 0) {
+		return FCOM_FILE_OK; // user data is cached
+	}
+
+	f->wcache.buf.len = 0;
+	f->wcache.buf.off = 0;
+	*io_data = out;
+	*io_off = woff;
+	f->wcache.user_data = d;
+	f->wcache.continued = 1;
+	return -1; // data chunk is ready for writing
+}
+
+static int fw_write(struct file *f, ffstr *io_data, int64 *io_off)
+{
+	ffstr d = *io_data;
+	int64 off = *io_off;
+	if (f->w.async) {
+		f->w.async = 0;
+		d = f->w.buf;
+		f->w.buf.len = 0;
+		off = f->w.off;
+	} else {
+		FF_ASSERT(off != -1);
+	}
+
+	if (!(f->open_flags & FCOM_FILE_NO_PREALLOC) && f->w.prealloc < off + d.len) {
+		f->w.prealloc = ffint_align_power2(off + d.len);
+		if (fffile_trunc(f->fd, f->w.prealloc)) {
+			fcom_syswarnlog("fffile_trunc: %s", f->name);
+			f->open_flags |= FCOM_FILE_NO_PREALLOC;
+		}
+	}
+
+	ssize_t r = f_write(f, d, off);
+	if (r == -FCOM_FILE_ASYNC) {
+		f->w.buf = d;
+		f->w.async = 1;
+		f->w.off = off;
+		return FCOM_FILE_ASYNC; // kernel buffer is full
+	} else if (r < 0) {
+		return -r; // failed to write data
+	}
+
+	f->w.off = off + r;
+	if ((size_t)r != d.len) {
+		ffstr_shift(&d, r);
+		f->w.buf = d;
+		f->w.async = 1;
+		return FCOM_FILE_ASYNC; // kernel buffer is full
+	}
+
+	io_data->len = 0;
+	return -1; // data chunk was written successfully
 }
 
 static int file_write(fcom_file_obj *_f, ffstr data, int64 off)
@@ -386,39 +494,17 @@ static int file_write(fcom_file_obj *_f, ffstr data, int64 off)
 	if (f->open_flags & FCOM_FILE_FAKEWRITE)
 		return FCOM_FILE_OK;
 
-	if (off == -1)
-		off = f->cur_off;
-
-	if (!(f->open_flags & FCOM_FILE_NO_PREALLOC) && f->prealloc < off + data.len) {
-		f->prealloc = ffint_align_power2(off + data.len);
-		if (0 != fffile_trunc(f->fd, f->prealloc)) {
-			fcom_syswarnlog("fffile_trunc: %s", f->name);
-			f->open_flags |= FCOM_FILE_NO_PREALLOC;
-		}
-	}
-
+	int r;
 	for (;;) {
-		ffstr d;
-		ffsize n = data.len;
-		ffint64 woff = fbuf_write(&f->wbuf, f->buffer_size, &data, off, &d);
-		off += n - data.len;
-		if (n != data.len) {
-			fcom_dbglog("%s: write: cached %L bytes @%U+%L", f->name, n - data.len, f->wbuf.off, f->wbuf.len);
+		if (!f->w_write) {
+			r = fw_cache(f, &data, &off);
+		} else {
+			r = fw_write(f, &data, &off);
 		}
-		if (woff < 0) {
-			break;
-		}
-
-		int r;
-		if (0 != (r = f_write(f, d, woff)))
+		if (r >= 0)
 			return r;
-
-		f->wbuf.len = 0;
-		f->wbuf.off = 0;
+		f->w_write = !f->w_write;
 	}
-
-	f->cur_off = off;
-	return FCOM_FILE_OK;
 }
 
 static int file_write_fmt(fcom_file_obj *_f, const char *fmt, ...)
@@ -443,13 +529,13 @@ static int file_trunc(fcom_file_obj *_f, int64 size)
 
 	if (size == -1)
 		size = f->cur_off;
-	f->prealloc = size;
+	f->w.prealloc = size;
 
-	if (0 != fffile_trunc(f->fd, f->prealloc)) {
+	if (0 != fffile_trunc(f->fd, f->w.prealloc)) {
 		fcom_syswarnlog("fffile_trunc: %s", f->name);
 		f->open_flags |= FCOM_FILE_NO_PREALLOC;
 	}
-	fcom_dbglog("%s: truncate: %U", f->name, f->prealloc);
+	fcom_dbglog("%s: truncate: %U", f->name, f->w.prealloc);
 	return 0;
 }
 
@@ -491,6 +577,11 @@ static fffd file_fd(fcom_file_obj *_f, uint flags)
 static int file_info(fcom_file_obj *_f, fffileinfo *fi)
 {
 	struct file *f = _f;
+
+	if (f->open_flags & (FCOM_FILE_STDIN | FCOM_FILE_STDOUT)) {
+		ffmem_zero_obj(fi);
+		return 0;
+	}
 
 	if (f->open_flags & FCOM_FILE_INFO_NOFOLLOW) {
 		if (0 != fffile_info_linkpath(f->name, fi)) {
