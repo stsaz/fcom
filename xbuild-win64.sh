@@ -42,28 +42,32 @@ fi
 cat >build_win64.sh <<EOF
 set -xe
 
+mkdir -p ../ffpack/_windows-amd64
 make -j8 \
- -C ../ffpack \
+ -C ../ffpack/_windows-amd64 \
+ -f ../Makefile \
+ -I .. \
  OS=windows \
  COMPILER=gcc \
  CROSS_PREFIX=x86_64-w64-mingw32-
-make md5check \
- -C ../ffpack
 
+mkdir -p 3pt/_windows-amd64
 make -j8 \
- -C 3pt \
+ -C 3pt/_windows-amd64 \
+ -f ../Makefile \
+ -I .. \
  OS=windows \
  COMPILER=gcc \
  CROSS_PREFIX=x86_64-w64-mingw32-
-# make md5check
 
+mkdir -p 3pt-pic/_windows-amd64
 make -j8 \
- -C 3pt-pic \
+ -C 3pt-pic/_windows-amd64 \
+ -f ../Makefile \
+ -I .. \
  OS=windows \
  COMPILER=gcc \
  CROSS_PREFIX=x86_64-w64-mingw32-
-make md5check \
- -C 3pt-pic
 
 mkdir -p _windows-amd64
 make -j8 \

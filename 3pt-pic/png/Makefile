@@ -4,19 +4,19 @@ include ../config.mk
 
 VER := 1.6.37
 URL := https://download.sourceforge.net/libpng/libpng-$(VER).tar.xz
-PKG := $(notdir $(URL))
+PKG := $(FCOM_3PT)/png/$(notdir $(URL))
 DIR := libpng-$(VER)
 LIB := libpng-ff.$(SO)
 
 CONFIGURE_FLAGS :=
-ifeq ($(OS),windows)
+ifeq "$(OS)" "windows"
 	CONFIGURE_FLAGS += --host=x86_64-w64-mingw32
 endif
-all: $(DIR)
+default: $(DIR)
 	cd $(DIR) && cat ../*.patch | patch -p1
 	cp $(DIR)/scripts/pnglibconf.h.prebuilt $(DIR)/pnglibconf.h
 	cd $(DIR) && ./configure $(CONFIGURE_FLAGS)
-	$(MAKE) -rR $(LIB)
+	$(SUBMAKE) $(LIB)
 
 # download
 $(PKG):
@@ -25,7 +25,6 @@ $(PKG):
 # unpack
 $(DIR): $(PKG)
 	$(UNTAR_XZ) $(PKG)
-	touch $(DIR)
 
 # build
 CFLAGS += \
@@ -50,11 +49,14 @@ SRC := $(DIR)/png.o \
 
 OBJ := png-ff.o $(SRC:.c=.o)
 
+%.o: $(FCOM_3PT)/png/%.c
+	$(C) $(CFLAGS) $< -o $@
+
 %.o: %.c
 	$(C) $(CFLAGS) $< -o $@
 
 $(LIB): $(OBJ)
-	$(LINK) -shared $(OBJ) ../zlib/libz.a $(LINKFLAGS) -o $@
+	$(LINK) -shared $+ libz.a $(LINKFLAGS) -o $@
 
 clean:
 	$(RM) $(OBJ) $(DIR)

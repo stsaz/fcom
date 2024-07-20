@@ -1,40 +1,31 @@
 # Third-party code with easy interfaces (wrappers)
 
 include config.mk
-BINDIR := _$(OS)-$(CPU)
+export FCOM_3PT := $(dir $(firstword $(MAKEFILE_LIST)))
 LIBS := aes md5 sha
 
-default:
-	$(MKDIR) $(BINDIR)
-	$(MAKE) $(LIBS)
+default: $(LIBS)
+# 	$(SUBMAKE) md5check
 
 .PHONY: aes
-aes: $(BINDIR)/AES.a
-$(BINDIR)/AES.a:
-	$(MAKE) -C aes -I ..
-	cp -au aes/*.a $(BINDIR)
+aes: AES.a
+AES.a:
+	$(MAKE) -f $(FCOM_3PT)/aes/Makefile
 
 .PHONY: md5
-md5: $(BINDIR)/MD5.a
-$(BINDIR)/MD5.a:
-	$(MAKE) -C md5 -I ..
-	cp -au md5/*.a $(BINDIR)
+md5: MD5.a
+MD5.a:
+	$(MAKE) -f $(FCOM_3PT)/md5/Makefile
 
 .PHONY: sha
-sha: $(BINDIR)/SHA256.a
-$(BINDIR)/SHA256.a:
-	$(MAKE) -C sha -I ..
-	cp -au sha/*.a $(BINDIR)
-
-clean:
-	$(MAKE) -C aes clean
-	$(MAKE) -C md5 clean
-	$(MAKE) -C sha clean
+sha: SHA256.a
+SHA256.a:
+	$(MAKE) -f $(FCOM_3PT)/sha/Makefile
 
 md5write:
-	md5sum -b \
+	cd $(FCOM_3PT) && md5sum -b \
 		files \
 		>packages.md5
 
 md5check:
-	md5sum -c packages.md5 --ignore-missing
+	cd $(FCOM_3PT) && md5sum -c packages.md5 --ignore-missing

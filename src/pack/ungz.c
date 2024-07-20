@@ -133,6 +133,7 @@ static int gzread(struct ungz *z, ffstr *in, ffstr *out)
 	}
 
 	case FFGZREAD_DATA:
+		fcom_dbglog("gzip read: %L -> %L", n - in->len, out->len);
 		z->out_total += out->len;
 		return 'data';
 
@@ -144,6 +145,7 @@ static int gzread(struct ungz *z, ffstr *in, ffstr *out)
 		return 'done';
 
 	case FFGZREAD_MORE:
+		fcom_dbglog("gzip read: %L -> 0", n - in->len);
 		return 'more';
 
 	case FFGZREAD_SEEK:

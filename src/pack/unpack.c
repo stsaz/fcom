@@ -169,17 +169,10 @@ static int unpack_begin(struct unpack *u)
 		return 'next';
 
 	if (opname2) {
-		if (ffpipe_create(&u->pr, &u->pw)) {
+		if (ffpipe_create2(&u->pr, &u->pw, FFPIPE_NONBLOCK)) {
 			fcom_syserrlog("ffpipe_create");
 			return -1;
 		}
-
-		if (ffpipe_nonblock(u->pr, 1)
-			|| ffpipe_nonblock(u->pw, 1)) {
-			fcom_syserrlog("fffile_nonblock");
-			return -1;
-		}
-
 		if (unpack_child(u, opname, 1))
 			return -1;
 		if (unpack_child(u, opname2, 2))

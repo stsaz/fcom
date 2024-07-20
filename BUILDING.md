@@ -14,10 +14,10 @@ git clone --depth=1 https://github.com/stsaz/fcom
 
 ## Step 2. Cross-Build
 
-* Cross-Build on Linux for Debian-buster:
+* Cross-Build on Linux for Debian-bookworm:
 
 	```sh
-	bash xbuild-debianbuster.sh
+	bash xbuild-debianbookworm.sh
 	```
 
 * Cross-Build on Linux for Windows/AMD64:
@@ -30,14 +30,19 @@ git clone --depth=1 https://github.com/stsaz/fcom
 
 ```sh
 make -j8 -C ffpack
-make md5check -C ffpack
 
 cd fcom
-make -j8 -C 3pt
-# make md5check
+mkdir -p 3pt/_linux-amd64
+make -j8 \
+ -C 3pt/_linux-amd64 \
+ -f ../Makefile \
+ -I ..
 
-make -j8 -C 3pt-pic
-make md5check -C 3pt-pic
+mkdir -p 3pt-pic/_linux-amd64
+make -j8 \
+ -C 3pt-pic/_linux-amd64 \
+ -f ../Makefile \
+ -I ..
 
 make -j8
 ```

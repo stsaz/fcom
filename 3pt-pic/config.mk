@@ -1,12 +1,12 @@
 include ../../ffbase/conf.mk
 
-CFLAGS := -fpic -fvisibility=hidden -g
+CFLAGS := -fPIC -fvisibility=hidden -g
 ifneq "$(DEBUG)" "1"
 	CFLAGS += -O3
 endif
 CXXFLAGS := $(CFLAGS)
 
-LINKFLAGS = -fpic $(LINK_INSTALLNAME_LOADERPATH) -lm
+LINKFLAGS = -fpic $(LINK_INSTALLNAME_LOADERPATH)
 ifneq "$(DEBUG)" "1"
 	LINKFLAGS += -s
 endif

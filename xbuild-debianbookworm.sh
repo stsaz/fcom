@@ -44,19 +44,23 @@ fi
 cat >build_linux.sh <<EOF
 set -xe
 
+mkdir -p ../ffpack/_linux-amd64
 make -j8 \
- -C ../ffpack
-make md5check \
- -C ../ffpack
+ -C ../ffpack/_linux-amd64 \
+ -f ../Makefile \
+ -I ..
 
+mkdir -p 3pt/_linux-amd64
 make -j8 \
- -C 3pt
-# make md5check
+ -C 3pt/_linux-amd64 \
+ -f ../Makefile \
+ -I ..
 
+mkdir -p 3pt-pic/_linux-amd64
 make -j8 \
- -C 3pt-pic
-make md5check \
- -C 3pt-pic
+ -C 3pt-pic/_linux-amd64 \
+ -f ../Makefile \
+ -I ..
 
 mkdir -p _linux-amd64
 make -j8 \

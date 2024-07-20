@@ -110,7 +110,7 @@ static inline ffint64 fbuf_write(struct fbuf *b, ffsize cap, ffstr *in, uint64 o
 		return b->off;
 	}
 
-	if (cap < in->len) {
+	if (cap <= in->len) {
 		// input data is very large, don't buffer it
 		*out = *in;
 		ffstr_shift(in, in->len);

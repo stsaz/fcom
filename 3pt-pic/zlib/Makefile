@@ -4,12 +4,12 @@ include ../config.mk
 
 VER := 1.2.11
 URL := https://www.zlib.net/zlib-$(VER).tar.xz
-PKG := $(notdir $(URL))
+PKG := $(FCOM_3PT)/zlib/$(notdir $(URL))
 DIR := zlib-$(VER)
 LIB := libz.a
 
-all: $(DIR)
-	$(MAKE) -rR $(LIB)
+default: $(DIR)
+	$(SUBMAKE) $(LIB)
 
 # download
 $(PKG):
@@ -18,7 +18,6 @@ $(PKG):
 # unpack
 $(DIR): $(PKG)
 	$(UNTAR_XZ) $(PKG)
-	touch $(DIR)
 
 # build
 CFLAGS += -I$(DIR) \

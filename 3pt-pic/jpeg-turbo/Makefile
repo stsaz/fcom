@@ -4,15 +4,15 @@ include ../config.mk
 
 VER := 2.1.5.1
 URL := https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/$(VER).tar.gz
-PKG := $(notdir $(URL))
+PKG := $(FCOM_3PT)/jpeg-turbo/$(notdir $(URL))
 DIR := libjpeg-turbo-$(VER)
 LIB := libjpeg-turbo-ff.$(SO)
 
-all: $(DIR)
-	mkdir -p $(DIR)/build
+default: $(DIR)
+	$(MKDIR) $(DIR)/build
 	cd $(DIR)/build && cmake -G"Unix Makefiles" -DWITH_JPEG8=1 ..
 	$(SED) 's/#define THREAD_LOCAL  __thread/#define THREAD_LOCAL/' $(DIR)/build/jconfigint.h
-	$(MAKE) -rR $(LIB)
+	$(SUBMAKE) $(LIB)
 
 # download
 $(PKG):
@@ -111,6 +111,9 @@ SRC_ASM := \
 	$(DIR)/simd/x86_64/jquanti-avx2.asm
 
 OBJ := $(SRC_ASM:.asm=.asm.o) jpeg-ff.o $(SRC_C:.c=.o)
+
+%.o: $(FCOM_3PT)/jpeg-turbo/%.c
+	$(C) $(CFLAGS) $< -o $@
 
 %.o: %.c
 	$(C) $(CFLAGS) $< -o $@

@@ -2,19 +2,13 @@
 
 include ../config.mk
 
-LIB := MD5.a
+default: MD5.a
 
-default: $(LIB)
-
-# build
-CFLAGS := -O3 -fPIC
-
-OBJ := md5.o
-%.o: %.c
+%.o: $(FCOM_3PT)/md5/%.c
 	$(C) $(CFLAGS) $< -o $@
 
-$(LIB): $(OBJ)
-	$(AR) rcs $@ $(OBJ)
+MD5.a: md5.o
+	$(AR) rcs $@ $+
 
 clean:
-	$(RM) $(OBJ) $(DIR)
+	$(RM) *.o $(DIR)

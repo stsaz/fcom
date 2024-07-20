@@ -4,24 +4,25 @@ include ../config.mk
 
 VER :=
 URL := https://github.com/BrianGladman/aes/archive/refs/heads/master.zip
-PKG := $(notdir $(URL))
+PKG := $(FCOM_3PT)/aes/$(notdir $(URL))
 DIR := aes-master
 LIB := AES.a
 
-all: $(DIR)
-	$(MAKE) -rR $(LIB)
+default: $(DIR)
+	$(SUBMAKE) $(LIB)
 
 # download
 $(PKG):
-	$(CURL) -o $(PKG) $(URL)
+	$(CURL) -o $@ $(URL)
 
 # unpack
 $(DIR): $(PKG)
 	$(UNZIP) $(PKG)
-	touch $(DIR)
 
 # build
-CFLAGS := -O3 -DASM_AMD64_C -DINTEL_AES_POSSIBLE -I$(DIR) -fPIC
+CFLAGS += \
+	-DASM_AMD64_C -DINTEL_AES_POSSIBLE \
+	-I$(DIR)
 
 YASM := yasm
 YASM_FLAGS := -f elf64
@@ -30,6 +31,15 @@ ifeq "$(OS)" "windows"
 endif
 YASM_FLAGS += -m amd64 -DASM_AMD64_C -DINTEL_AES_POSSIBLE
 
+%.o: $(FCOM_3PT)/aes/%.c
+	$(C) $(CFLAGS) $< -o $@
+
+%.o: %.c
+	$(C) $(CFLAGS) $< -o $@
+
+%.o: %.asm
+	$(YASM) $(YASM_FLAGS) $< -o $@
+
 OBJ := aes-ff.o \
 	$(DIR)/aes_amd64.o \
 	$(DIR)/aeskey.o \
@@ -37,14 +47,9 @@ OBJ := aes-ff.o \
 	$(DIR)/aes_ni.o \
 	$(DIR)/aestab.o
 
-%.o: %.c
-	$(C) $(CFLAGS) $< -o $@
-%.o: %.asm
-	$(YASM) $(YASM_FLAGS) $< -o $@
-
 $(LIB): $(OBJ)
-	rm $@ || true
-	$(AR) rcs $@ $(OBJ)
+	$(RM) $@
+	$(AR) rcs $@ $+
 
 clean:
-	$(RM) $(OBJ) $(DIR)
+	$(RM) *.o $(DIR)
