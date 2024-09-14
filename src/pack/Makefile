@@ -34,7 +34,7 @@ xz.$(SO): unxz.o \
 	$(LINK) -shared $+ $(LINKFLAGS) -L$(FFPACK_BINDIR) -llzma-ffpack $(LINK_RPATH_ORIGIN) -o $@
 
 zip.o: $(FCOM_DIR)/src/pack/zip.c
-	$(C) $(CFLAGS) -I$(FFPACK_DIR) -DFFPACK_ZIPWRITE_ZLIB -DFFPACK_ZIPWRITE_ZSTD $< -o $@
+	$(C) $(CFLAGS) -I$(FFPACK_DIR) -DFFPACK_ZIPREAD_ZLIB -DFFPACK_ZIPREAD_ZSTD -DFFPACK_ZIPWRITE_ZLIB -DFFPACK_ZIPWRITE_ZSTD $< -o $@
 crc.o: $(FFPACK_DIR)/crc/crc.c
 	$(C) $(CFLAGS) -I$(FFPACK_DIR) $< -o $@
 zip.$(SO): zip.o unzip.o \

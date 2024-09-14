@@ -230,7 +230,8 @@ static int untar_read(struct untar *t, ffstr *input, ffstr *output)
 			case TAR_HLINK: case TAR_SLINK:
 				break;
 			default:
-				fcom_warnlog("%s: unsupported file type '%c'", tf->name, tf->type);
+				fcom_warnlog("%S: unsupported file type '%c'"
+					, &tf->name, tf->type);
 				continue;
 			}
 

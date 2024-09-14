@@ -147,17 +147,10 @@ static int pack_begin(struct pack *p, ffstr oname)
 		return -1;
 
 	if (opname2) {
-		if (ffpipe_create(&p->pr, &p->pw)) {
+		if (ffpipe_create2(&p->pr, &p->pw, FFPIPE_NONBLOCK)) {
 			fcom_syserrlog("ffpipe_create");
 			return -1;
 		}
-
-		if (ffpipe_nonblock(p->pr, 1)
-			|| ffpipe_nonblock(p->pw, 1)) {
-			fcom_syserrlog("fffile_nonblock");
-			return -1;
-		}
-
 		if (pack_child(p, opname, 1))
 			return -1;
 		if (pack_child(p, opname2, 2))
