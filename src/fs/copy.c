@@ -33,7 +33,6 @@ OPTIONS:\n\
 #include <fcom.h>
 #include <ffsys/path.h>
 #include <ffsys/globals.h>
-#include <util/util.hpp>
 
 static const fcom_core *core;
 
@@ -49,10 +48,10 @@ struct copy {
 	fcom_cominfo *cmd;
 	uint stop;
 
-	fcom_filexx	input;
+	fcom_file_obj*	input;
 	ffstr		name;
 	char*		iname;
-	xxfileinfo	fi;
+	fffileinfo	fi;
 	uint64		in_off;
 	uint		nfiles;
 	ffstr		basename;
@@ -69,13 +68,12 @@ struct copy {
 	} cr;
 
 	struct o_s {
-		o_s() : f(core) {}
 		uint		state;
-		fcom_filexx	f;
+		fcom_file_obj*	f;
 		uint64		total, off;
 		char*		name;
 		char*		name_tmp;
-		xxfileinfo	fi;
+		fffileinfo	fi;
 		uint		del_on_close :1;
 	} o;
 
@@ -93,53 +91,53 @@ struct copy {
 	u_char replace_date;
 	u_char update;
 	u_char write_into;
-
-	copy() : input(core) {}
-
-	int input_next()
-	{
-		int r;
-		if (0 > core->com->input_next(this->cmd, &this->name, &this->basename, 0)) {
-			if (!this->nfiles) {
-				fcom_errlog("no input files");
-				return 'erro';
-			}
-			return 'done';
-		}
-		this->nfiles++;
-		this->iname = ffsz_dupstr(&this->name);
-
-		uint flags = FCOM_FILE_READ | FCOM_FILE_READAHEAD;
-		flags |= fcom_file_cominfo_flags_i(this->cmd);
-		r = this->input.open(this->iname, flags);
-		if (r == FCOM_FILE_ERR) return 'erro';
-
-		r = this->input.info(&this->fi);
-		if (r == FCOM_FILE_ERR) return 'erro';
-
-		if (core->com->input_allowed(this->cmd, this->name, this->fi.dir())) {
-			return 'next';
-		}
-
-		if (this->fi.dir() && this->cmd->recursive)
-			core->com->input_dir(this->cmd, this->input.acquire_fd());
-
-		return 0;
-	}
-
-	void complete()
-	{
-		if (this->rename_source) {
-			xxvec fn;
-			if (fffile_rename(this->iname, fn.add_f("%s.deleted", this->iname).strz())) {
-				fcom_syserrlog("file rename: '%s' -> '%s'", this->iname, fn.ptr);
-			}
-		}
-
-		fcom_verblog("'%s' -> '%s'  [%,U]"
-			, this->iname, this->o.name, this->o.total);
-	}
 };
+
+static int copy_input_next(struct copy *c)
+{
+	int r;
+	if (0 > core->com->input_next(c->cmd, &c->name, &c->basename, 0)) {
+		if (!c->nfiles) {
+			fcom_errlog("no input files");
+			return 'erro';
+		}
+		return 'done';
+	}
+	c->nfiles++;
+	c->iname = ffsz_dupstr(&c->name);
+
+	uint flags = FCOM_FILE_READ | FCOM_FILE_READAHEAD;
+	flags |= fcom_file_cominfo_flags_i(c->cmd);
+	r = core->file->open(c->input, c->iname, flags);
+	if (r == FCOM_FILE_ERR) return 'erro';
+
+	r = core->file->info(c->input, &c->fi);
+	if (r == FCOM_FILE_ERR) return 'erro';
+
+	unsigned dir = fffile_isdir(fffileinfo_attr(&c->fi));
+	if (core->com->input_allowed(c->cmd, c->name, dir)) {
+		return 'next';
+	}
+
+	if (dir && c->cmd->recursive)
+		core->com->input_dir(c->cmd, core->file->fd(c->input, FCOM_FILE_ACQUIRE));
+
+	return 0;
+}
+
+static void copy_complete(struct copy *c)
+{
+	if (c->rename_source) {
+		char *fn = ffsz_allocfmt("%s.deleted", c->iname);
+		if (fffile_rename(c->iname, fn)) {
+			fcom_syserrlog("file rename: '%s' -> '%s'", c->iname, fn);
+		}
+		ffmem_free(fn);
+	}
+
+	fcom_verblog("'%s' -> '%s'  [%,U]"
+		, c->iname, c->o.name, c->o.total);
+}
 
 #define O(member)  (void*)FF_OFF(struct copy, member)
 
@@ -165,7 +163,7 @@ static int args_parse(struct copy *c, fcom_cominfo *cmd)
 		{ "-y",				'1',	O(verify) },
 		{}
 	};
-	if (0 != core->com->args_parse(cmd, args, c, FCOM_COM_AP_INOUT))
+	if (core->com->args_parse(cmd, args, c, FCOM_COM_AP_INOUT))
 		return -1;
 
 	if (!(cmd->chdir.len || cmd->output.len))
@@ -194,15 +192,15 @@ static void copy_close(fcom_op *op)
 	crypt_close(c);
 	verify_reset(c);
 	output_close(c);
-	c->~copy();
+	core->file->destroy(c->input);
 	ffmem_free(c);
 }
 
 static fcom_op* copy_create(fcom_cominfo *cmd)
 {
-	struct copy *c = new(ffmem_new(struct copy)) struct copy;
+	struct copy *c = ffmem_new(struct copy);
 
-	if (0 != args_parse(c, cmd))
+	if (args_parse(c, cmd))
 		goto end;
 	c->cmd = cmd;
 
@@ -210,12 +208,12 @@ static fcom_op* copy_create(fcom_cominfo *cmd)
 	struct fcom_file_conf fc = {};
 	fc.buffer_size = cmd->buffer_size;
 	fc.n_buffers = 1;
-	c->input.create(&fc);
+	c->input = core->file->create(&fc);
 	}
 
-	if (0 != output_init(c)) goto end;
-	if (0 != crypt_init(c)) goto end;
-	if (0 != verify_init(c)) goto end;
+	if (output_init(c)) goto end;
+	if (crypt_init(c)) goto end;
+	if (verify_init(c)) goto end;
 
 	return c;
 
@@ -252,7 +250,7 @@ static void copy_run(fcom_op *op)
 
 		case I_SRC:
 			copy_reset(c);
-			switch (c->input_next()) {
+			switch (copy_input_next(c)) {
 			case 'next':
 				c->st = I_SRC;
 				continue;
@@ -276,16 +274,16 @@ static void copy_run(fcom_op *op)
 			}
 			if (r != 0) goto end;
 
-			c->input.behaviour(FCOM_FBEH_SEQ);
+			core->file->behaviour(c->input, FCOM_FBEH_SEQ);
 
-			if (0 != crypt_open(c)) goto end;
-			if (0 != verify_open(c)) goto end;
+			if (crypt_open(c)) goto end;
+			if (verify_open(c)) goto end;
 
 			c->st = I_READ;
 			// fallthrough
 
 		case I_READ:
-			r = c->input.read(&c->data, c->in_off);
+			r = core->file->read(c->input, &c->data, c->in_off);
 			if (r == FCOM_FILE_ERR) goto end;
 			if (r == FCOM_FILE_EOF) {
 				c->st = I_RD_DONE;
@@ -310,23 +308,23 @@ static void copy_run(fcom_op *op)
 				continue;
 			}
 
-			if (0 != crypt_process(c, &c->cr.aes_in, &c->data)) goto end;
+			if (crypt_process(c, &c->cr.aes_in, &c->data)) goto end;
 			verify_process(c, c->data);
 
 			c->st = I_WRITE;
 			// fallthrough
 
 		case I_WRITE:
-			if (0 != output_write(c, c->data)) goto end;
+			if (output_write(c, c->data)) goto end;
 			c->st = I_READ;
 			if (c->cr.aes_obj != NULL)
 				c->st = I_CRYPT;
 			continue;
 
 		case I_RD_DONE:
-			c->o.f.behaviour(FCOM_FBEH_TRUNC_PREALLOC);
+			core->file->behaviour(c->o.f, FCOM_FBEH_TRUNC_PREALLOC);
 			if (c->preserve_date) {
-				c->o.f.mtime(c->fi.mtime1());
+				core->file->mtime_set(c->o.f, fffileinfo_mtime1(&c->fi));
 			}
 
 			if (verify_read_fin(c)) {
@@ -338,10 +336,10 @@ static void copy_run(fcom_op *op)
 			continue;
 
 		case I_VERIFY:
-			r = c->o.f.read(&c->data, c->o.off);
+			r = core->file->read(c->o.f, &c->data, c->o.off);
 			if (r == FCOM_FILE_ERR) goto end;
 			if (r == FCOM_FILE_EOF) {
-				if (0 != verify_result(c))
+				if (verify_result(c))
 					goto end;
 				c->st = I_DONE;
 				continue;
@@ -356,7 +354,7 @@ static void copy_run(fcom_op *op)
 			if (r == 'asyn') return;
 			if (r != 0) goto end;
 
-			c->complete();
+			copy_complete(c);
 
 			c->st = I_SRC;
 			continue;

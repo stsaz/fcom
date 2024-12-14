@@ -454,7 +454,7 @@ static int cmd_input_next(fcom_cominfo *cmd, ffstr *name, ffstr *ubase, uint fla
 #endif
 
 		if (0 != ffdirscan_open(&ds, c->ftree_name.ptr, flags)) {
-			fcom_syserrlog("ffdirscan_open");
+			fcom_syserrlog("ffdirscan_open: %s", c->ftree_name.ptr);
 			return FCOM_COM_RINPUT_ERR;
 		}
 		ffstr path = FFSTR_INITZ(c->ftree_name.ptr);

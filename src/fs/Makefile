@@ -18,12 +18,6 @@ MODS += \
 trash.$(SO): trash.o
 	$(LINK) -shared $+ $(LINKFLAGS) $(LINK_DL) -o $@
 
-list.$(SO): list.o
-	$(LINKXX) -shared $+ $(LINKXXFLAGS) -o $@
-
-copy.$(SO): copy.o
-	$(LINKXX) -shared $+ $(LINKXXFLAGS) -o $@
-
 sync.$(SO): sync.o
 	$(LINKXX) -shared $+ $(LINKXXFLAGS) -o $@
 
