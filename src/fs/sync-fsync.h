@@ -173,7 +173,9 @@ static int sync1(struct sync *s)
 int sync_sync(fcom_sync_diff *sd, void *diff_entry_id, uint flags
 	, void(*on_complete)(void*, int), void *param)
 {
-	const fcom_sync_diff_entry *de = sync_info_id(sd, diff_entry_id, flags);
+	int rc = -1;
+	fcom_sync_diff_entry de_s, *de = &de_s;
+	sync_info_id(sd, diff_entry_id, flags, de);
 	fcom_sync_snapshot *l = sd->left, *r = sd->right;
 	if (flags & FCOM_SYNC_SWAP) {
 		FF_SWAP2(l, r);
@@ -210,7 +212,8 @@ int sync_sync(fcom_sync_diff *sd, void *diff_entry_id, uint flags
 		c->opaque = param;
 		fcom_dbglog("sync: copy: '%S' -> '%S'", &de->lname, &c->output);
 		core->com->run(c);
-		return 1;
+		rc = 1;
+		goto end;
 	}
 
 	case FCOM_SYNC_RIGHT: {
@@ -227,7 +230,8 @@ int sync_sync(fcom_sync_diff *sd, void *diff_entry_id, uint flags
 		c->opaque = param;
 		fcom_dbglog("sync: trash: '%S'", &de->rname);
 		core->com->run(c);
-		return 1;
+		rc = 1;
+		goto end;
 	}
 
 	case FCOM_SYNC_EQ:
@@ -243,14 +247,18 @@ int sync_sync(fcom_sync_diff *sd, void *diff_entry_id, uint flags
 		v.add_f("%S%c%S"
 			, &r->root_dir, FFPATH_SLASH, &lname);
 		if (core->file->move(de->rname, v.str(), FCOM_FILE_MOVE_SAFE))
-			return -1;
+			goto end;
 		break;
 	}
 
 	default:
 		FCOM_ASSERT(0);
-		return -1;
+		goto end;
 	}
 
-	return 0;
+	rc = 0;
+
+end:
+	fcom_sync_diff_entry_destroy(de);
+	return rc;
 }

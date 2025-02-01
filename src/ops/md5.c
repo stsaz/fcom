@@ -117,7 +117,8 @@ static void md5_close(fcom_op *op)
 	struct md5 *m = op;
 	fcom_md5.close(m->hash);
 	core->file->destroy(m->in);
-	core->file->close(m->out);
+	if (m->out)
+		core->file->close(m->out);
 	core->file->destroy(m->out);
 	ffmem_free(m);
 }
@@ -145,7 +146,7 @@ end:
 static void md5_run(fcom_op *op)
 {
 	struct md5 *m = op;
-	int rc = 1;
+	int rc = 1, err = 0;
 	enum { I_IN, I_READ, };
 
 	while (!FFINT_READONCE(m->stop)) {
@@ -153,12 +154,13 @@ static void md5_run(fcom_op *op)
 		case I_IN:
 			switch (md5_open(m)) {
 			case 'done':
-				rc = 0;
+				rc = err;
 				goto end;
 			case 'skip':
 				continue;
 			case 'erro':
-				goto end;
+				err = 1;
+				continue;
 			}
 			m->st = I_READ;
 			// fallthrough
@@ -170,7 +172,9 @@ static void md5_run(fcom_op *op)
 				m->st = I_IN;
 				continue;
 			case 'erro':
-				goto end;
+				err = 1;
+				m->st = I_IN;
+				continue;
 			}
 			continue;
 		}

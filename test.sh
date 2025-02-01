@@ -3,9 +3,9 @@
 
 TESTS=()
 TESTS+=(copy list move sync touch trash)
-TESTS+=(help hex md5 textcount utf8 html disana)
+TESTS+=(help hex md5 textcount utf8 html)
 CMDS_WIN=(reg_search)
-# pic listdisk mount unico
+# pic unico
 
 if test "$#" -lt 1 ; then
 	echo "Usage: bash test.sh (all | CMD...)"
@@ -282,6 +282,7 @@ test_sync_prepare() {
 
 	echo eq >left/d/eq ; cp -a left/d/eq right/d/eq
 	echo moved >left/d/mv ; cp -a left/d/mv right/mv
+	echo renamed >left/d/renamed ; cp -a left/d/renamed right/renamed2
 
 	echo leftmod >left/d/mod
 	sleep .1
@@ -322,12 +323,12 @@ test_sync() {
 	# write snapshot, diff snapshot and dir
 	../fcom -V sync --snapshot "left" -o "fcomtest.snap" -f
 	../fcom -V sync --diff "" --source-snap "fcomtest.snap" -o "right" >LOG
-	grep 'moved:1  add:1  del:1  upd:3  eq:1  total:6/6' LOG
+	grep 'moved:1  add:2  del:2  upd:3  eq:1  total:7/7' LOG
 
 	# diff 2 snapshots
 	../fcom -V sync --snapshot "right" -o "fcomtest-right.snap" -f
 	../fcom -V sync --diff "" --source-snap "fcomtest.snap" --target-snap -o "fcomtest-right.snap" >LOG
-	grep 'moved:1  add:1  del:1  upd:3  eq:1  total:6/6' LOG
+	grep 'moved:1  add:2  del:2  upd:3  eq:1  total:7/7' LOG
 
 	# snapshot 2 dirs
 	../fcom -V sync --snapshot "left" "right" -o "fcomtest2.snap" -f
@@ -415,10 +416,6 @@ test_html() {
 EOF
 	./fcom html "fcomtest/html" --filter "tag.attr" | grep 123
 	./fcom html "fcomtest/html" --filter "tag.attr" | grep 234
-}
-
-test_disana() {
-	objdump -d ./fcom | ./fcom disana
 }
 
 source "$(dirname $0)/test-pack.sh"

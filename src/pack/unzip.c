@@ -20,7 +20,7 @@ OPTIONS:\n\
         `--autodir`   Add to OUTPUT_DIR a directory with name = input archive name.\n\
                      Same as manual 'unzip arc.zip -C odir/arc'.\n\
         `--recovery`  Recovery mode\n\
-        `--skip`      Skip files on error\n\
+    `-k`, `--skip`      Skip files on error\n\
 ";
 }
 
@@ -159,7 +159,10 @@ static int unzip_args_parse(struct unzip *z, fcom_cominfo *cmd)
 		{ "--plain",				'1',	O(list_plain) },
 		{ "--recovery",				'1',	O(recovery) },
 		{ "--skip",					'1',	O(skip) },
+
 		{ "-M",						's',	unzip_args_members_from_file },
+
+		{ "-k",						'1',	O(skip) },
 		{ "-l",						'1',	O(list) },
 		{ "-m",						'+S',	unzip_args_members },
 		{}

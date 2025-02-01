@@ -38,6 +38,8 @@ static void gsync_signal(fcom_op *op, uint signal);
 	_(A_SYNC), \
 	_(A_SYNC_DATE), \
 	_(A_SWAP), \
+	_(A_DIFF_NO_DATE), \
+	_(A_DIFF_MOVE_NO_NAME), \
 	_(A_INCLUDE_CHANGE), \
 	_(A_EXCLUDE_CHANGE), \
 	_(A_RECENTDAYS_CHANGE), \
@@ -119,6 +121,7 @@ struct gsync {
 	fcom_sync_snapshot *lsnap, *rsnap;
 	fcom_sync_diff *diff;
 	struct fcom_sync_props props;
+	struct fcom_sync_diff_entry de;
 
 	uint		show_flags; // enum FCOM_SYNC
 	xxvec		include, exclude; // ffstr[]
@@ -127,10 +130,10 @@ struct gsync {
 	xxvec		sync_items; // struct sync_el[]
 	uint		sync_item_i;
 	fcom_task	core_task;
-	uint		sync_flags;
+	uint		diff_flags, sync_flags;
 
 	ffthread	thread;
-	ffui_menu	mfile, mlist, mpopup;
+	ffui_menuxx	mfile, mlist, mpopup;
 	struct wmain {
 		ffui_windowxx	wnd;
 		ffui_menu		mmenu;
@@ -145,6 +148,7 @@ struct gsync {
 
 	~gsync() {
 		diff_reset();
+		fcom_sync_diff_entry_destroy(&this->de);
 	}
 
 	void error(const char *e)
@@ -219,6 +223,8 @@ struct gsync {
 	{
 		gsync *g = (gsync*)param;
 		g->diff_reset();
+		ffmem_zero_obj(&g->props.stats);
+		g->stats_redraw();
 
 		ffui_thd_post(scan_status_update, g);
 		if (!(g->lsnap = g->scan(xxvec(g->wmain.lpath.text()).str()))) {
@@ -236,8 +242,8 @@ struct gsync {
 		uint f = FCOM_SYNC_DIFF_LEFT_PATH_STRIP
 			| FCOM_SYNC_DIFF_RIGHT_PATH_STRIP
 			| FCOM_SYNC_DIFF_NO_ATTR
-			// | FCOM_SYNC_DIFF_NO_TIME
 			| FCOM_SYNC_DIFF_TIME_2SEC;
+		f |= g->diff_flags;
 		g->diff = g->sync_if->diff(g->lsnap, g->rsnap, &g->props, f);
 
 		g->stats_redraw();
@@ -292,7 +298,9 @@ struct gsync {
 	const struct fcom_sync_diff_entry* entry_at(uint i)
 	{
 		uint f = (this->show_flags & FCOM_SYNC_SWAP);
-		return this->sync_if->info(this->diff, i, f);
+		fcom_sync_diff_entry_destroy(&this->de);
+		this->sync_if->info(this->diff, i, f, &this->de);
+		return &this->de;
 	}
 
 	void list_cell_draw(ffui_view_disp *disp)
@@ -479,6 +487,15 @@ struct gsync {
 		ffui_post_quitloop();
 	}
 
+	void diff_x(uint id, uint f)
+	{
+		if (this->diff_flags & f)
+			this->diff_flags &= ~f;
+		else
+			this->diff_flags |= f;
+		this->mfile.check(id, !!(this->diff_flags & f));
+	}
+
 	void show_x(ffui_checkboxxx &cb, uint flag)
 	{
 		if (cb.checked())
@@ -540,15 +557,18 @@ struct gsync {
 		}
 	}
 
-	static void wnd_new__worker(void *param)
+	void wnd_new()
 	{
-		static const char *argv[] = {
-			"fcom", "gsync", NULL
+		const char *argv[] = {
+			"fcom", "gsync", NULL, NULL, NULL
 		};
 		const char *exe_name = "fcom";
 #ifdef FF_WIN
 		exe_name = "fcom.exe";
 #endif
+		xxvec lpath = this->wmain.lpath.text(), rpath = this->wmain.rpath.text();
+		argv[2] = lpath.strz();
+		argv[3] = rpath.strz();
 		ffps ps = ffps_exec(xxvec(core->path(exe_name)).strz(), argv, core->env);
 		fcom_dbglog("spawned PID %u", ffps_id(ps));
 		ffps_close(ps);
@@ -566,7 +586,7 @@ struct gsync {
 
 		switch (id) {
 		case A_WND_NEW:
-			g->core_task_add(wnd_new__worker); break;
+			g->wnd_new(); break;
 
 		case A_SCAN_CMP:
 			g->core_task_add(scan_and_compare__worker); break;
@@ -578,6 +598,12 @@ struct gsync {
 
 		case A_SWAP:
 			g->src_dst_swap(); break;
+
+		case A_DIFF_NO_DATE:
+			g->diff_x(id, FCOM_SYNC_DIFF_NO_TIME);  break;
+
+		case A_DIFF_MOVE_NO_NAME:
+			g->diff_x(id, FCOM_SYNC_DIFF_MOVE_NO_NAME);  break;
 
 		case A_INCLUDE_CHANGE:
 		case A_EXCLUDE_CHANGE:

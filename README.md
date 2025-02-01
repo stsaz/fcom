@@ -46,14 +46,11 @@ Contents:
 | [textcount](src/text/textcount.c)     | Analyze text files (e.g. print number of lines) |
 | [utf8](src/text/utf8.c)               | Convert files to UTF-8 |
 | **Other:** | |
-| [disana](src/text/disana.c)           | Analyze disassembler listing |
 | [hex](src/ops/hex.c)                  | Print file contents in hexadecimal format |
 | [ico-extract](src/pic/ico-extract.c)  | Extract images from .ico |
 | [md5](src/ops/md5.c)                  | Compute MD5 hash |
 | [pic](src/pic/pic.c)                  | Convert images (.bmp/.jpg/.png) |
 | **Windows-only:** | |
-| [listdisk](src/windows/listdisk.c)    | List logical volumes |
-| [mount](src/windows/mount.c)          | Mount logical volumes |
 | [reg](src/windows/reg.c)              | Windows Registry utils: search |
 
 

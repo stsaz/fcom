@@ -298,29 +298,27 @@ struct sync {
 	/** Show next difference from 'cmp.ents' */
 	int diff_show_next()
 	{
-		const fcom_sync_diff_entry *de = this->sync_if->info(&this->cmp, this->cmp_idx++, 0);
-		if (!de)
+		int rc = 1;
+		fcom_sync_diff_entry de_s, *de = &de_s;
+		if (this->sync_if->info(&this->cmp, this->cmp_idx++, 0, de))
 			return 1;
 
 		if (this->plain_list) {
 			switch (de->status & FCOM_SYNC_MASK) {
 			case FCOM_SYNC_LEFT:
-				ffstdout_fmt("%S\n", &de->lname);
-				break;
+				ffstdout_fmt("%S\n", &de->lname);  break;
 
 			case FCOM_SYNC_RIGHT:
-				ffstdout_fmt("%S\n", &de->rname);
-				break;
+				ffstdout_fmt("%S\n", &de->rname);  break;
 
 			case FCOM_SYNC_NEQ:
-				ffstdout_fmt("%S\n", &de->lname);
-				break;
+				ffstdout_fmt("%S\n", &de->lname);  break;
 
 			case FCOM_SYNC_MOVE:
-				ffstdout_fmt("%S\n", &de->lname);
-				break;
+				ffstdout_fmt("%S\n", &de->lname);  break;
 			}
-			return 0;
+			rc = 0;
+			goto end;
 		}
 
 		switch (de->status & FCOM_SYNC_MASK) {
@@ -336,10 +334,14 @@ struct sync {
 
 		default:
 			FCOM_ASSERT(0);
-			return 1;
+			goto end;
 		}
 
-		return 0;
+		rc = 0;
+
+	end:
+		fcom_sync_diff_entry_destroy(de);
+		return rc;
 	}
 };
 

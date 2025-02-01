@@ -12,8 +12,8 @@
 #undef stdin
 #undef stdout
 
-#define FCOM_VER "1.0-rc17"
-#define FCOM_CORE_VER 10017
+#define FCOM_VER "1.0-rc18"
+#define FCOM_CORE_VER 10018
 
 typedef unsigned char byte;
 typedef unsigned char u_char;
@@ -488,6 +488,7 @@ enum FCOM_SYNC_DIFF {
 	FCOM_SYNC_DIFF_NO_ATTR = 8,
 	FCOM_SYNC_DIFF_NO_TIME = 0x10,
 	FCOM_SYNC_DIFF_TIME_2SEC = 0x20,
+	FCOM_SYNC_DIFF_MOVE_NO_NAME = 0x40,
 };
 
 enum FCOM_SYNC {
@@ -549,6 +550,11 @@ struct fcom_sync_diff_entry {
 	void *id;
 };
 
+static inline void fcom_sync_diff_entry_destroy(struct fcom_sync_diff_entry *de) {
+	ffstr_free(&de->lname);
+	ffstr_free(&de->rname);
+}
+
 typedef struct snapshot fcom_sync_snapshot;
 typedef struct diff fcom_sync_diff;
 typedef struct fcom_sync_if fcom_sync_if;
@@ -576,8 +582,8 @@ struct fcom_sync_if {
 
 	/** Get diff entry.
 	flags: FCOM_SYNC_SWAP */
-	const struct fcom_sync_diff_entry* (*info)(fcom_sync_diff *sd, uint i, uint flags);
-	const struct fcom_sync_diff_entry* (*info_id)(fcom_sync_diff *sd, void *id, uint flags);
+	int (*info)(fcom_sync_diff *sd, uint i, uint flags, struct fcom_sync_diff_entry *dst);
+	int (*info_id)(fcom_sync_diff *sd, void *id, uint flags, struct fcom_sync_diff_entry *dst);
 
 	/** Update diff entry's status.
 	Return the resulting status. */

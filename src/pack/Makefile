@@ -33,8 +33,8 @@ xz.$(SO): unxz.o \
 		crc.o
 	$(LINK) -shared $+ $(LINKFLAGS) -L$(FFPACK_BINDIR) -llzma-ffpack $(LINK_RPATH_ORIGIN) -o $@
 
-zip.o: $(FCOM_DIR)/src/pack/zip.c
-	$(C) $(CFLAGS) -I$(FFPACK_DIR) -DFFPACK_ZIPREAD_ZLIB -DFFPACK_ZIPREAD_ZSTD -DFFPACK_ZIPWRITE_ZLIB -DFFPACK_ZIPWRITE_ZSTD $< -o $@
+unzip.o: CFLAGS += -DFFPACK_ZIPREAD_ZLIB -DFFPACK_ZIPREAD_ZSTD
+zip.o: CFLAGS += -DFFPACK_ZIPWRITE_ZLIB -DFFPACK_ZIPWRITE_ZSTD
 crc.o: $(FFPACK_DIR)/crc/crc.c
 	$(C) $(CFLAGS) -I$(FFPACK_DIR) $< -o $@
 zip.$(SO): zip.o unzip.o \

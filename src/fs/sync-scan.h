@@ -99,7 +99,7 @@ struct snapshot {
 		fntree_block *b = fntree_from_dirscan(path, &ds, sizeof(struct fcom_sync_entry));
 		this->total += b->entries;
 		fntree_attach((fntree_entry*)this->cur.cur, b);
-		fcom_dbglog("added branch '%S' with %u files", &path, b->entries);
+		fcom_dbglog("added branch '%S' with %u files [%U]", &path, b->entries, this->total);
 		ffdirscan_close(&ds);
 		return 0;
 	}
@@ -347,7 +347,7 @@ static struct snapshot* sync_scan_wc(ffstr path, uint flags)
 			parent = d;
 		} else {
 			sync_combine(parent, _fntr_ent_first(d->root));
-			sync_snapshot_free(d);
+			parent->total += d->total;
 		}
 		d = NULL;
 	}

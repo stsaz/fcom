@@ -9,17 +9,23 @@ menu mfile {
 		action A_SCAN_CMP
 		hotkey "F5"
 	}
-	item "Synchronize" {
+	item "Synchronize Selected" {
 		action A_SYNC
 		hotkey "F6"
 	}
-	item "Replace Date" {
+	item "Replace Date for Selected" {
 		action A_SYNC_DATE
 		hotkey "Ctrl+D"
 	}
 	item "Swap Source and Target" {
 		action A_SWAP
 		hotkey "Ctrl+W"
+	}
+	check_item "Diff: Ignore Date" {
+		action A_DIFF_NO_DATE
+	}
+	check_item "Diff: Move: Ignore Name" {
+		action A_DIFF_MOVE_NO_NAME
 	}
 	item "E_xit" {
 		action A_QUIT
@@ -37,6 +43,7 @@ menu mlist {
 menu mpopup {
 	item "Source: Exec" {
 		action A_SRC_EXEC
+		hotkey "Ctrl+X"
 	}
 	item "Source: Show Directory" {
 		action A_SRC_SHOW_DIR
@@ -46,6 +53,7 @@ menu mpopup {
 	}
 	item "Target: Exec" {
 		action A_DST_EXEC
+		hotkey "Ctrl+Shift+X"
 	}
 	item "Target: Show Directory" {
 		action A_DST_SHOW_DIR

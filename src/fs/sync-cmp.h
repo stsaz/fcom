@@ -82,8 +82,9 @@ struct diff {
 		const fntree_entry *r = (fntree_entry*)key;
 		const struct fcom_sync_entry *rd = (struct fcom_sync_entry*)fntree_data(r);
 
-		return l->name_len == r->name_len
-			&& !ffmem_cmp(l->name, r->name, l->name_len)
+		return ((sd->options & FCOM_SYNC_DIFF_MOVE_NO_NAME)
+				|| (l->name_len == r->name_len
+					&& !ffmem_cmp(l->name, r->name, l->name_len)))
 			&& ld->size == rd->size
 			&& ((sd->options & FCOM_SYNC_DIFF_NO_ATTR)
 				|| (ld->unix_attr & FFFILE_UNIX_DIR) == (rd->unix_attr & FFFILE_UNIX_DIR))
@@ -110,7 +111,11 @@ struct diff {
 			*(uint64*)key.mtime_msec = fftime_to_msec(&d->mtime);
 
 		*(uint64*)key.size = d->size;
-		ffuint n = 1+8+8 + ffmem_ncopy(key.name, sizeof(key.name), e->name, e->name_len);
+
+		uint n = 1+8+8;
+		if (!(this->options & FCOM_SYNC_DIFF_MOVE_NO_NAME))
+			n += ffmem_ncopy(key.name, sizeof(key.name), e->name, e->name_len);
+
 		return murmurhash3(&key, n, 0x789abcde);
 	}
 
@@ -167,6 +172,7 @@ struct diff {
 			le = NULL, lb = NULL; break;
 		}
 
+		FF_ASSERT(ents.len < ents.cap);
 		fntree_cmp_ent *ce = ffvec_pushT(&this->ents, fntree_cmp_ent);
 		ce->status = 0;
 		ce->l = le;
@@ -346,11 +352,9 @@ static uint sync_view(fcom_sync_diff *sd, struct fcom_sync_props *props, uint fl
 				|| (rd && (rd->unix_attr & FFFILE_UNIX_DIR))))
 			continue;
 
-		if (flags & FCOM_SYNC_SWAP) {
-			if (rd && fftime_cmp(&rd->mtime, &props->since_time) < 0)
-				continue;
-		} else {
-			if (ld && fftime_cmp(&ld->mtime, &props->since_time) < 0)
+		if (props->since_time.sec) {
+			if ((!ld || fftime_cmp(&ld->mtime, &props->since_time) < 0)
+				&& (!rd || fftime_cmp(&rd->mtime, &props->since_time) < 0))
 				continue;
 		}
 
@@ -390,34 +394,36 @@ static uint sync_view(fcom_sync_diff *sd, struct fcom_sync_props *props, uint fl
 	b = __tmp; \
 })
 
-static const fcom_sync_diff_entry* sync_info_id(fcom_sync_diff *sd, void *id, uint flags)
+static int sync_info_id(fcom_sync_diff *sd, void *id, uint flags, fcom_sync_diff_entry *dst)
 {
+	ffmem_zero_obj(dst);
 	fntree_cmp_ent *ce = (fntree_cmp_ent*)id;
-	sd->dif_ent.status = ce->status;
-	snapshot::full_name(&sd->lname, ce->l, ce->lb);
-	snapshot::full_name(&sd->rname, ce->r, ce->rb);
-	sd->dif_ent.lname = sd->lname.str();
-	sd->dif_ent.rname = sd->rname.str();
-	sd->dif_ent.left = (ce->l) ? (struct fcom_sync_entry*)fntree_data(ce->l) : NULL;
-	sd->dif_ent.right = (ce->r) ? (struct fcom_sync_entry*)fntree_data(ce->r) : NULL;
+	dst->status = ce->status;
+	ffvec lname = {}, rname = {};
+	snapshot::full_name(&lname, ce->l, ce->lb);
+	snapshot::full_name(&rname, ce->r, ce->rb);
+	dst->lname = *(ffstr*)&lname;
+	dst->rname = *(ffstr*)&rname;
+	dst->left = (ce->l) ? (struct fcom_sync_entry*)fntree_data(ce->l) : NULL;
+	dst->right = (ce->r) ? (struct fcom_sync_entry*)fntree_data(ce->r) : NULL;
 
 	if (flags & FCOM_SYNC_SWAP) {
-		sd->dif_ent.status = status_swap(ce->status);
-		FF_SWAP2(sd->dif_ent.lname, sd->dif_ent.rname);
-		FF_SWAP2(sd->dif_ent.left, sd->dif_ent.right);
+		dst->status = status_swap(ce->status);
+		FF_SWAP2(dst->lname, dst->rname);
+		FF_SWAP2(dst->left, dst->right);
 	}
 
-	sd->dif_ent.id = ce;
-	return &sd->dif_ent;
+	dst->id = ce;
+	return 0;
 }
 
-static const fcom_sync_diff_entry* sync_info(fcom_sync_diff *sd, uint i, uint flags)
+static int sync_info(fcom_sync_diff *sd, uint i, uint flags, fcom_sync_diff_entry *dst)
 {
 	if (i >= sd->filter.len)
-		return NULL;
+		return -1;
 
 	fntree_cmp_ent *ce = *ffslice_itemT(&sd->filter, i, fntree_cmp_ent*);
-	return sync_info_id(sd, ce, flags);
+	return sync_info_id(sd, ce, flags, dst);
 }
 
 static uint sync_status(fcom_sync_diff *sd, void *id, uint mask, uint val)

@@ -13,6 +13,7 @@ OPTIONS:\n\
         `--plain`     Plain file names\n\
         `--autodir`   Add to OUTPUT_DIR a directory with name = input archive name.\n\
                      Same as manual 'unpack arc.xxx -C odir/arc'.\n\
+    `-k`, `--skip`      Skip files on error\n\
 ";
 }
 
@@ -34,8 +35,9 @@ struct unpack {
 	fffd pr, pw;
 
 	// conf:
-	byte list, list_plain;
-	byte autodir;
+	u_char list, list_plain;
+	u_char autodir;
+	u_char skip;
 };
 
 /** Find operation name by file extension */
@@ -137,6 +139,9 @@ static int unpack_child(struct unpack *u, const char *opname, uint level)
 		if (u->list_plain)
 			*ffvec_pushT(&a, char*) = ffsz_dup("--plain");
 
+		if (u->skip)
+			*ffvec_pushT(&a, char*) = ffsz_dup("--skip");
+
 		if (a.len) {
 			ffvec_zpushT(&a, char*);
 			c->argv = a.ptr;
@@ -193,6 +198,8 @@ static int unpack_args_parse(struct unpack *u, fcom_cominfo *cmd)
 		{ "--autodir",				'1',	O(autodir) },
 		{ "--list",					'1',	O(list) },
 		{ "--plain",				'1',	O(list_plain) },
+		{ "--skip",					'1',	O(skip) },
+		{ "-k",						'1',	O(skip) },
 		{ "-l",						'1',	O(list) },
 		{}
 	};

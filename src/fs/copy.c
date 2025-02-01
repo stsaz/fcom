@@ -166,8 +166,10 @@ static int args_parse(struct copy *c, fcom_cominfo *cmd)
 	if (core->com->args_parse(cmd, args, c, FCOM_COM_AP_INOUT))
 		return -1;
 
-	if (!(cmd->chdir.len || cmd->output.len))
+	if (!(cmd->chdir.len || cmd->output.len)) {
 		fcom_errlog("please use --output or --chdir to set destination");
+		return -1;
+	}
 
 	if (cmd->stdout)
 		c->update = 0;

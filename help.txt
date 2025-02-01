@@ -47,8 +47,6 @@ OPERATION:
     `pic`                 Convert images (.bmp/.jpg/.png)
 
   Windows-only:
-    `listdisk`            List logical volumes (Windows)
-    `mount`               Mount logical volumes (Windows)
     `reg`                 Windows Registry utils: search
 
 INPUT:

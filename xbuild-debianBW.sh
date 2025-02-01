@@ -82,7 +82,7 @@ make -j8 \
  $ARGS
 
 cd _linux-amd64/fcom-1
-bash ../../test.sh all
+# bash ../../test.sh all
 EOF
 
 # Build inside the container

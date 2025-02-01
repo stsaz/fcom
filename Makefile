@@ -15,9 +15,6 @@ CFLAGS := -MMD -MP \
 	-Wall -Wextra -Wno-unused-parameter -Wno-multichar \
 	-fPIC \
 	-g
-ifeq "$(CPU)" "amd64"
-	CFLAGS += -march=nehalem
-endif
 ifeq "$(DEBUG)" "1"
 	CFLAGS += -O0 -DFF_DEBUG -Werror
 else
@@ -26,6 +23,10 @@ endif
 ifeq "$(ASAN)" "1"
 	CFLAGS += -fsanitize=address
 	LINKFLAGS += -fsanitize=address
+else
+	ifeq "$(CPU)" "amd64"
+		CFLAGS += -march=nehalem
+	endif
 endif
 CXXFLAGS := -std=c++11 $(CFLAGS)
 CFLAGS := -std=c99 $(CFLAGS)
