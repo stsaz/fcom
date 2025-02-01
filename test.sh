@@ -3,9 +3,9 @@
 
 TESTS=()
 TESTS+=(copy list move sync touch trash)
-TESTS+=(help hex md5 textcount utf8 html)
+TESTS+=(help hex md5 textcount utf8 html disana)
 CMDS_WIN=(reg_search)
-# pic unico
+# pic listdisk mount unico
 
 if test "$#" -lt 1 ; then
 	echo "Usage: bash test.sh (all | CMD...)"
@@ -416,6 +416,10 @@ test_html() {
 EOF
 	./fcom html "fcomtest/html" --filter "tag.attr" | grep 123
 	./fcom html "fcomtest/html" --filter "tag.attr" | grep 234
+}
+
+test_disana() {
+	objdump -d ./fcom | ./fcom disana
 }
 
 source "$(dirname $0)/test-pack.sh"

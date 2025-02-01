@@ -45,8 +45,11 @@ OPERATION:
     `ico-extract`         Extract images from .ico
     `md5`                 Compute MD5 hash
     `pic`                 Convert images (.bmp/.jpg/.png)
+    `extract`             Extract files (.png/.webp/.mp3/.mkv)
 
   Windows-only:
+    `listdisk`            List logical volumes (Windows)
+    `mount`               Mount logical volumes (Windows)
     `reg`                 Windows Registry utils: search
 
 INPUT:
