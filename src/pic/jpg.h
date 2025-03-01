@@ -73,7 +73,7 @@ static int pic_jpg_write(struct pic *p, ffstr *input, ffstr *output)
 		struct jpeg_conf conf = {};
 		conf.width = p->out_info.width;
 		conf.height = p->out_info.height;
-		conf.quality = p->jpeg_quality;
+		conf.quality = p->conf.jpeg_quality;
 		ffvec_realloc(&p->jpg_wbuf, 8*1024*1024, 1); // libjpeg may return JERR_CANT_SUSPEND if it's not large enough
 		conf.buf_size = p->jpg_wbuf.cap;
 		if (0 != jpeg_create(&p->jpegw, &conf))

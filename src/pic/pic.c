@@ -19,6 +19,8 @@ OPTIONS:\n\
                         Set PNG compression level: 0..9 (default: 9)\n\
     `-k`, `--skip-errors`\n\
                         Skip errors\n\
+          `--delete-source`\n\
+                        Delete source file after successful conversion\n\
 ";
 }
 
@@ -31,6 +33,7 @@ OPTIONS:\n\
 #include <ffsys/path.h>
 
 static const fcom_core *core;
+static void pic_run(fcom_op *op);
 
 struct pic;
 typedef int (*pic_io)(struct pic *p, ffstr *input, ffstr *output);
@@ -73,10 +76,11 @@ struct pic {
 	uint reader_opened :1;
 	uint conv :1;
 
-	uint jpeg_quality;
-	uint png_comp;
 	struct {
 		u_char skip_errors;
+		u_char delete_source;
+		uint jpeg_quality;
+		uint png_comp;
 	} conf;
 };
 
@@ -118,27 +122,28 @@ static inline ffstr ffstr_sub(ffstr s, ffsize from, ffssize len)
 
 static int args_parse(struct pic *p, fcom_cominfo *cmd)
 {
-	p->jpeg_quality = 85;
-	p->png_comp = 9;
+	p->conf.jpeg_quality = 85;
+	p->conf.png_comp = 9;
 
 	static const struct ffarg args[] = {
-		{ "--jpeg-quality",		'u',	O(jpeg_quality) },
-		{ "--png-compression",	'u',	O(png_comp) },
+		{ "--delete-source",	'1',	O(conf.delete_source) },
+		{ "--jpeg-quality",		'u',	O(conf.jpeg_quality) },
+		{ "--png-compression",	'u',	O(conf.png_comp) },
 		{ "--skip-errors",		'1',	O(conf.skip_errors) },
 		{ "-k",					'1',	O(conf.skip_errors) },
-		{ "-q",					'u',	O(jpeg_quality) },
+		{ "-q",					'u',	O(conf.jpeg_quality) },
 		{}
 	};
 	int r = core->com->args_parse(cmd, args, p, FCOM_COM_AP_INOUT);
 	if (r != 0)
 		return r;
 
-	if (!(p->png_comp <= 9)) {
+	if (!(p->conf.png_comp <= 9)) {
 		fcom_fatlog("png-compression: must be 0..9");
 		return -1;
 	}
 
-	if (!(p->jpeg_quality > 0 && p->jpeg_quality <= 100)) {
+	if (!(p->conf.jpeg_quality > 0 && p->conf.jpeg_quality <= 100)) {
 		fcom_fatlog("jpeg-quality: must be 1..100");
 		return -1;
 	}
@@ -299,6 +304,30 @@ static int pic_next(struct pic *p)
 	return 0;
 }
 
+static void pic_trash_complete(void *param, int result)
+{
+	struct pic *p = (struct pic*)param;
+	pic_run(p);
+}
+
+static void pic_trash_src(struct pic *p)
+{
+	fcom_cominfo *ci = core->com->create();
+	ci->operation = ffsz_dup("trash");
+	ci->overwrite = 1; // if trash doesn't work: delete
+
+	ffstr *ps = ffvec_pushT(&ci->input, ffstr);
+	char *sz = ffsz_dup(p->name.ptr);
+	ffstr_setz(ps, sz);
+
+	ci->test = p->cmd->test;
+
+	ci->on_complete = pic_trash_complete;
+	ci->opaque = p;
+	fcom_dbglog("pic: trash: %s", p->name.ptr);
+	core->com->run(ci);
+}
+
 static void pic_run(fcom_op *op)
 {
 	struct pic *p = op;
@@ -380,6 +409,10 @@ static void pic_run(fcom_op *op)
 			case 'done':
 				pic_reset(p);
 				p->st = I_IN;
+				if (p->conf.delete_source) {
+					pic_trash_src(p);
+					return;
+				}
 				continue;
 
 			case 'erro': goto end;

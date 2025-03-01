@@ -73,7 +73,7 @@ static int pic_png_write(struct pic *p, ffstr *input, ffstr *output)
 		conf.width = p->out_info.width;
 		conf.height = p->out_info.height;
 		conf.bpp = p->out_info.format & 0xff;
-		conf.complevel = p->png_comp;
+		conf.complevel = p->conf.png_comp;
 		if (0 != png_create(&p->pngw, &conf)) {
 			fcom_errlog("png_create");
 			return 'erro';
