@@ -55,6 +55,8 @@ static void gsync_signal(fcom_op *op, uint signal);
 	_(A_DST_EXEC), \
 	_(A_SRC_SHOW_DIR), \
 	_(A_DST_SHOW_DIR), \
+	_(A_SRC_DELETE), \
+	_(A_DST_DELETE), \
 	_(A_SEL_ALL), \
 	_(A_LIST_DISPLAY), \
 	_(A_QUIT), \
@@ -557,6 +559,65 @@ struct gsync {
 		}
 	}
 
+#ifdef FF_LINUX
+	static uint files_del_unix(ffslice names)
+	{
+		uint ne = 0;
+		const char **it, *err;
+		FFSLICE_WALK(&names, it) {
+			if (ffui_glib_trash(*it, &err)) {
+				fcom_warnlog("gsync trash: %s: %s", *it, err);
+				ne++;
+				continue;
+			}
+			fcom_infolog("moved to Trash: %s", *it);
+		}
+		return names.len - ne;
+	}
+#endif
+
+	void selected_file_del(uint id)
+	{
+		xxstr_buf<100> buf;
+		xxvec names;
+		ffslice sel = this->wmain.view.selected();
+		uint *i;
+		FFSLICE_WALK(&sel, i) {
+			const fcom_sync_diff_entry *de = this->entry_at(*i);
+			const char *s = (id == A_SRC_DELETE) ? de->lname.ptr : de->rname.ptr;
+			if (!s)
+				continue;
+			*names.push<char*>() = ffsz_dup(s);
+		}
+
+		uint r;
+#ifdef FF_WIN
+		if (ffui_file_del((char**)names.ptr, names.len, FFUI_FILE_TRASH)) {
+			fcom_warnlog("Some files were not deleted");
+			goto end;
+		}
+		r = names.len;
+		fcom_infolog("moved %L files to Trash", r);
+#else
+		r = files_del_unix(names.slice());
+#endif
+
+		FFSLICE_WALK(&sel, i) {
+			const fcom_sync_diff_entry *de = this->entry_at(*i);
+			this->sync_if->status(this->diff, de->id
+				, FCOM_SYNC_SYNCING | FCOM_SYNC_ERROR | FCOM_SYNC_DONE, FCOM_SYNC_DONE);
+			this->wmain.view.update(*i, 0);
+		}
+
+		this->wmain.stbar.text(buf.zfmt("Moved %u files to Trash", r));
+
+#ifdef FF_WIN
+end:
+#endif
+		ffslice_free(&sel);
+		FFSLICE_FOREACH_PTR_T(&names, ffmem_free, char*);
+	}
+
 	void wnd_new()
 	{
 		const char *argv[] = {
@@ -634,6 +695,10 @@ struct gsync {
 		case A_SRC_SHOW_DIR:
 		case A_DST_SHOW_DIR:
 			g->selected_file_dir_show(id); break;
+
+		case A_SRC_DELETE:
+		case A_DST_DELETE:
+			g->selected_file_del(id); break;
 
 		case A_SEL_ALL:
 			g->wmain.view.select_all(); break;

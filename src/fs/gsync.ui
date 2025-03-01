@@ -49,6 +49,10 @@ menu mpopup {
 		action A_SRC_SHOW_DIR
 		hotkey "Ctrl+E"
 	}
+	item "Source: Delete Selected" {
+		action A_SRC_DELETE
+		hotkey "Delete"
+	}
 	item "-" {
 	}
 	item "Target: Exec" {
@@ -58,6 +62,10 @@ menu mpopup {
 	item "Target: Show Directory" {
 		action A_DST_SHOW_DIR
 		hotkey "Ctrl+Shift+E"
+	}
+	item "Target: Delete Selected" {
+		action A_DST_DELETE
+		hotkey "Shift+Delete"
 	}
 }
 
