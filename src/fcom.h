@@ -523,6 +523,11 @@ enum FCOM_SYNC_SYNC {
 	// FCOM_SYNC_SWAP
 };
 
+enum FCOM_SYNC_SORT {
+	FCOM_SYNC_SORT_FILESIZE = 1,
+	FCOM_SYNC_SORT_MTIME = 2,
+};
+
 struct fcom_sync_diff_stats {
 	uint eq, left, right, neq, moved;
 	uint ltotal, rtotal, entries;
@@ -545,7 +550,7 @@ struct fcom_sync_entry {
 
 struct fcom_sync_diff_entry {
 	uint status; // enum FCOM_SYNC
-	ffstr lname, rname;
+	ffstr lname, rname; // NULL-terminated
 	struct fcom_sync_entry *left, *right;
 	void *id;
 };
@@ -577,8 +582,12 @@ struct fcom_sync_if {
 	void (*diff_free)(fcom_sync_diff *sd);
 
 	/** Filter diff entries.
-	flags: enum FCOM_SYNC_DIFF */
+	flags: enum FCOM_SYNC */
 	uint (*view)(fcom_sync_diff *sd, struct fcom_sync_props *props, uint flags);
+
+	/**
+	flags: enum FCOM_SYNC_SORT */
+	uint (*sort)(fcom_sync_diff *sd, uint flags);
 
 	/** Get diff entry.
 	flags: FCOM_SYNC_SWAP */

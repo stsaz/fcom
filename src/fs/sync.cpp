@@ -357,6 +357,7 @@ static const struct fcom_sync_if sync_if = {
 	sync_diff,
 	sync_diff_free,
 	sync_view,
+	sync_sort,
 	sync_info,
 	sync_info_id,
 	sync_status,

@@ -1,13 +1,17 @@
 # fcom v1.0-beta13 gsync UI
 
 menu mfile {
-	item "New Window" {
-		action A_WND_NEW
-		hotkey "Ctrl+N"
+	check_item "Diff: Ignore Date" {
+		action A_DIFF_NO_DATE
+	}
+	check_item "Diff: Move: Ignore Name" {
+		action A_DIFF_MOVE_NO_NAME
 	}
 	item "Scan and Compare" {
 		action A_SCAN_CMP
 		hotkey "F5"
+	}
+	item "-" {
 	}
 	item "Synchronize Selected" {
 		action A_SYNC
@@ -17,15 +21,15 @@ menu mfile {
 		action A_SYNC_DATE
 		hotkey "Ctrl+D"
 	}
+	item "-" {
+	}
 	item "Swap Source and Target" {
 		action A_SWAP
 		hotkey "Ctrl+W"
 	}
-	check_item "Diff: Ignore Date" {
-		action A_DIFF_NO_DATE
-	}
-	check_item "Diff: Move: Ignore Name" {
-		action A_DIFF_MOVE_NO_NAME
+	item "New Window" {
+		action A_WND_NEW
+		hotkey "Ctrl+N"
 	}
 	item "E_xit" {
 		action A_QUIT
@@ -37,6 +41,12 @@ menu mlist {
 	item "Select All" {
 		action A_SEL_ALL
 		hotkey "Ctrl+A"
+	}
+	item "Sort by Size" {
+		action A_SORT_FILESIZE
+	}
+	item "Sort by Date" {
+		action A_SORT_FILEDATE
 	}
 }
 

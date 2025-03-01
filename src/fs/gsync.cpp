@@ -40,6 +40,8 @@ static void gsync_signal(fcom_op *op, uint signal);
 	_(A_SWAP), \
 	_(A_DIFF_NO_DATE), \
 	_(A_DIFF_MOVE_NO_NAME), \
+	_(A_SORT_FILESIZE), \
+	_(A_SORT_FILEDATE), \
 	_(A_INCLUDE_CHANGE), \
 	_(A_EXCLUDE_CHANGE), \
 	_(A_RECENTDAYS_CHANGE), \
@@ -635,6 +637,14 @@ end:
 		ffps_close(ps);
 	}
 
+	void sort(uint flags)
+	{
+		if (!this->diff) return;
+
+		uint n = this->sync_if->sort(this->diff, flags);
+		this->wmain.view.length(n, 1);
+	}
+
 	void core_task_add(fcom_task_func func)
 	{
 		core->task(&this->core_task, func, this);
@@ -665,6 +675,11 @@ end:
 
 		case A_DIFF_MOVE_NO_NAME:
 			g->diff_x(id, FCOM_SYNC_DIFF_MOVE_NO_NAME);  break;
+
+		case A_SORT_FILESIZE:
+			g->sort(FCOM_SYNC_SORT_FILESIZE); break;
+		case A_SORT_FILEDATE:
+			g->sort(FCOM_SYNC_SORT_MTIME); break;
 
 		case A_INCLUDE_CHANGE:
 		case A_EXCLUDE_CHANGE:

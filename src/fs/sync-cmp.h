@@ -21,6 +21,7 @@ struct diff {
 	fcom_sync_snapshot *left, *right;
 	xxvec		lname, rname;
 	uint		options;
+	uint		sort_flags;
 	struct fcom_sync_props props;
 	fcom_sync_diff_entry dif_ent;
 	struct fcom_sync_diff_stats stats;
@@ -248,6 +249,53 @@ struct diff {
 		this->stats.entries++;
 		return 0;
 	}
+
+	static int sort_f(const void *_a, const void *_b, void *udata)
+	{
+		fcom_sync_diff *sd = (fcom_sync_diff*)udata;
+		const fntree_cmp_ent *a = *(fntree_cmp_ent**)_a,  *b = *(fntree_cmp_ent**)_b;
+		const struct fcom_sync_entry *d;
+		uint64 as = 0, bs = 0;
+		fftime at = {}, bt = {};
+
+		if (a->l) {
+			d = (struct fcom_sync_entry*)fntree_data(a->l);
+			as = d->size;
+			at = d->mtime;
+		}
+		if (a->r) {
+			d = (struct fcom_sync_entry*)fntree_data(a->r);
+			as = ffmax(as, d->size);
+			if (fftime_cmp(&at, &d->mtime) < 0)
+				at = d->mtime;
+		}
+
+		if (b->l) {
+			d = (struct fcom_sync_entry*)fntree_data(b->l);
+			bs = d->size;
+			bt = d->mtime;
+		}
+		if (b->r) {
+			d = (struct fcom_sync_entry*)fntree_data(b->r);
+			bs = ffmax(bs, d->size);
+			if (fftime_cmp(&bt, &d->mtime) < 0)
+				bt = d->mtime;
+		}
+
+		int rs = (as > bs) ? -1
+			: (as < bs) ? 1
+			: 0;
+		if (sd->sort_flags & FCOM_SYNC_SORT_FILESIZE)
+			return rs;
+
+		int rt = (fftime_cmp(&at, &bt) > 0) ? -1
+			: (fftime_cmp(&at, &bt) < 0) ? 1
+			: 0;
+		if (sd->sort_flags & FCOM_SYNC_SORT_MTIME)
+			return rt;
+
+		return 0;
+	}
 };
 
 static fcom_sync_diff* sync_diff(fcom_sync_snapshot *left, fcom_sync_snapshot *right, struct fcom_sync_props *props, uint flags)
@@ -384,6 +432,13 @@ static uint sync_view(fcom_sync_diff *sd, struct fcom_sync_props *props, uint fl
 		;
 	}
 
+	return sd->filter.len;
+}
+
+static uint sync_sort(fcom_sync_diff *sd, uint flags)
+{
+	sd->sort_flags = flags;
+	ffsort(sd->filter.ptr, sd->filter.len, sizeof(void*), fcom_sync_diff::sort_f, sd);
 	return sd->filter.len;
 }
 
