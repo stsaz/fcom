@@ -3,6 +3,7 @@
 
 #include <fcom.h>
 #include <exe/args.h>
+#include <util/log.h>
 #include <ffsys/std.h>
 #include <ffsys/path.h>
 #include <ffsys/process.h>
@@ -15,6 +16,11 @@ extern struct fcom_coreinit fcom_coreinit;
 struct main {
 	struct fcom_coreinit *ci;
 	struct fcom_core *core;
+
+	struct zzlog	log;
+	fftime			time_last;
+	char			log_date[32];
+
 	struct args conf;
 	char *cmd_line;
 	fcom_task task;
@@ -34,7 +40,21 @@ char* path(const char *fn)
 
 static int load_core()
 {
+	log_init(&m->log);
+
 	fcom_coreinit.init();
+	struct fcom_core_conf cconf = {
+		.timer_resolution_msec = 100,
+		.log = exe_logv,
+		.app_path = m->rootdir.ptr,
+		.debug = m->conf.debug,
+		.verbose = m->conf.verbose,
+		.stdout_color = !ffstd_attr(ffstdout, FFSTD_VTERM, FFSTD_VTERM),
+	};
+	if (!(m->core = fcom_coreinit.conf(&cconf)))
+		return 1;
+	if (m->core->stdout_busy)
+		log_init(&m->log);
 	return 0;
 }
 
@@ -62,7 +82,7 @@ static void operation(void *param)
 
 static void on_signal(struct ffsig_info *i)
 {
-	stdlog(FCOM_LOG_DBG, "received system signal: %u", i->sig);
+	exe_log(FCOM_LOG_DBG, "received system signal: %u", i->sig);
 	m->core->com->signal_all(i->sig);
 }
 
@@ -95,18 +115,7 @@ int main(int argc, char **argv)
 		goto exit;
 	}
 
-	if (0 != load_core())
-		goto exit;
-
-	struct fcom_core_conf cconf = {
-		.timer_resolution_msec = 100,
-		.log = stdlogv,
-		.app_path = m->rootdir.ptr,
-		.debug = m->conf.debug,
-		.verbose = m->conf.verbose,
-		.stdout_color = !ffstd_attr(ffstdout, FFSTD_VTERM, FFSTD_VTERM),
-	};
-	if (NULL == (m->core = fcom_coreinit.conf(&cconf)))
+	if (load_core())
 		goto exit;
 	m->core->env = (const char**)environ;
 

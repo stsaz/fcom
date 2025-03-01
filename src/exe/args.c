@@ -5,7 +5,7 @@
 #include <exe/args.h>
 #include <ffsys/std.h>
 
-void stdlog(uint flags, const char *fmt, ...);
+void exe_log(uint flags, const char *fmt, ...);
 
 static void help_info_write(ffstr s)
 {
@@ -39,7 +39,7 @@ static int args_help(struct args *a)
 	char *fn = path(HELP_TXT);
 	ffvec d = {};
 	if (0 != fffile_readwhole(fn, &d, 64*1024)) {
-		stdlog(FCOM_LOG_SYSERR, "file read: %s", fn);
+		exe_log(FCOM_LOG_SYSERR, "file read: %s", fn);
 		return 1;
 	}
 	help_info_write(*(ffstr*)&d);
@@ -86,7 +86,7 @@ int args_read(struct args *a, uint argc, char **argv, char *cmd_line)
 		// we met the first operation-specific argument
 		as.argi--;
 	} else if (r < 0) {
-		stdlog(FCOM_LOG_ERR, "command-line: %s", as.error);
+		exe_log(FCOM_LOG_ERR, "command-line: %s", as.error);
 		goto err;
 	}
 
