@@ -35,6 +35,7 @@ static void gsync_signal(fcom_op *op, uint signal);
 #define INCLUDE_ACTIONS(_) \
 	_(A_WND_NEW), \
 	_(A_SCAN_CMP), \
+	_(A_SCAN_DUP), \
 	_(A_SYNC), \
 	_(A_SYNC_DATE), \
 	_(A_SWAP), \
@@ -249,6 +250,37 @@ struct gsync {
 			| FCOM_SYNC_DIFF_TIME_2SEC;
 		f |= g->diff_flags;
 		g->diff = g->sync_if->diff(g->lsnap, g->rsnap, &g->props, f);
+
+		g->stats_redraw();
+		g->redraw();
+	}
+
+	static void scan_dups_status_update(void *param)
+	{
+		struct gsync *g = (gsync*)param;
+		const char *s = (!g->lsnap) ? "Scanning Source..."
+			: (!g->diff) ? "Comparing..."
+			: NULL;
+		if (!s)
+			return;
+		g->wmain.stbar.text(s);
+	}
+
+	static void scan_dups__worker(void *param)
+	{
+		gsync *g = (gsync*)param;
+		g->diff_reset();
+		ffmem_zero_obj(&g->props.stats);
+		g->stats_redraw();
+
+		ffui_thd_post(scan_dups_status_update, g);
+		if (!(g->lsnap = g->scan(xxvec(g->wmain.lpath.text()).str()))) {
+			g->error("ERROR scanning Source tree");
+			return;
+		}
+
+		ffui_thd_post(scan_dups_status_update, g);
+		g->diff = g->sync_if->find_dups(g->lsnap, &g->props, 0);
 
 		g->stats_redraw();
 		g->redraw();
@@ -661,6 +693,8 @@ end:
 
 		case A_SCAN_CMP:
 			g->core_task_add(scan_and_compare__worker); break;
+		case A_SCAN_DUP:
+			g->core_task_add(scan_dups__worker); break;
 
 		case A_SYNC:
 			g->sync_begin(0); break;

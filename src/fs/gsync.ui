@@ -11,6 +11,10 @@ menu mfile {
 		action A_SCAN_CMP
 		hotkey "F5"
 	}
+	item "Scan for Possible Duplicates" {
+		action A_SCAN_DUP
+		hotkey "Ctrl+F5"
+	}
 	item "-" {
 	}
 	item "Synchronize Selected" {

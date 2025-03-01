@@ -580,6 +580,8 @@ struct fcom_sync_if {
 	flags: enum FCOM_SYNC_DIFF */
 	fcom_sync_diff* (*diff)(fcom_sync_snapshot *left, fcom_sync_snapshot *right, struct fcom_sync_props *props, uint flags);
 
+	fcom_sync_diff* (*find_dups)(fcom_sync_snapshot *left, struct fcom_sync_props *props, uint flags);
+
 	void (*diff_free)(fcom_sync_diff *sd);
 
 	/** Filter diff entries.

@@ -4,6 +4,72 @@
 #include <ffsys/std.h>
 #include <ffbase/murmurhash3.h>
 
+enum FILE_CMP_F {
+	FILE_CMP_FAST = 1, // Compare just 3 chunks of data (beginning, middle, end)
+};
+
+/** Compare files content.
+window: buffer size
+flags: enum FILE_CMP_F'
+Return 0 if equal;
+ 1 if not equal;
+ <0 on error */
+static inline int file_cmp(const char *fn1, const char *fn2, ffsize window, ffuint flags)
+{
+	int rc = -1;
+	char *buf = NULL;
+	fffd f1 = FFFILE_NULL, f2 = FFFILE_NULL;
+	ffssize r1, r2;
+	ffuint64 sz, off = 0, offsets[3];
+	ffuint i = 0;
+
+	if (FFFILE_NULL == (f1 = fffile_open(fn1, FFFILE_READONLY))
+		|| FFFILE_NULL == (f2 = fffile_open(fn2, FFFILE_READONLY)))
+		goto end;
+
+	sz = fffile_size(f1);
+	if (sz != (ffuint64)fffile_size(f2)) {
+		rc = 1;
+		goto end;
+	}
+	offsets[0] = 0;
+	offsets[1] = (sz > window) ? sz / 2 : ~0ULL;
+	offsets[2] = sz - window;
+
+	if (!(buf = (char*)ffmem_align(2 * window, 4096)))
+		goto end;
+
+	for (;;) {
+		if (flags & FILE_CMP_FAST) {
+			if (i == 3)
+				break;
+			off = offsets[i++];
+			if ((ffint64)off < 0)
+				break;
+		}
+
+		r1 = fffile_readat(f1, buf, window, off);
+		r2 = fffile_readat(f2, buf + window, window, off);
+		off += window;
+		if (r1 < 0 || r2 < 0)
+			goto end;
+		if (r1 != r2 || ffmem_cmp(buf, buf + window, r1)) {
+			rc = 1;
+			goto end;
+		}
+		if ((ffsize)r1 < window)
+			break;
+	}
+
+	rc = 0;
+
+end:
+	fffile_close(f1);
+	fffile_close(f2);
+	ffmem_free(buf);
+	return rc;
+}
+
 struct fntree_cmp_ent {
 	uint status; // enum FNTREE_CMP | enum FCOM_SYNC
 	const fntree_entry *l, *r;
@@ -296,6 +362,82 @@ struct diff {
 
 		return 0;
 	}
+
+	/** Prepare diff list; sort (filter) files by size. */
+	void dups_init(fcom_sync_snapshot *left, uint flags)
+	{
+		this->options = flags;
+		this->left = left;
+		fntree_block *b = _fntr_ent_first(left->root)->children;
+		if (!b)
+			return;
+		this->ents.alloc<fntree_cmp_ent>(left->total);
+		this->filter.alloc<void*>(left->total);
+		this->stats.ltotal = left->total;
+
+		fntree_cursor cur = {};
+		fntree_entry *e;
+		while ((e = fntree_cur_next_r(&cur, &b))) {
+			FF_ASSERT(this->ents.len < this->ents.cap);
+			fntree_cmp_ent *ce = ffvec_zpushT(&this->ents, fntree_cmp_ent);
+			ce->l = e;
+			ce->lb = b;
+
+			*this->filter.push<void*>() = ce;
+		}
+
+		this->sort_flags = FCOM_SYNC_SORT_FILESIZE;
+		ffsort(this->filter.ptr, this->filter.len, sizeof(void*), sort_f, this);
+	}
+
+	/** Walk through the files and compare by content.
+	 * Associate duplicate files with each other.
+	Set 'EQ' status for the duplicate files; set 'NEQ' otherwise. */
+	void dups_scan()
+	{
+		uint64 sz, sz_prev = ~0ULL;
+		struct fntree_cmp_ent **it, *ce, *ce_prev = NULL;
+		FFSLICE_WALK(&this->filter, it) {
+			this->stats.entries++;
+			ce = *it;
+			struct fcom_sync_entry *d = (struct fcom_sync_entry*)fntree_data(ce->l);
+			sz = d->size;
+			if (sz_prev != sz) {
+				sz_prev = sz;
+				if (ce_prev) {
+					this->stats.neq++;
+					ce_prev->status = FCOM_SYNC_NEQ;
+				}
+				ce_prev = ce;
+				continue;
+			}
+
+			snapshot::full_name(&this->lname, ce_prev->l, ce_prev->lb);
+			snapshot::full_name(&this->rname, ce->l, ce->lb);
+			fcom_dbglog("comparing files \"%s\" and \"%s\"..."
+				, this->lname.strz(), this->rname.strz());
+			if (file_cmp(this->lname.strz(), this->rname.strz(), 4096, FILE_CMP_FAST)) {
+				this->stats.neq++;
+				ce_prev->status = FCOM_SYNC_NEQ;
+				ce_prev = ce;
+				continue; // Note: only 2 consecutive files with the same size are compared!
+			}
+			this->stats.eq++;
+			ce_prev->status = FCOM_SYNC_EQ;
+			ce_prev->r = ce->l;
+			ce_prev->rb = ce->lb;
+			ce->status = FCOM_SYNC_DONE;
+			ce_prev = NULL;
+			sz_prev = ~0ULL;
+		}
+
+		if (ce_prev) {
+			this->stats.neq++;
+			ce_prev->status = FCOM_SYNC_NEQ;
+		}
+
+		this->filter.len = 0;
+	}
 };
 
 static fcom_sync_diff* sync_diff(fcom_sync_snapshot *left, fcom_sync_snapshot *right, struct fcom_sync_props *props, uint flags)
@@ -305,6 +447,15 @@ static fcom_sync_diff* sync_diff(fcom_sync_snapshot *left, fcom_sync_snapshot *r
 	sd->init(left, right, flags);
 	while (!sd->next()) {
 	}
+	props->stats = sd->stats;
+	return sd;
+}
+
+static fcom_sync_diff* sync_find_dups(fcom_sync_snapshot *left, struct fcom_sync_props *props, uint flags)
+{
+	struct diff *sd = ffmem_new(struct diff);
+	sd->dups_init(left, flags);
+	sd->dups_scan();
 	props->stats = sd->stats;
 	return sd;
 }
