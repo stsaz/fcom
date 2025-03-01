@@ -351,6 +351,7 @@ enum FCOM_FILE_OPEN {
 	FCOM_FILE_NO_PREALLOC = 0x0100,
 	FCOM_FILE_INFO_NOFOLLOW = 0x0200, // info(): don't follow symlinks
 	FCOM_FILE_READAHEAD = 0x0400, // Windows: enable "read-ahead"
+	FCOM_FILE_NOCACHE = 0x0800,
 };
 
 static inline uint fcom_file_cominfo_flags_i(fcom_cominfo *cmd)

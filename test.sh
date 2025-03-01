@@ -174,6 +174,9 @@ fd25ea23edc3df0d9c8ecd50a808c014 *fcomtest/file2'
 	./fcom md5 "fcomtest/file" "fcomtest/file2" -o "fcomtest/md5"
 	test "$(cat fcomtest/md5)" == "$rr"
 
+	echo zxcvzxcv >fcomtest/file3
+	./fcom md5 -u fcomtest/md5 "fcomtest/file" "fcomtest/file2" "fcomtest/file3"
+
 	./fcom -V md5 -c fcomtest/md5
 
 	echo 1 >>fcomtest/file

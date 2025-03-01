@@ -494,6 +494,16 @@ static int file_write(fcom_file_obj *_f, ffstr data, int64 off)
 	if (f->open_flags & FCOM_FILE_FAKEWRITE)
 		return FCOM_FILE_OK;
 
+	if (f->open_flags & FCOM_FILE_NOCACHE) {
+		if (off == -1)
+			off = f->cur_off;
+		f->cur_off = off + data.len;
+		int r = fw_write(f, &data, &off);
+		if (r >= 0)
+			return r;
+		return FCOM_FILE_OK;
+	}
+
 	int r;
 	for (;;) {
 		if (!f->w_write) {
