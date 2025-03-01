@@ -304,12 +304,14 @@ static void sync_combine(struct snapshot *s, fntree_entry *e2)
 
 		s->root = newroot;
 		s->root_dir.len = parent.len;
+		s->total += 3;
 
 	} else {
 		// 2.
 		fntree_block **root = &_fntr_ent_first(s->root)->children;
 		fntree_entry *e = fntree_add(root, name2, data_len);
 		fntree_entry_set(e, e2, data_len);
+		s->total++;
 	}
 
 	e2->children = NULL;

@@ -10,17 +10,17 @@ Usage:\n\
 \n\
 OPTIONS:\n\
     `-u`, `--unbranch`      Move and rename a file out of its directory structure, e.g.\n\
-                            fcom move --unbranch ./a\n\
+                            `fcom move --unbranch ./a`\n\
                           moves/renames \"./a/b/file\" -> \"./a - b - file\"\n\
-        `--unbranch-flat` Move a file out of its directory structure, e.g.\n\
-                            fcom move --unbranch-flat ./a\n\
+    `-uf`, `--unbranch-flat` Move a file out of its directory structure, e.g.\n\
+                            `fcom move --unbranch-flat ./a`\n\
                           moves \"./a/b/file\" -> \"./file\"\n\
     `-s`, `--search` 'SEARCH'\n\
     `-r`, `--replace` 'REPLACE'\n\
                         Replace SEARCH text in file name with REPLACE\n\
         `--replace-once`  Replace only the first occurrence\n\
     `-t`, `--tree`          Preserve directory tree, e.g.\n\
-                            fcom move --tree a/b/c -C out\n\
+                            `fcom move --tree a/b/c -C out`\n\
                           moves \"a/b/c\" to \"out/a/b/c\"\n\
     `-k`, `--skip-errors`   Don't fail on error\n\
 ";
@@ -210,6 +210,7 @@ static int args_parse(struct move *m, fcom_cominfo *cmd)
 		{ "-s",					'S',	O(search) },
 		{ "-t",					'1',	O(tree) },
 		{ "-u",					'1',	O(unbranch) },
+		{ "-uf",				'1',	O(unbranch_flat) },
 		{}
 	};
 	if (0 != core->com->args_parse(cmd, args, m, FCOM_COM_AP_INOUT))

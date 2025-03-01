@@ -216,7 +216,7 @@ struct diff {
 			r = _fntr_ent_first(right->root)->children;
 
 		fntree_cmp_init(&this->fcmp, l, r, data_cmp, this);
-		ffvec_allocT(&this->ents, left->total + right->total + 2, fntree_cmp_ent);
+		ffvec_allocT(&this->ents, left->total + right->total, fntree_cmp_ent);
 		this->stats.ltotal = left->total;
 		this->stats.rtotal = right->total;
 	}
@@ -239,7 +239,7 @@ struct diff {
 			le = NULL, lb = NULL; break;
 		}
 
-		FF_ASSERT(ents.len < ents.cap);
+		FF_ASSERT(this->ents.len < this->ents.cap);
 		fntree_cmp_ent *ce = ffvec_pushT(&this->ents, fntree_cmp_ent);
 		ce->status = 0;
 		ce->l = le;
