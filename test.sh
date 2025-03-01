@@ -173,6 +173,11 @@ fd25ea23edc3df0d9c8ecd50a808c014 *fcomtest/file2'
 	test "$r" == "$rr"
 	./fcom md5 "fcomtest/file" "fcomtest/file2" -o "fcomtest/md5"
 	test "$(cat fcomtest/md5)" == "$rr"
+
+	./fcom -V md5 -c fcomtest/md5
+
+	echo 1 >>fcomtest/file
+	! ./fcom -V md5 -c fcomtest/md5
 }
 
 test_move() {
