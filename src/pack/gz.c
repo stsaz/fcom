@@ -16,7 +16,7 @@ OPTIONS:\n\
 #include <fcom.h>
 #include <ffsys/globals.h>
 #include <ffsys/path.h>
-#include <ffpack/gzwrite.h>
+#include <ffpack/gz-write.h>
 
 const fcom_core *core;
 

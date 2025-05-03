@@ -11,8 +11,8 @@ Usage:\n\
 }
 
 #include <fcom.h>
-#include <ffpack/isowrite.h>
-#include <ffpack/isoread.h>
+#include <ffpack/iso-write.h>
+#include <ffpack/iso-read.h>
 #include <ffsys/path.h>
 #include <ffsys/globals.h>
 

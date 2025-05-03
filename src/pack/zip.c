@@ -20,7 +20,7 @@ OPTIONS:\n\
 }
 
 #include <fcom.h>
-#include <ffpack/zipwrite.h>
+#include <ffpack/zip-write.h>
 #include <ffsys/path.h>
 #include <ffsys/globals.h>
 

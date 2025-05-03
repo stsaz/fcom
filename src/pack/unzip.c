@@ -25,7 +25,7 @@ OPTIONS:\n\
 }
 
 #include <fcom.h>
-#include <ffpack/zipread.h>
+#include <ffpack/zip-read.h>
 #include <ffsys/path.h>
 #include <ffbase/map.h>
 
@@ -338,7 +338,7 @@ static void unzip_showinfo(struct unzip *z, const ffzipread_fileinfo_t *zf)
 
 	ffvec_addstr(b, &zf->name);
 
-	fcom_infolog("%S", b);
+	ffstdout_write(b.ptr, b.len);
 }
 
 static void unzip_f_info(struct unzip *z)

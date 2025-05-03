@@ -18,7 +18,7 @@ OPTIONS:\n\
 }
 
 #include <fcom.h>
-#include <ffpack/isoread.h>
+#include <ffpack/iso-read.h>
 #include <ffsys/path.h>
 #include <ffbase/map.h>
 
@@ -201,7 +201,7 @@ static void showinfo(struct uniso *c, const ffisoread_fileinfo_t *f)
 
 	ffvec_addstr(b, &f->name);
 
-	fcom_infolog("%S", b);
+	ffstdout_write(b.ptr, b.len);
 }
 
 /*

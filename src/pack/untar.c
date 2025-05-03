@@ -19,7 +19,7 @@ OPTIONS:\n\
 }
 
 #include <fcom.h>
-#include <ffpack/tarread.h>
+#include <ffpack/tar-read.h>
 #include <ffsys/path.h>
 #include <ffbase/map.h>
 
@@ -187,7 +187,7 @@ static void untar_showinfo(struct untar *t, const fftarread_fileinfo_t *tf)
 
 	ffvec_addstr(b, &tf->name);
 
-	fcom_infolog("%S", b);
+	ffstdout_write(b.ptr, b.len);
 }
 
 /*

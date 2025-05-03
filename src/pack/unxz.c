@@ -12,7 +12,7 @@ Usage:\n\
 
 #include <fcom.h>
 #include <ffsys/path.h>
-#include <ffpack/xzread.h>
+#include <ffpack/xz-read.h>
 
 static const fcom_core *core;
 

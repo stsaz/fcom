@@ -11,7 +11,7 @@ Usage:\n\
 }
 
 #include <fcom.h>
-#include <ffpack/tarwrite.h>
+#include <ffpack/tar-write.h>
 #include <ffsys/globals.h>
 
 const fcom_core *core;

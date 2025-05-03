@@ -18,7 +18,7 @@ OPTIONS:\n\
 }
 
 #include <fcom.h>
-#include <ffpack/7zread.h>
+#include <ffpack/7z-read.h>
 #include <ffsys/path.h>
 #include <ffsys/globals.h>
 #include <ffbase/map.h>
@@ -205,7 +205,7 @@ static void un7z_showinfo(struct un7z *z, const ff7zread_fileinfo *zf)
 		b->len += r;
 	}
 
-	fcom_infolog("%S", b);
+	ffstdout_write(b.ptr, b.len);
 }
 
 static int un7z_f_info(struct un7z *z, const ff7zread_fileinfo *zf)

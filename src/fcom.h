@@ -12,8 +12,8 @@
 #undef stdin
 #undef stdout
 
-#define FCOM_VER "1.0-rc19"
-#define FCOM_CORE_VER 10019
+#define FCOM_VER "1.0.20"
+#define FCOM_CORE_VER 10020
 
 typedef unsigned char byte;
 typedef unsigned char u_char;
