@@ -1,6 +1,8 @@
 /** fcom: unpack files from .tar
 2023, Simon Zolin */
 
+#include <ffsys/std.h>
+
 static const char* untar_help()
 {
 	return "\
@@ -186,8 +188,8 @@ static void untar_showinfo(struct untar *t, const fftarread_fileinfo_t *tf)
 	}
 
 	ffvec_addstr(b, &tf->name);
-
-	ffstdout_write(b.ptr, b.len);
+	ffvec_addchar(b, '\n');
+	ffstdout_write(b->ptr, b->len);
 }
 
 /*

@@ -1,6 +1,8 @@
 /** fcom: copy: verify data consistency
 2022, Simon Zolin */
 
+#include <ffsys/std.h>
+
 static int verify_init(struct copy *c)
 {
 	if (!(c->verify || c->print_md5)) return 0;
@@ -43,7 +45,7 @@ static int verify_result(struct copy *c)
 		return 1;
 	}
 
-	fcom_infolog("%*xb *%s", (ffsize)16, result_w, c->o.name);
+	ffstdout_fmt("%*xb *%s\n", (ffsize)16, result_w, c->o.name);
 	return 0;
 }
 

@@ -1,6 +1,8 @@
 /** fcom: unpack files from .zip
 2022, Simon Zolin */
 
+#include <ffsys/std.h>
+
 static const char* unzip_help()
 {
 	return "\
@@ -337,8 +339,8 @@ static void unzip_showinfo(struct unzip *z, const ffzipread_fileinfo_t *zf)
 	}
 
 	ffvec_addstr(b, &zf->name);
-
-	ffstdout_write(b.ptr, b.len);
+	ffvec_addchar(b, '\n');
+	ffstdout_write(b->ptr, b->len);
 }
 
 static void unzip_f_info(struct unzip *z)

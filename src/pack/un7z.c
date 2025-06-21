@@ -1,6 +1,8 @@
 /** fcom: unpack files from .7z
 2023, Simon Zolin */
 
+#include <ffsys/std.h>
+
 static const char* un7z_help()
 {
 	return "\
@@ -205,7 +207,8 @@ static void un7z_showinfo(struct un7z *z, const ff7zread_fileinfo *zf)
 		b->len += r;
 	}
 
-	ffstdout_write(b.ptr, b.len);
+	ffvec_addchar(b, '\n');
+	ffstdout_write(b->ptr, b->len);
 }
 
 static int un7z_f_info(struct un7z *z, const ff7zread_fileinfo *zf)

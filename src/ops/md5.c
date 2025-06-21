@@ -11,7 +11,7 @@ Usage:\n\
 OPTIONS:\n\
     `-c`, `--check`     Read checksums from INPUT files and verify\n\
     `-u`, `--update` FILE.md5\n\
-	                    Compute hashes for the missing files only\n\
+                        Compute hashes for the missing files only\n\
 ";
 }
 
@@ -331,7 +331,7 @@ static void md5_run(fcom_op *op)
 			case 'done':
 				rc = err;
 				if (m->update_fn) {
-					ffstderr_fmt("md5: files processed:%U  existing:%U"
+					fcom_infolog("md5: files processed:%U  existing:%U"
 						, m->n_processed, m->n_exist);
 				}
 				goto end;

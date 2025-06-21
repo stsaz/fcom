@@ -1,6 +1,8 @@
 /** fcom: unpack files from .iso
 2023, Simon Zolin */
 
+#include <ffsys/std.h>
+
 static const char* uniso_help()
 {
 	return "\
@@ -200,8 +202,8 @@ static void showinfo(struct uniso *c, const ffisoread_fileinfo_t *f)
 	ffvec_addchar(b, ' ');
 
 	ffvec_addstr(b, &f->name);
-
-	ffstdout_write(b.ptr, b.len);
+	ffvec_addchar(b, '\n');
+	ffstdout_write(b->ptr, b->len);
 }
 
 /*

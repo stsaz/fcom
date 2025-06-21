@@ -17,13 +17,14 @@ git clone --depth=1 https://github.com/stsaz/fcom
 * Cross-Build on Linux for Debian-bookworm:
 
 	```sh
-	bash xbuild-debianbookworm.sh
+	bash xbuild.sh
 	```
 
 * Cross-Build on Linux for Windows/AMD64:
 
 	```sh
-	bash xbuild-win64.sh
+	OS=windows \
+		bash xbuild.sh
 	```
 
 ## Step 2 (Option 2). Native Build
