@@ -162,6 +162,25 @@ static int output_open(struct copy *c)
 		}
 	}
 
+	// Copy symlink
+#ifdef FF_UNIX
+	if ((fffileinfo_attr(&c->fi) & FFFILEATTR_UNIX_TYPEMASK) == FFFILEATTR_UNIX_LINK) {
+		char target[4096];
+		int r = readlink(c->iname, target, sizeof(target) - 1);
+		if (r < 0 || r == sizeof(target) - 1) {
+			if (r < 0)
+				fcom_syserrlog("readlink: %s", c->iname);
+			else
+				fcom_errlog("readlink truncation: %s", c->iname);
+			return 0xbad;
+		}
+		target[r] = '\0';
+		if (FCOM_FILE_ERR == core->file->slink(target, c->o.name, fcom_file_cominfo_flags_o(c->cmd)))
+			return 0xbad;
+		return 'skip';
+	}
+#endif
+
 	uint flags = FCOM_FILE_WRITE;
 	if (c->verify)
 		flags = FCOM_FILE_READWRITE | FCOM_FILE_DIRECTIO;

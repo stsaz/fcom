@@ -130,6 +130,11 @@ test_copy() {
 	../fcom copy "dirempty" -o "dirempty2"
 	test -d dirempty2
 
+	# symlink
+	ln -s file filelink
+	../fcom copy "filelink" -o "filelink2"
+	test "$(readlink "filelink2")" == "file"
+
 	# Verify
 	../fcom copy "file" -o "file.out.md5" --md5
 	../fcom copy "file" -o "file.out.verify" --verify -f

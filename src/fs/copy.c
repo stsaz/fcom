@@ -106,7 +106,7 @@ static int copy_input_next(struct copy *c)
 	c->nfiles++;
 	c->iname = ffsz_dupstr(&c->name);
 
-	uint flags = FCOM_FILE_READ | FCOM_FILE_READAHEAD;
+	uint flags = FCOM_FILE_READ | FCOM_FILE_READAHEAD | FCOM_FILE_INFO_NOFOLLOW;
 	flags |= fcom_file_cominfo_flags_i(c->cmd);
 	r = core->file->open(c->input, c->iname, flags);
 	if (r == FCOM_FILE_ERR) return 'erro';
