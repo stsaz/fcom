@@ -63,7 +63,7 @@ EOF
 fi
 
 if ! podman container top $CONTAINER_NAME ; then
-	cat >build_linux.sh <<EOF
+	cat >build_$BUILD_TARGET.sh <<EOF
 sleep 600
 EOF
 	# Start container in background
@@ -87,7 +87,7 @@ CROSS_PREFIX=x86_64-w64-mingw32-"
 fi
 
 # Prepare build script
-cat >build_linux.sh <<EOF
+cat >build_$BUILD_TARGET.sh <<EOF
 set -xe
 
 mkdir -p ../ffpack/$ODIR

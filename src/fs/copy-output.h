@@ -138,30 +138,6 @@ static int output_open(struct copy *c)
 		return 'skip';
 	}
 
-	if (c->update
-		&& !fffile_info_path(c->o.name, &c->o.fi)) {
-
-		if (fffile_isdir(fffileinfo_attr(&c->o.fi))) {
-			fcom_errlog("output file is an existing directory. Use '-C DIR' to copy files into this directory.");
-			return 0xbad;
-		}
-
-		if (c->replace_date) {
-			fftime t = fffileinfo_mtime(&c->fi);
-			if (fffile_set_mtime_path(c->o.name, &t)) {
-				fcom_syserrlog("fffile_set_mtime_path: %s", c->o.name);
-				return 0xbad;
-			}
-			fcom_verblog("replace date: %s", c->o.name);
-			return 'skip';
-		}
-
-		if (fftime_cmp_val(fffileinfo_mtime1(&c->fi), fffileinfo_mtime1(&c->o.fi)) <= 0) {
-			fcom_dbglog("--update: target file is of the same date or newer; skipping");
-			return 'skip';
-		}
-	}
-
 	// Copy symlink
 #ifdef FF_UNIX
 	if ((fffileinfo_attr(&c->fi) & FFFILEATTR_UNIX_TYPEMASK) == FFFILEATTR_UNIX_LINK) {
@@ -180,6 +156,30 @@ static int output_open(struct copy *c)
 		return 'skip';
 	}
 #endif
+
+	if (c->update
+		&& !fffile_info_path(c->o.name, &c->o.fi)) {
+
+		if (fffile_isdir(fffileinfo_attr(&c->o.fi))) {
+			fcom_errlog("%s: target path is an existing directory", c->o.name);
+			return 0xbad;
+		}
+
+		if (c->replace_date) {
+			fftime t = fffileinfo_mtime(&c->fi);
+			if (fffile_set_mtime_path(c->o.name, &t)) {
+				fcom_syserrlog("fffile_set_mtime_path: %s", c->o.name);
+				return 0xbad;
+			}
+			fcom_verblog("replace date: %s", c->o.name);
+			return 'skip';
+		}
+
+		if (fftime_cmp_val(fffileinfo_mtime1(&c->fi), fffileinfo_mtime1(&c->o.fi)) <= 0) {
+			fcom_dbglog("--update: target file is of the same date or newer; skipping");
+			return 'skip';
+		}
+	}
 
 	uint flags = FCOM_FILE_WRITE;
 	if (c->verify)
