@@ -64,7 +64,7 @@ static int verify_read_fin(struct copy *c)
 	c->vf.md5->close(c->vf.md5_obj),  c->vf.md5_obj = NULL;
 
 	if (!c->verify) {
-		fcom_infolog("%*xb *%s", (ffsize)16, c->vf.md5_result_r, c->iname);
+		ffstdout_fmt("%*xb *%s\n", (ffsize)16, c->vf.md5_result_r, c->iname);
 		return 0;
 	}
 

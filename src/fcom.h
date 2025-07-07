@@ -12,7 +12,7 @@
 #undef stdin
 #undef stdout
 
-#define FCOM_VER "1.0.21"
+#define FCOM_VER "1.0.22"
 #define FCOM_CORE_VER 10021
 
 typedef unsigned char byte;
