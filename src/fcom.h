@@ -12,7 +12,7 @@
 #undef stdin
 #undef stdout
 
-#define FCOM_VER "1.0.22"
+#define FCOM_VER "1.0.23"
 #define FCOM_CORE_VER 10021
 
 typedef unsigned char byte;
@@ -521,6 +521,7 @@ enum FCOM_SYNC {
 enum FCOM_SYNC_SYNC {
 	FCOM_SYNC_REPLACE_DATE = 1,
 	FCOM_SYNC_VERIFY = 2,
+	FCOM_SYNC_WRITE_INTO = 4,
 	// FCOM_SYNC_SWAP
 };
 

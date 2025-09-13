@@ -106,6 +106,11 @@ struct xxvec : ffvec {
 		ptr = s.ptr, len = s.len, cap = !(s.len == 0 && s.ptr != NULL) ? s.len : 1;
 		return *this;
 	}
+	xxvec& acquire(ffslice s) {
+		ffvec_free(this);
+		ptr = s.ptr, len = s.len, cap = !(s.len == 0 && s.ptr != NULL) ? s.len : 1;
+		return *this;
+	}
 	xxvec& copy(ffstr s) {
 		len = 0;
 		ffvec_addstr(this, &s);

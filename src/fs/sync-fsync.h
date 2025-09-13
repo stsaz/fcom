@@ -170,6 +170,53 @@ static int sync1(struct sync *s)
 	return 0;
 }
 
+static void sync_f_copy(ffstr src, ffstr dst, uint flags, uint overwrite
+	, void(*on_complete)(void*, int), void *param)
+{
+	fcom_cominfo *c = core->com->create();
+	c->operation = ffsz_dup("copy");
+
+	ffvec a = {};
+	if (flags & FCOM_SYNC_VERIFY)
+		*ffvec_pushT(&a, char*) = ffsz_dup("--verify");
+	if (flags & FCOM_SYNC_REPLACE_DATE) {
+		*ffvec_pushT(&a, char*) = ffsz_dup("--update");
+		*ffvec_pushT(&a, char*) = ffsz_dup("--replace-date");
+	}
+	if (flags & FCOM_SYNC_WRITE_INTO)
+		*ffvec_pushT(&a, char*) = ffsz_dup("--write-into");
+	*ffvec_pushT(&a, char*) = ffsz_dup("--md5");
+	ffvec_zpushT(&a, char*);
+	c->argv = (char**)a.ptr;
+	c->argc = a.len - 1;
+
+	ffstr *p = ffvec_pushT(&c->input, ffstr);
+	char *sz = ffsz_dupstr(&src);
+	ffstr_setz(p, sz);
+
+	c->output = dst;
+
+	c->recursive = 0xff; // disable auto-recursive mode
+	c->overwrite = overwrite;
+
+	c->on_complete = on_complete;
+	c->opaque = param;
+	fcom_dbglog("sync: copy: '%S' -> '%S'", &src, &dst);
+	core->com->run(c);
+}
+
+static void sync_f_del(ffvec *input
+	, void(*on_complete)(void*, int), void *param)
+{
+	fcom_cominfo *c = core->com->create();
+	c->operation = ffsz_dup("trash");
+	c->input = *input;
+	c->overwrite = 1; // if trashing doesn't work: delete
+	c->on_complete = on_complete;
+	c->opaque = param;
+	core->com->run(c);
+}
+
 int sync_sync(fcom_sync_diff *sd, void *diff_entry_id, uint flags
 	, void(*on_complete)(void*, int), void *param)
 {
@@ -183,53 +230,18 @@ int sync_sync(fcom_sync_diff *sd, void *diff_entry_id, uint flags
 
 	switch (de->status & FCOM_SYNC_MASK) {
 	case FCOM_SYNC_LEFT:
-	case FCOM_SYNC_NEQ: {
-		fcom_cominfo *c = core->com->create();
-		c->operation = ffsz_dup("copy");
-
-		ffvec a = {};
-		if (flags & FCOM_SYNC_VERIFY)
-			*ffvec_pushT(&a, char*) = ffsz_dup("--verify");
-		if (flags & FCOM_SYNC_REPLACE_DATE) {
-			*ffvec_pushT(&a, char*) = ffsz_dup("--update");
-			*ffvec_pushT(&a, char*) = ffsz_dup("--replace-date");
-		}
-		*ffvec_pushT(&a, char*) = ffsz_dup("--md5");
-		ffvec_zpushT(&a, char*);
-		c->argv = (char**)a.ptr;
-		c->argc = a.len - 1;
-
-		ffstr *p = ffvec_pushT(&c->input, ffstr);
-		char *sz = ffsz_dupstr(&de->lname);
-		ffstr_setz(p, sz);
-
-		c->output = out_name(de->lname, l->root_dir, r->root_dir);
-
-		c->recursive = 0xff; // disable auto-recursive mode
-		c->overwrite = !!(de->status & FCOM_SYNC_NEQ);
-
-		c->on_complete = on_complete;
-		c->opaque = param;
-		fcom_dbglog("sync: copy: '%S' -> '%S'", &de->lname, &c->output);
-		core->com->run(c);
+	case FCOM_SYNC_NEQ:
+		sync_f_copy(de->lname, out_name(de->lname, l->root_dir, r->root_dir), flags, !!(de->status & FCOM_SYNC_NEQ), on_complete, param);
 		rc = 1;
 		goto end;
-	}
 
 	case FCOM_SYNC_RIGHT: {
-		fcom_cominfo *c = core->com->create();
-		c->operation = ffsz_dup("trash");
-
-		ffstr *p = ffvec_pushT(&c->input, ffstr);
+		ffvec input = {};
+		ffstr *p = ffvec_pushT(&input, ffstr);
 		char *sz = ffsz_dupstr(&de->rname);
 		ffstr_setz(p, sz);
-
-		c->overwrite = 1; // if trash doesn't work: delete
-
-		c->on_complete = on_complete;
-		c->opaque = param;
 		fcom_dbglog("sync: trash: '%S'", &de->rname);
-		core->com->run(c);
+		sync_f_del(&input, on_complete, param);
 		rc = 1;
 		goto end;
 	}

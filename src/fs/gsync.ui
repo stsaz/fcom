@@ -81,6 +81,11 @@ menu mpopup {
 		action A_DST_DELETE
 		hotkey "Shift+Delete"
 	}
+	item "-" {
+	}
+	item "Filter by Name" {
+		action A_FILTER_NAME
+	}
 }
 
 window wmain {
