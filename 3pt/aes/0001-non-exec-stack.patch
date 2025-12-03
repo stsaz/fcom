@@ -1,0 +1,24 @@
+From fbe010f2df50f340f303ad7550655be4a0948b94 Mon Sep 17 00:00:00 2001
+From: Simon Zolin <4729655+stsaz@users.noreply.github.com>
+Date: Sun, 23 Nov 2025 11:08:26 +0300
+Subject: [PATCH] non-exec stack
+
+---
+ aes_amd64.asm | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/aes_amd64.asm b/aes_amd64.asm
+index 7de6ba2..eea92c2 100644
+--- a/aes_amd64.asm
++++ b/aes_amd64.asm
+@@ -920,3 +920,7 @@ end_prologue
+ %endif
+ 
+     end
++
++%ifidn __OUTPUT_FORMAT__,elf64
++section .note.GNU-stack noalloc noexec nowrite progbits
++%endif
+-- 
+2.49.0
+

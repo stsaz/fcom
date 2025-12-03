@@ -534,8 +534,6 @@ static int file_write_fmt(fcom_file_obj *_f, const char *fmt, ...)
 static int file_trunc(fcom_file_obj *_f, int64 size)
 {
 	struct file *f = _f;
-	if (f->open_flags & FCOM_FILE_NO_PREALLOC)
-		return 0;
 
 	if (size == -1)
 		size = f->cur_off;

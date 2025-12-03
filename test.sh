@@ -111,10 +111,15 @@ test_copy() {
 	ls -l file file.out
 
 	# file -> file (exists)
-	../fcom copy "file" -o "file.out" || true
+	! ../fcom copy "file" -o "file.out"
 
 	# file -> file (overwrite)
 	../fcom copy "file" -o "file.out" --overwrite
+	diff file file.out
+
+	echo 123456789 >file.out
+	../fcom copy "file" -o "file.out" --write-into --overwrite
+	diff file file.out
 
 	# file -> dir/file
 	mkdir dir

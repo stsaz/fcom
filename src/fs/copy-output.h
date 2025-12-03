@@ -184,7 +184,7 @@ static int output_open(struct copy *c)
 	uint flags = FCOM_FILE_WRITE;
 	if (c->verify)
 		flags = FCOM_FILE_READWRITE | FCOM_FILE_DIRECTIO;
-	flags |= fcom_file_cominfo_flags_o(c->cmd);
+	flags |= fcom_file_cominfo_flags_o(c->cmd) | FCOM_FILE_NO_PREALLOC;
 
 	int r = core->file->open(c->o.f, c->o.name, flags);
 	if (r == FCOM_FILE_ERR)
@@ -210,9 +210,13 @@ static int output_open(struct copy *c)
 				return 0xbad;
 			}
 		}
+
+		if (FCOM_FILE_ERR == core->file->trunc(c->o.f, fffileinfo_size(&c->fi)))
+			return 0xbad;
 	}
 
-	c->o.del_on_close = !c->cmd->stdout && !c->cmd->test;
+	c->o.del_on_close = !c->cmd->stdout && !c->cmd->test
+		&& (!c->write_into || 0 == fffileinfo_size(&c->o.fi));
 	return 0;
 }
 

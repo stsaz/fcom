@@ -9,7 +9,7 @@ default: $(LIBS)
 
 .PHONY: aes
 aes: AES.a
-AES.a:
+AES.a: $(wildcard $(FCOM_3PT)/aes/*.patch)
 	$(MAKE) -f $(FCOM_3PT)/aes/Makefile
 
 .PHONY: md5

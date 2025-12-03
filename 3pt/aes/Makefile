@@ -9,6 +9,7 @@ DIR := aes-master
 LIB := AES.a
 
 default: $(DIR)
+	cat $(FCOM_3PT)/aes/*.patch | patch -p1 -d $(DIR)/
 	$(SUBMAKE) $(LIB)
 
 # download
