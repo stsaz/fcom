@@ -59,6 +59,10 @@ static int crypt_open(struct copy *c)
 		iv_get(c, c->cr.aes_iv);
 	} else {
 		c->cr.aes_iv_in = 1;
+		if (fffileinfo_size(&c->fi) < 16+1) {
+			fcom_errlog("Input file is not encrypted");
+			return -1;
+		}
 	}
 
 	if (NULL == (c->cr.aes_obj = c->cr.aes->create(key, sizeof(key), FCOM_AES_CFB)))
