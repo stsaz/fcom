@@ -12,8 +12,8 @@
 #undef stdin
 #undef stdout
 
-#define FCOM_VER "1.0.24"
-#define FCOM_CORE_VER 10021
+#define FCOM_VER "1.0.25"
+#define FCOM_CORE_VER 10025
 
 typedef unsigned char byte;
 typedef unsigned char u_char;
@@ -340,10 +340,11 @@ static inline void fcom_cmd_file_conf(struct fcom_file_conf *fc, const fcom_comi
 
 enum FCOM_FILE_OPEN {
 	FCOM_FILE_READ,
-	FCOM_FILE_WRITE,
-	FCOM_FILE_READWRITE,
+	FCOM_FILE_WRITE = 1,
+	FCOM_FILE_READWRITE = 2,
 	FCOM_FILE_CREATENEW = 4,
 	FCOM_FILE_CREATE = 8,
+	FCOM_FILE_CREATE_TRUNC = FCOM_FILE_CREATE | 0x1000,
 	FCOM_FILE_STDIN = 0x10,
 	FCOM_FILE_STDOUT = 0x20,
 	FCOM_FILE_DIRECTIO = 0x40,
@@ -368,7 +369,7 @@ static inline uint fcom_file_cominfo_flags_o(fcom_cominfo *cmd)
 {
 	uint f = 0;
 	if (cmd->overwrite)
-		f |= FCOM_FILE_CREATE;
+		f |= FCOM_FILE_CREATE_TRUNC;
 	else
 		f |= FCOM_FILE_CREATENEW;
 

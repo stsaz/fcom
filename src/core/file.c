@@ -47,6 +47,7 @@ struct file {
 
 static int f_write(struct file *f, ffstr d, uint64 off);
 static int file_flush(fcom_file_obj *_f, uint flags);
+static int file_trunc(fcom_file_obj *_f, int64 size);
 
 static fcom_file_obj* file_create(struct fcom_file_conf *conf)
 {
@@ -264,6 +265,10 @@ static int file_open(fcom_file_obj *_f, const char *name, uint how)
 	if ((how & FCOM_FILE_DIRECTIO) && !(flags & FFFILE_DIRECT)) {
 		fcom_infolog("%s: opened without DIRECT_IO flag", f->name);
 		f->open_flags &= ~FCOM_FILE_DIRECTIO;
+	}
+
+	if ((how & FCOM_FILE_CREATE_TRUNC) == FCOM_FILE_CREATE_TRUNC) {
+		file_trunc(f, 0);
 	}
 
 	fcom_dbglog("%s: opened file", f->name);

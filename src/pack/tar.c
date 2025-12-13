@@ -155,7 +155,7 @@ static void tar_run(fcom_op *op)
 {
 	struct tar *t = op;
 	int r, rc = 1;
-	enum { I_OUT_OPEN, I_IN, I_INFO, I_ADD, I_FILEREAD, I_PROC, I_WRITE, I_DONE, };
+	enum { I_OUT_OPEN, I_IN, I_INFO, I_ADD, I_FILEREAD, I_PROC, I_WRITE, I_FLUSH, I_DONE, };
 
 	while (!FFINT_READONCE(t->stop)) {
 		switch (t->st) {
@@ -256,7 +256,7 @@ static void tar_run(fcom_op *op)
 				t->st = I_IN; break;
 
 			case FFTARWRITE_DONE:
-				t->st = I_DONE;
+				t->st = I_FLUSH;
 				break;
 
 			case FFTARWRITE_ERROR:
@@ -273,6 +273,16 @@ static void tar_run(fcom_op *op)
 			}
 			t->st = I_PROC;
 			continue;
+
+		case I_FLUSH:
+			r = core->file->flush(t->out, 0);
+			if (r == FCOM_FILE_ERR) goto end;
+			if (r == FCOM_FILE_ASYNC) {
+				core->com->async(t->cmd);
+				return;
+			}
+			t->st = I_DONE;
+			// fallthrough
 
 		case I_DONE:
 			core->file->close(t->out);
