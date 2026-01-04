@@ -491,6 +491,7 @@ enum FCOM_SYNC_DIFF {
 	FCOM_SYNC_DIFF_NO_TIME = 0x10,
 	FCOM_SYNC_DIFF_TIME_2SEC = 0x20,
 	FCOM_SYNC_DIFF_MOVE_NO_NAME = 0x40,
+	FCOM_SYNC_DIFF_MOVE_CHK_CONTENT = 0x80,
 };
 
 enum FCOM_SYNC {
@@ -539,6 +540,7 @@ struct fcom_sync_diff_stats {
 struct fcom_sync_props {
 	ffslice include, exclude; // ffstr[]
 	fftime since_time;
+	uint include_both :1;
 
 	struct fcom_sync_diff_stats stats;
 };

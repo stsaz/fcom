@@ -41,8 +41,10 @@ static void gsync_signal(fcom_op *op, uint signal);
 	_(A_SWAP), \
 	_(A_DIFF_NO_DATE), \
 	_(A_DIFF_MOVE_NO_NAME), \
+	_(A_DIFF_MOVE_CHK_DATA), \
 	_(A_SORT_FILESIZE), \
 	_(A_SORT_FILEDATE), \
+	_(A_SHOW_INC_BOTH), \
 	_(A_INCLUDE_CHANGE), \
 	_(A_EXCLUDE_CHANGE), \
 	_(A_RECENTDAYS_CHANGE), \
@@ -172,6 +174,7 @@ struct gsync {
 		this->lsnap = NULL;
 		this->sync_if->snapshot_free(this->rsnap);
 		this->rsnap = NULL;
+		this->show_flags &= ~FCOM_SYNC_SWAP;
 	}
 
 	void redraw()
@@ -718,6 +721,9 @@ struct gsync {
 		case A_DIFF_MOVE_NO_NAME:
 			g->diff_x(id, FCOM_SYNC_DIFF_MOVE_NO_NAME);  break;
 
+		case A_DIFF_MOVE_CHK_DATA:
+			g->diff_x(id, FCOM_SYNC_DIFF_MOVE_CHK_CONTENT);  break;
+
 		case A_SORT_FILESIZE:
 			g->sort(FCOM_SYNC_SORT_FILESIZE); break;
 		case A_SORT_FILEDATE:
@@ -744,6 +750,11 @@ struct gsync {
 			g->show_x(g->wmain.show_done, FCOM_SYNC_DONE); break;
 		case A_SHOW_NEQ_DATE:
 			g->show_x(g->wmain.show_neq_date, FCOM_SYNC_NEWER | FCOM_SYNC_OLDER); break;
+		case A_SHOW_INC_BOTH:
+			g->props.include_both = !g->props.include_both;
+			g->mfile.check(id, g->props.include_both);
+			g->redraw();
+			break;
 
 		case A_SRC_EXEC:
 		case A_DST_EXEC:

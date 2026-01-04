@@ -250,6 +250,11 @@ int sync_sync(fcom_sync_diff *sd, void *diff_entry_id, uint flags
 		break;
 
 	case FCOM_SYNC_MOVE: {
+		if (flags & FCOM_SYNC_REPLACE_DATE) {
+			fcom_errlog("FCOM_SYNC_REPLACE_DATE is not supported for 'moved' status");
+			goto end;
+		}
+
 		// "right_root/left_subpath/left_name"
 		ffstr lname = de->lname;
 		if (lname.len && ffpath_slash(lname.ptr[0]))

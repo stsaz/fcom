@@ -7,6 +7,9 @@ menu mfile {
 	check_item "Diff: Move: Ignore Name" {
 		action A_DIFF_MOVE_NO_NAME
 	}
+	check_item "Diff: Move: Check Contents" {
+		action A_DIFF_MOVE_CHK_DATA
+	}
 	item "Scan and Compare" {
 		action A_SCAN_CMP
 		hotkey "F5"
@@ -51,6 +54,9 @@ menu mlist {
 	}
 	item "Sort by Date" {
 		action A_SORT_FILEDATE
+	}
+	item "Filter: Include: Both" {
+		action	A_SHOW_INC_BOTH
 	}
 }
 

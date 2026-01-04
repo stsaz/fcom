@@ -70,6 +70,17 @@ struct diff {
 		return k;
 	}
 
+	static bool moved_check_data(struct diff *sd, const fntree_cmp_ent *ce) {
+		snapshot::full_name(&sd->lname, ce->l, ce->lb);
+		snapshot::full_name(&sd->rname, ce->r, ce->rb);
+		const char *ln = sd->lname.strz(), *rn = sd->rname.strz();
+		fcom_dbglog("comparing files '%s' and '%s'", ln, rn);
+		int r = file_cmp(ln, rn, 4096, FILE_CMP_FAST);
+		if (r < 0)
+			fcom_errlog("comparing files '%s' and '%s'", ln, rn);
+		return !r;
+	}
+
 	/** Return 1 if two files match by name and meta */
 	static int moved_keyeq(void *opaque, const void *key, ffsize keylen, void *val)
 	{
@@ -83,14 +94,20 @@ struct diff {
 		const fntree_entry *r = (fntree_entry*)key;
 		const struct fcom_sync_entry *rd = (struct fcom_sync_entry*)fntree_data(r);
 
-		return ((sd->options & FCOM_SYNC_DIFF_MOVE_NO_NAME)
+		return ld->size == rd->size
+			&& (ld->unix_attr & FFFILE_UNIX_DIR) == (rd->unix_attr & FFFILE_UNIX_DIR)
+
+			&& ((sd->options & FCOM_SYNC_DIFF_MOVE_NO_NAME)
 				|| (l->name_len == r->name_len
 					&& !ffmem_cmp(l->name, r->name, l->name_len)))
-			&& ld->size == rd->size
-			&& ((sd->options & FCOM_SYNC_DIFF_NO_ATTR)
-				|| (ld->unix_attr & FFFILE_UNIX_DIR) == (rd->unix_attr & FFFILE_UNIX_DIR))
+
 			&& ((sd->options & FCOM_SYNC_DIFF_NO_TIME)
-				|| fftime_to_msec(&ld->mtime) == fftime_to_msec(&rd->mtime));
+				|| fftime_to_msec(&ld->mtime) == fftime_to_msec(&rd->mtime))
+
+			&& (!(sd->options & FCOM_SYNC_DIFF_MOVE_CHK_CONTENT)
+				|| (ld->unix_attr & FFFILE_UNIX_DIR)
+				|| moved_check_data(sd, ce))
+			;
 	}
 
 	uint ent_moved_hash(fntree_entry *e)
@@ -500,11 +517,22 @@ static uint sync_view(fcom_sync_diff *sd, struct fcom_sync_props *props, uint fl
 				goto next;
 		}
 
-		FFSLICE_WALK(&props->include, s) {
-			if (str_match(ce->lb, ce->l, *s)
-				|| str_match(ce->rb, ce->r, *s)) {
-				included = 1;
-				break;
+		if (!props->include_both) {
+			FFSLICE_WALK(&props->include, s) {
+				if (str_match(ce->lb, ce->l, *s)
+					|| str_match(ce->rb, ce->r, *s)) {
+					included = 1;
+					break;
+				}
+			}
+
+		} else {
+			FFSLICE_WALK(&props->include, s) {
+				if (str_match(ce->lb, ce->l, *s)
+					&& str_match(ce->rb, ce->r, *s)) {
+					included = 1;
+					break;
+				}
 			}
 		}
 
