@@ -100,6 +100,19 @@ static ffstr name_tree(struct move *m, ffstr in, ffstr base)
 	return out;
 }
 
+/** Prepare output file name.
+"a/b/file" -> "chdir/file" */
+static ffstr name_move(struct move *m, ffstr in)
+{
+	ffstr name;
+	ffpath_splitpath_str(in, NULL, &name);
+	ffvec_addfmt(&m->oname, "%S%c%S"
+		, &m->cmd->chdir, FFPATH_SLASH, &name);
+	ffstr out = *(ffstr*)&m->oname;
+	m->oname.len = 0;
+	return out;
+}
+
 /** Search and replace in a file name
 name: [Input] old file name;  [Output] new file name
 Return 0 if replaced */
@@ -138,6 +151,11 @@ static int move_input_next(struct move *m, ffstr *in, ffstr *out)
 
 	if (m->tree) {
 		*out = name_tree(m, *in, base);
+		return 0;
+	}
+
+	if (!(m->unbranch || m->unbranch_flat || m->search.len)) {
+		*out = name_move(m, *in);
 		return 0;
 	}
 

@@ -194,6 +194,10 @@ fd25ea23edc3df0d9c8ecd50a808c014 *fcomtest/file2'
 }
 
 test_move() {
+	# move to new dir
+	echo hi >fcomtest/hi
+	./fcom move fcomtest/hi -C fcomtest/odir
+	test -f fcomtest/odir/hi
 
 	mkdir fcomtest/unbranch
 	mkdir fcomtest/unbranch/a
