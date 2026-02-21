@@ -758,7 +758,9 @@ struct gsync {
 
 		case A_SRC_EXEC:
 		case A_DST_EXEC:
-			g->selected_file_exec(id); break;
+			if (ffui_ctl_focused(&g->wmain.view))
+				g->selected_file_exec(id);
+			break;
 
 		case A_SRC_SHOW_DIR:
 		case A_DST_SHOW_DIR:
@@ -766,7 +768,9 @@ struct gsync {
 
 		case A_SRC_DELETE:
 		case A_DST_DELETE:
-			g->selected_file_del(id); break;
+			if (ffui_ctl_focused(&g->wmain.view))
+				g->selected_file_del(id);
+			break;
 
 		case A_FILTER_NAME:
 			g->selected_filter(0);  break;
