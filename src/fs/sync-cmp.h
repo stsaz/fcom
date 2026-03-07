@@ -22,6 +22,11 @@ struct diff {
 	xxvec		lname, rname;
 	uint		options;
 	uint		sort_flags;
+
+	uint		dup_cur;
+	uint64		sz_prev;
+	struct fntree_cmp_ent *ce_prev;
+
 	struct fcom_sync_props props;
 	fcom_sync_diff_entry dif_ent;
 	struct fcom_sync_diff_stats stats;
@@ -317,7 +322,8 @@ struct diff {
 	/** Prepare diff list; sort (filter) files by size. */
 	void dups_init(fcom_sync_snapshot *left, uint flags)
 	{
-		this->options = flags;
+		this->sz_prev = ~0ULL;
+		this->options = flags | _FCOM_SYNC_DIFF_DUPS;
 		this->left = left;
 		fntree_block *b = _fntr_ent_first(left->root)->children;
 		if (!b)
@@ -344,50 +350,50 @@ struct diff {
 	/** Walk through the files and compare by content.
 	 * Associate duplicate files with each other.
 	Set 'EQ' status for the duplicate files; set 'NEQ' otherwise. */
-	void dups_scan()
-	{
-		uint64 sz, sz_prev = ~0ULL;
-		struct fntree_cmp_ent **it, *ce, *ce_prev = NULL;
-		FFSLICE_WALK(&this->filter, it) {
-			this->stats.entries++;
-			ce = *it;
-			struct fcom_sync_entry *d = (struct fcom_sync_entry*)fntree_data(ce->l);
-			sz = d->size;
-			if (sz_prev != sz) {
-				sz_prev = sz;
-				if (ce_prev) {
-					this->stats.neq++;
-					ce_prev->status = FCOM_SYNC_NEQ;
-				}
-				ce_prev = ce;
-				continue;
-			}
-
-			snapshot::full_name(&this->lname, ce_prev->l, ce_prev->lb);
-			snapshot::full_name(&this->rname, ce->l, ce->lb);
-			fcom_dbglog("comparing files \"%s\" and \"%s\"..."
-				, this->lname.strz(), this->rname.strz());
-			if (file_cmp(this->lname.strz(), this->rname.strz(), 4096, FILE_CMP_FAST)) {
+	int dups_scan_next() {
+		if (this->dup_cur == this->filter.len) {
+			if (ce_prev) {
 				this->stats.neq++;
 				ce_prev->status = FCOM_SYNC_NEQ;
-				ce_prev = ce;
-				continue; // Note: only 2 consecutive files with the same size are compared!
 			}
-			this->stats.eq++;
-			ce_prev->status = FCOM_SYNC_EQ;
-			ce_prev->r = ce->l;
-			ce_prev->rb = ce->lb;
-			ce->status = FCOM_SYNC_DONE;
-			ce_prev = NULL;
-			sz_prev = ~0ULL;
+			this->filter.len = 0;
+			return 1;
 		}
 
-		if (ce_prev) {
+		uint64 sz;
+		struct fntree_cmp_ent *ce;
+		ce = *this->filter.at<struct fntree_cmp_ent*>(this->dup_cur++);
+		this->stats.entries++;
+		struct fcom_sync_entry *d = (struct fcom_sync_entry*)fntree_data(ce->l);
+		sz = d->size;
+		if (sz_prev != sz) {
+			sz_prev = sz;
+			if (ce_prev) {
+				this->stats.neq++;
+				ce_prev->status = FCOM_SYNC_NEQ;
+			}
+			ce_prev = ce;
+			return 0;
+		}
+
+		snapshot::full_name(&this->lname, ce_prev->l, ce_prev->lb);
+		snapshot::full_name(&this->rname, ce->l, ce->lb);
+		fcom_dbglog("comparing files \"%s\" and \"%s\"..."
+			, this->lname.strz(), this->rname.strz());
+		if (file_cmp(this->lname.strz(), this->rname.strz(), 4096, FILE_CMP_FAST)) {
 			this->stats.neq++;
 			ce_prev->status = FCOM_SYNC_NEQ;
+			ce_prev = ce;
+			return 0; // Note: only 2 consecutive files with the same size are compared!
 		}
-
-		this->filter.len = 0;
+		this->stats.eq++;
+		ce_prev->status = FCOM_SYNC_EQ;
+		ce_prev->r = ce->l;
+		ce_prev->rb = ce->lb;
+		ce->status = FCOM_SYNC_DONE;
+		ce_prev = NULL;
+		sz_prev = ~0ULL;
+		return 0;
 	}
 };
 
@@ -396,17 +402,28 @@ static fcom_sync_diff* sync_diff(fcom_sync_snapshot *left, fcom_sync_snapshot *r
 	struct diff *sd = ffmem_new(struct diff);
 	sd->props = *props;
 	sd->init(left, right, flags);
-	while (!sd->next()) {
+	if (!(flags & FCOM_SYNC_DIFF_STEP)) {
+		while (!sd->next()) {
+		}
 	}
 	props->stats = sd->stats;
 	return sd;
+}
+
+static int sync_diff_next(fcom_sync_diff *sd, struct fcom_sync_props *props)
+{
+	int r = !(sd->options & _FCOM_SYNC_DIFF_DUPS) ? sd->next() : sd->dups_scan_next();
+	props->stats = sd->stats;
+	return r;
 }
 
 static fcom_sync_diff* sync_find_dups(fcom_sync_snapshot *left, struct fcom_sync_props *props, uint flags)
 {
 	struct diff *sd = ffmem_new(struct diff);
 	sd->dups_init(left, flags);
-	sd->dups_scan();
+	if (!(flags & FCOM_SYNC_DIFF_STEP)) {
+		while (!sd->dups_scan_next()) {}
+	}
 	props->stats = sd->stats;
 	return sd;
 }

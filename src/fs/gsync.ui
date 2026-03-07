@@ -1,4 +1,4 @@
-# fcom v1.0-beta13 gsync UI
+# fcom v1.0 gsync UI
 
 menu mfile {
 	check_item "Diff: Ignore Date" {
@@ -6,9 +6,6 @@ menu mfile {
 	}
 	check_item "Diff: Move: Ignore Name" {
 		action A_DIFF_MOVE_NO_NAME
-	}
-	check_item "Diff: Move: Check Contents" {
-		action A_DIFF_MOVE_CHK_DATA
 	}
 	item "Scan and Compare" {
 		action A_SCAN_CMP
@@ -55,7 +52,7 @@ menu mlist {
 	item "Sort by Date" {
 		action A_SORT_FILEDATE
 	}
-	item "Filter: Include: Both" {
+	check_item "Filter: Include: Both" {
 		action	A_SHOW_INC_BOTH
 	}
 }

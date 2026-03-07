@@ -352,9 +352,11 @@ static void sync_close(fcom_op *op);
 static const struct fcom_sync_if sync_if = {
 	sync_snapshot_open,
 	sync_scan,
+	sync_scan_next,
 	sync_scan_wc,
 	sync_snapshot_free,
 	sync_diff,
+	sync_diff_next,
 	sync_find_dups,
 	sync_diff_free,
 	sync_view,

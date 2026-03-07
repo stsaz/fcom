@@ -492,6 +492,8 @@ enum FCOM_SYNC_DIFF {
 	FCOM_SYNC_DIFF_TIME_2SEC = 0x20,
 	FCOM_SYNC_DIFF_MOVE_NO_NAME = 0x40,
 	FCOM_SYNC_DIFF_MOVE_CHK_CONTENT = 0x80,
+	FCOM_SYNC_DIFF_STEP = 0x0100,
+	_FCOM_SYNC_DIFF_DUPS = 0x0200,
 };
 
 enum FCOM_SYNC {
@@ -574,6 +576,7 @@ struct fcom_sync_if {
 
 	/** Create snapshot from directory. */
 	fcom_sync_snapshot* (*scan)(ffstr path, uint flags);
+	int (*scan_next)(fcom_sync_snapshot *ss);
 
 	/** Create snapshot from the directories found by wildcard. */
 	fcom_sync_snapshot* (*scan_wc)(ffstr wc, uint flags);
@@ -583,6 +586,7 @@ struct fcom_sync_if {
 	/** Compare two snapshots.
 	flags: enum FCOM_SYNC_DIFF */
 	fcom_sync_diff* (*diff)(fcom_sync_snapshot *left, fcom_sync_snapshot *right, struct fcom_sync_props *props, uint flags);
+	int (*diff_next)(fcom_sync_diff *sd, struct fcom_sync_props *props);
 
 	fcom_sync_diff* (*find_dups)(fcom_sync_snapshot *left, struct fcom_sync_props *props, uint flags);
 

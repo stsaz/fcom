@@ -163,6 +163,7 @@ static fcom_core* core_conf(struct fcom_core_conf *conf)
 		syserrlog("fftimer_start");
 		goto err;
 	}
+	dbglog("sys timer: %u", gcore->conf.timer_resolution_msec);
 	fftimerqueue_init(&gcore->tq);
 	tmr_func(NULL);
 

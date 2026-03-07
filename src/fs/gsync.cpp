@@ -41,7 +41,6 @@ static void gsync_signal(fcom_op *op, uint signal);
 	_(A_SWAP), \
 	_(A_DIFF_NO_DATE), \
 	_(A_DIFF_MOVE_NO_NAME), \
-	_(A_DIFF_MOVE_CHK_DATA), \
 	_(A_SORT_FILESIZE), \
 	_(A_SORT_FILEDATE), \
 	_(A_SHOW_INC_BOTH), \
@@ -131,10 +130,12 @@ struct gsync {
 	struct fcom_sync_props props;
 	struct fcom_sync_diff_entry de;
 
+	bool		wildcard;
+	uint		scan_state;
 	uint		show_flags; // enum FCOM_SYNC
 	xxvec		include, exclude; // ffstr[]
 	xxvec		include_str, exclude_str;
-	fcom_timer	timer;
+	fcom_timer	timer, sync_timer;
 	xxvec		sync_items; // struct sync_el[]
 	uint		sync_item_i;
 	fcom_task	core_task;
@@ -155,6 +156,10 @@ struct gsync {
 		ffui_statusbarxx stbar;
 	} wmain;
 
+	struct {
+		ushort	status_update_period;
+	} conf;
+
 	~gsync() {
 		diff_reset();
 		fcom_sync_diff_entry_destroy(&this->de);
@@ -164,6 +169,10 @@ struct gsync {
 	{
 		fcom_errlog(e);
 		this->wmain.stbar.text(e);
+	}
+
+	void timer_set(int interval_msec, void (*func)(gsync *g)) {
+		core->timer(&this->sync_timer, interval_msec, (fcom_task_func)func, this);
 	}
 
 	void diff_reset()
@@ -224,71 +233,176 @@ struct gsync {
 	fcom_sync_snapshot* scan(xxstr path)
 	{
 		uint flags = 0;
-		if (path.find_char('*') >= 0)
+		this->wildcard = (path.find_char('*') >= 0);
+		if (this->wildcard)
 			return this->sync_if->scan_wc(path, flags);
-		return this->sync_if->scan(path, flags);
+		return this->sync_if->scan(path, flags | FCOM_SYNC_DIFF_STEP);
 	}
 
+	static void scan_status_update__wk(gsync *g) {
+		ffui_thd_post(scan_status_update, g);
+	}
+
+	enum { I_INIT, I_SCAN, I_SCAN_NEXT, I_DIFF, I_DIFF_NEXT, };
 	static void scan_and_compare__worker(void *param)
 	{
 		gsync *g = (gsync*)param;
-		g->diff_reset();
-		ffmem_zero_obj(&g->props.stats);
-		g->stats_redraw();
 
-		ffui_thd_post(scan_status_update, g);
-		if (!(g->lsnap = g->scan(xxvec(g->wmain.lpath.text()).str()))) {
-			g->error("ERROR scanning Source tree");
+		switch (g->scan_state) {
+		case I_INIT:
+			g->diff_reset();
+			ffmem_zero_obj(&g->props.stats);
+			g->stats_redraw();
+			g->scan_state++;
+			// fallthrough
+
+		case I_SCAN:
+			if (!(g->lsnap = g->scan(xxvec(g->wmain.lpath.text()).str()))) {
+				g->error("ERROR scanning Source tree");
+				goto err;
+			}
+			if (!(g->rsnap = g->scan(xxvec(g->wmain.rpath.text()).str()))) {
+				g->error("ERROR scanning Target tree");
+				goto err;
+			}
+			g->timer_set(g->conf.status_update_period, scan_status_update__wk);
+			if (g->wildcard) {
+				g->scan_state = I_DIFF;
+				goto i_scan_diff;
+			}
+			ffui_thd_post(scan_status_update, g);
+			g->scan_state++;
+			// fallthrough
+
+		case I_SCAN_NEXT:
+			for (uint i = 0;;  i++) {
+				if (i == 100) {
+					g->core_task_add(scan_and_compare__worker);
+					return;
+				}
+
+				uint k = 0;
+				if (!g->sync_if->scan_next(g->lsnap)) {
+					k++;
+					g->props.stats.ltotal++;
+				}
+
+				if (!g->sync_if->scan_next(g->rsnap)) {
+					k++;
+					g->props.stats.rtotal++;
+				}
+
+				if (!k)
+					break;
+			}
+
+			ffui_thd_post(scan_status_update, g);
+			g->scan_state++;
+			// fallthrough
+
+		i_scan_diff:
+		case I_DIFF: {
+			ffui_thd_post(scan_status_update, g);
+			uint f = FCOM_SYNC_DIFF_LEFT_PATH_STRIP
+				| FCOM_SYNC_DIFF_RIGHT_PATH_STRIP
+				| FCOM_SYNC_DIFF_NO_ATTR
+				| FCOM_SYNC_DIFF_TIME_2SEC
+				| FCOM_SYNC_DIFF_STEP;
+			f |= g->diff_flags;
+			f |= (f & FCOM_SYNC_DIFF_MOVE_NO_NAME) ? FCOM_SYNC_DIFF_MOVE_CHK_CONTENT : 0;
+			g->diff = g->sync_if->diff(g->lsnap, g->rsnap, &g->props, f);
+		}
+			g->scan_state++;
+			// fallthrough
+
+		case I_DIFF_NEXT:
+			for (uint i = 0;;  i++) {
+				if (i == 100) {
+					g->core_task_add(scan_and_compare__worker);
+					return;
+				}
+				if (g->sync_if->diff_next(g->diff, &g->props))
+					break;
+			}
+
+			g->timer_set(0, NULL);
+			ffui_thd_post(scan_status_update, g);
+			g->stats_redraw();
+			g->redraw();
 			return;
 		}
 
-		ffui_thd_post(scan_status_update, g);
-		if (!(g->rsnap = g->scan(xxvec(g->wmain.rpath.text()).str()))) {
-			g->error("ERROR scanning Target tree");
-			return;
-		}
-
-		ffui_thd_post(scan_status_update, g);
-		uint f = FCOM_SYNC_DIFF_LEFT_PATH_STRIP
-			| FCOM_SYNC_DIFF_RIGHT_PATH_STRIP
-			| FCOM_SYNC_DIFF_NO_ATTR
-			| FCOM_SYNC_DIFF_TIME_2SEC;
-		f |= g->diff_flags;
-		g->diff = g->sync_if->diff(g->lsnap, g->rsnap, &g->props, f);
-
-		g->stats_redraw();
-		g->redraw();
+err:
+		g->timer_set(0, NULL);
 	}
 
-	static void scan_dups_status_update(void *param)
-	{
-		struct gsync *g = (gsync*)param;
-		const char *s = (!g->lsnap) ? "Scanning Source..."
-			: (!g->diff) ? "Comparing..."
-			: NULL;
-		if (!s)
-			return;
-		g->wmain.stbar.text(s);
+	static void dups_status_update__wk(gsync *g) {
+		ffui_thd_post(scan_status_update, g);
 	}
 
 	static void scan_dups__worker(void *param)
 	{
 		gsync *g = (gsync*)param;
-		g->diff_reset();
-		ffmem_zero_obj(&g->props.stats);
-		g->stats_redraw();
 
-		ffui_thd_post(scan_dups_status_update, g);
-		if (!(g->lsnap = g->scan(xxvec(g->wmain.lpath.text()).str()))) {
-			g->error("ERROR scanning Source tree");
-			return;
+		switch (g->scan_state) {
+		case I_INIT:
+			g->diff_reset();
+			ffmem_zero_obj(&g->props.stats);
+			g->stats_redraw();
+			g->scan_state++;
+			// fallthrough
+
+		case I_SCAN:
+			ffui_thd_post(scan_status_update, g);
+			if (!(g->lsnap = g->scan(xxvec(g->wmain.lpath.text()).str()))) {
+				g->error("ERROR scanning Source tree");
+				return;
+			}
+			g->timer_set(g->conf.status_update_period, dups_status_update__wk);
+			if (g->wildcard) {
+				g->scan_state = I_DIFF;
+				goto i_diff;
+			}
+			g->scan_state++;
+			// fallthrough
+
+		case I_SCAN_NEXT:
+			for (uint i = 0;;  i++) {
+				if (i == 100) {
+					g->core_task_add(scan_and_compare__worker);
+					return;
+				}
+				if (g->sync_if->scan_next(g->lsnap))
+					break;
+				g->props.stats.ltotal++;
+			}
+
+			ffui_thd_post(scan_status_update, g);
+			g->scan_state++;
+			// fallthrough
+
+		i_diff:
+		case I_DIFF:
+			ffui_thd_post(scan_status_update, g);
+			g->diff = g->sync_if->find_dups(g->lsnap, &g->props, FCOM_SYNC_DIFF_STEP);
+			g->scan_state++;
+			// fallthrough
+
+		case I_DIFF_NEXT:
+			for (uint i = 0;;  i++) {
+				if (i == 100) {
+					g->core_task_add(scan_dups__worker);
+					return;
+				}
+				if (g->sync_if->diff_next(g->diff, &g->props))
+					break;
+			}
+
+			g->timer_set(0, NULL);
+			ffui_thd_post(scan_status_update, g);
+			g->stats_redraw();
+			g->redraw();
 		}
-
-		ffui_thd_post(scan_dups_status_update, g);
-		g->diff = g->sync_if->find_dups(g->lsnap, &g->props, 0);
-
-		g->stats_redraw();
-		g->redraw();
 	}
 
 	static const char* entry_status_str(xxstr_buf<100> *buf, uint status)
@@ -442,13 +556,12 @@ struct gsync {
 	static void scan_status_update(void *param)
 	{
 		struct gsync *g = (gsync*)param;
-		const char *s = (!g->lsnap) ? "Scanning Source..."
-			: (!g->rsnap) ? "Scanning Target..."
-			: (!g->diff) ? "Comparing..."
-			: NULL;
-		if (!s)
-			return;
-		g->wmain.stbar.text(s);
+		xxstr_buf<100> b;
+		if (g->scan_state <= I_SCAN_NEXT)
+			b.zfmt("Scanning (%u)...", g->props.stats.ltotal + g->props.stats.rtotal);
+		else
+			b.zfmt("Comparing (%u)...", g->props.stats.entries);
+		g->wmain.stbar.text(b.buf);
 	}
 
 	static void sync_status_update(void *param)
@@ -703,9 +816,13 @@ struct gsync {
 			g->wnd_new(); break;
 
 		case A_SCAN_CMP:
-			g->core_task_add(scan_and_compare__worker); break;
+			g->scan_state = 0;
+			g->core_task_add(scan_and_compare__worker);
+			break;
 		case A_SCAN_DUP:
-			g->core_task_add(scan_dups__worker); break;
+			g->scan_state = 0;
+			g->core_task_add(scan_dups__worker);
+			break;
 
 		case A_SYNC:
 			g->sync_begin(FCOM_SYNC_WRITE_INTO); break;
@@ -720,9 +837,6 @@ struct gsync {
 
 		case A_DIFF_MOVE_NO_NAME:
 			g->diff_x(id, FCOM_SYNC_DIFF_MOVE_NO_NAME);  break;
-
-		case A_DIFF_MOVE_CHK_DATA:
-			g->diff_x(id, FCOM_SYNC_DIFF_MOVE_CHK_CONTENT);  break;
 
 		case A_SORT_FILESIZE:
 			g->sort(FCOM_SYNC_SORT_FILESIZE); break;
@@ -752,7 +866,7 @@ struct gsync {
 			g->show_x(g->wmain.show_neq_date, FCOM_SYNC_NEWER | FCOM_SYNC_OLDER); break;
 		case A_SHOW_INC_BOTH:
 			g->props.include_both = !g->props.include_both;
-			g->mfile.check(id, g->props.include_both);
+			g->mlist.check(id, g->props.include_both);
 			g->redraw();
 			break;
 
@@ -858,6 +972,7 @@ struct gsync {
 	static void wmain_show(void *param)
 	{
 		struct gsync *g = (struct gsync*)param;
+		g->conf.status_update_period = 500;
 
 		if (g->cmd->input.len > 0)
 			g->wmain.lpath.text(ffslice_itemT(&g->cmd->input, 0, ffstr)->ptr);
@@ -874,14 +989,14 @@ struct gsync {
 			// | FCOM_SYNC_DONE
 			| FCOM_SYNC_NEWER | FCOM_SYNC_OLDER
 			;
-		g->wmain.show_left.check(1);
+		g->wmain.show_left.check(g->show_flags & FCOM_SYNC_LEFT);
 		// g->wmain.show_eq.check(1);
-		g->wmain.show_neq.check(1);
-		g->wmain.show_mov.check(1);
-		g->wmain.show_right.check(1);
+		g->wmain.show_neq.check(g->show_flags & FCOM_SYNC_NEQ);
+		g->wmain.show_mov.check(g->show_flags & FCOM_SYNC_MOVE);
+		g->wmain.show_right.check(g->show_flags & FCOM_SYNC_RIGHT);
 		// g->wmain.show_dir.check(1);
 		// g->wmain.show_done.check(1);
-		g->wmain.show_neq_date.check(1);
+		g->wmain.show_neq_date.check(g->show_flags & (FCOM_SYNC_NEWER | FCOM_SYNC_OLDER));
 
 		g->wmain.wnd.show(1);
 	}

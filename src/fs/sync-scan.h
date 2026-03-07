@@ -252,12 +252,14 @@ static fcom_sync_snapshot* sync_scan(ffstr path, uint flags)
 
 	ffstr_dupstr(&ss->root_dir, &path);
 
-	for (;;) {
-		int r = ss->scan_next(NULL);
-		if (r == 'done')
-			break;
-		else if (r == 'erro')
-			continue;
+	if (!(flags & FCOM_SYNC_DIFF_STEP)) {
+		for (;;) {
+			int r = ss->scan_next(NULL);
+			if (r == 'done')
+				break;
+			else if (r == 'erro')
+				continue;
+		}
 	}
 
 	return ss;
@@ -265,6 +267,16 @@ static fcom_sync_snapshot* sync_scan(ffstr path, uint flags)
 end:
 	sync_snapshot_free(ss);
 	return NULL;
+}
+
+static int sync_scan_next(fcom_sync_snapshot *ss)
+{
+	int r = ss->scan_next(NULL);
+	if (r == 'done')
+		return 1;
+	else if (r == 'erro')
+		return -1;
+	return 0;
 }
 
 static void fntree_entry_set(fntree_entry *dst, const fntree_entry *src, size_t data_len)
@@ -322,7 +334,10 @@ static struct snapshot* sync_scan_wc(ffstr path, uint flags)
 	ffdirscan ds = {};
 	const char *fn;
 	char *fullname = NULL, *dirz = NULL;
-	struct snapshot *r = NULL, *d = NULL, *parent = NULL;
+	struct snapshot *r = NULL, *d = NULL, *first = NULL;
+	xxvec dirs; // char*[]
+	char **it;
+	uint idir = 0;
 
 	ffstr dir, name;
 	ffpath_splitpath_str(path, &dir, &name);
@@ -339,29 +354,45 @@ static struct snapshot* sync_scan_wc(ffstr path, uint flags)
 		fullname = ffsz_allocfmt("%s%c%s", dirz, FFPATH_SLASH, fn);
 
 		xxfileinfo fi;
-		if (!(!fffile_info_path(fullname, &fi.info) && fi.dir()))
-			continue;
+		if (!fffile_info_path(fullname, &fi.info) && fi.dir()) {
+			*dirs.push<char*>() = fullname;
+			fullname = NULL;
+		}
+	}
 
-		if (!(d = sync_scan(FFSTR_Z(fullname), flags)))
+	while (idir < dirs.len) {
+		const char *namez = *dirs.at<char*>(idir++);
+		if (!(d = sync_scan(FFSTR_Z(namez), flags | FCOM_SYNC_DIFF_STEP)))
 			goto end;
+		if (!first)
+			first = d;
 
-		if (!parent) {
-			parent = d;
-		} else {
-			sync_combine(parent, _fntr_ent_first(d->root));
-			parent->total += d->total;
+		for (;;) {
+			int r = d->scan_next(NULL);
+			if (r == 'done')
+				break;
+			else if (r == 'erro')
+				continue;
+		}
+
+		if (d != first) {
+			sync_combine(first, _fntr_ent_first(d->root));
+			first->total += d->total;
 		}
 		d = NULL;
 	}
 
-	r = parent;
-	parent = NULL;
+	r = first;
+	first = NULL;
 
 end:
+	FFSLICE_WALK(&dirs, it) {
+		ffmem_free(*it);
+	}
 	ffmem_free(dirz);
 	ffmem_free(fullname);
 	ffdirscan_close(&ds);
 	sync_snapshot_free(d);
-	sync_snapshot_free(parent);
+	sync_snapshot_free(first);
 	return r;
 }
