@@ -106,9 +106,9 @@ Return the number of tasks executed. */
 static inline ffuint fftaskqueue_run(fftaskqueue *tq)
 {
 	ffchain_item *it, *sentl = fflist_sentl(&tq->tasks);
-	ffuint n = 0;
+	ffuint n = 0, nn = tq->tasks.len;
 
-	for (;;) {
+	while (n < nn) {
 
 		it = FFINT_READONCE(fflist_first(&tq->tasks));
 		if (it == sentl)
